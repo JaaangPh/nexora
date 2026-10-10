@@ -2,8 +2,8 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { config } from '../config/config';
-import { AuthRequest } from '../middleware/auth';
+import { config } from '../config/config.js';
+import { AuthRequest } from '../middleware/auth.js';
 import {
   findUserByPhone,
   findUserById,
@@ -16,7 +16,7 @@ import {
   generateUniqueReferralCode,
   registerReferralCodeAsInvite,
   logAuthEvent,
-} from '../database/firebase';
+} from '../database/firebase.js';
 
 // Helper: Normalize phone numbers (strips spaces, dashes, parentheses)
 function normalizePhone(phone: string): string {

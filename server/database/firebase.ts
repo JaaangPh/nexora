@@ -6,19 +6,74 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Ensure Firebase is initialized once
-if (!getApps().length) {
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
-  initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: privateKey,
-    }),
-  });
+function getCleanPrivateKey(): string | undefined {
+  let key = process.env.FIREBASE_PRIVATE_KEY;
+  if (!key) return undefined;
+
+  key = key.trim();
+  // Strip outer quotes if pasted with quotes in Vercel dashboard
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'"))
+  ) {
+    key = key.slice(1, -1);
+  }
+  // Convert literal \n to actual newlines
+  key = key.replace(/\\n/g, '\n').trim();
+  return key;
 }
 
-export const firestore = getFirestore();
+export function initFirebase(): boolean {
+  if (getApps().length > 0) return true;
+
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = getCleanPrivateKey();
+
+  if (!projectId || !clientEmail || !privateKey) {
+    console.error('[Firebase Config Error] Missing Firebase credentials:', {
+      hasProjectId: !!projectId,
+      hasClientEmail: !!clientEmail,
+      hasPrivateKey: !!privateKey,
+    });
+    return false;
+  }
+
+  try {
+    initializeApp({
+      credential: cert({
+        projectId,
+        clientEmail,
+        privateKey,
+      }),
+    });
+    console.log('[Firebase] Admin initialized successfully for project:', projectId);
+    return true;
+  } catch (err: any) {
+    console.error('[Firebase Init Error]:', err?.message || err);
+    return false;
+  }
+}
+
+// Attempt immediate init
+initFirebase();
+
+export function getDb(): FirebaseFirestore.Firestore {
+  if (!initFirebase()) {
+    throw new Error(
+      'Firebase is not initialized. Please verify FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY in Vercel Environment Variables.'
+    );
+  }
+  return getFirestore();
+}
+
+export const firestore = new Proxy({} as FirebaseFirestore.Firestore, {
+  get(target, prop) {
+    const db = getDb();
+    const val = (db as any)[prop];
+    return typeof val === 'function' ? val.bind(db) : val;
+  },
+});
 
 // Interfaces
 export interface FirestoreUser {
@@ -78,6 +133,10 @@ export async function generateUniqueReferralCode(): Promise<string> {
  * Initialize Firestore and seed initial invite codes and admin account if absent
  */
 export async function initFirebaseDatabase() {
+  if (!initFirebase()) {
+    console.warn('[Firebase] Skipping DB seeding: Firebase environment variables are not yet configured on this instance.');
+    return;
+  }
   console.log('[Firebase] Initializing Cloud Firestore database...');
 
   // 1. Seed Invite Codes (including starter referral code NT723906)

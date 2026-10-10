@@ -7,9 +7,9 @@ import {
   validateInvite,
   getActiveInvites,
   createInviteCode,
-} from '../controllers/authController';
-import { authMiddleware } from '../middleware/auth';
-import { authLimiter, inviteLimiter } from '../middleware/rateLimiter';
+} from '../controllers/authController.js';
+import { authMiddleware } from '../middleware/auth.js';
+import { authLimiter, inviteLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 

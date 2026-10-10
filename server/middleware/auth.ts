@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { config } from '../config/config';
-import { findUserById } from '../database/firebase';
+import { config } from '../config/config.js';
+import { findUserById } from '../database/firebase.js';
 
 export interface AuthRequest extends Request {
   user?: {

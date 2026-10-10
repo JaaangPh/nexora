@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { config } from '../config/config';
+import { config } from '../config/config.js';
 
 // Ensure database directory exists
 const dbDir = path.dirname(config.dbPath);

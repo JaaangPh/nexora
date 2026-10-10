@@ -1,9 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import { config } from './config/config';
-import { initFirebaseDatabase } from './database/firebase';
-import authRoutes from './routes/authRoutes';
+import { config } from './config/config.js';
+import { initFirebaseDatabase } from './database/firebase.js';
+import authRoutes from './routes/authRoutes.js';
 
 const app = express();
 
