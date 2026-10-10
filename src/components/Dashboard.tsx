@@ -229,7 +229,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                     onClick={() => setShowDepositModal(true)}
                     className="bg-white hover:bg-slate-50 text-[#0B1A3D] rounded-2xl p-3.5 flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 group"
                   >
-                    <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 text-[#2459C4] flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                       <Wallet className="w-5 h-5" />
                     </div>
                     <span className="text-xs font-extrabold text-[#0B1A3D]">Deposit</span>
@@ -240,7 +240,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                     onClick={() => setShowWithdrawModal(true)}
                     className="bg-white hover:bg-slate-50 text-[#0B1A3D] rounded-2xl p-3.5 flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 group"
                   >
-                    <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 text-[#2459C4] flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                       <Banknote className="w-5 h-5" />
                     </div>
                     <span className="text-xs font-extrabold text-[#0B1A3D]">Withdraw</span>
@@ -251,7 +251,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                     onClick={() => setShowSupportModal(true)}
                     className="bg-white hover:bg-slate-50 text-[#0B1A3D] rounded-2xl p-3.5 flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 group"
                   >
-                    <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 text-[#2459C4] flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                       <Headphones className="w-5 h-5" />
                     </div>
                     <span className="text-xs font-extrabold text-[#0B1A3D]">Support</span>
@@ -262,7 +262,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                     onClick={() => setShowAppModal(true)}
                     className="bg-white hover:bg-slate-50 text-[#0B1A3D] rounded-2xl p-3.5 flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 group"
                   >
-                    <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 text-[#2459C4] flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                       <Smartphone className="w-5 h-5" />
                     </div>
                     <span className="text-xs font-extrabold text-[#0B1A3D]">APP</span>
@@ -273,7 +273,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                     onClick={() => handleTabSelect('graph')}
                     className="bg-white hover:bg-slate-50 text-[#0B1A3D] rounded-2xl p-3.5 flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 group"
                   >
-                    <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 text-[#2459C4] flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                       <TrendingUp className="w-5 h-5" />
                     </div>
                     <span className="text-xs font-extrabold text-[#0B1A3D]">Graph</span>
@@ -284,7 +284,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                     onClick={() => handleTabSelect('trades')}
                     className="bg-white hover:bg-slate-50 text-[#0B1A3D] rounded-2xl p-3.5 flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 group"
                   >
-                    <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                    <div className="w-10 h-10 rounded-full bg-blue-50 text-[#2459C4] flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
                       <Activity className="w-5 h-5" />
                     </div>
                     <span className="text-xs font-extrabold text-[#0B1A3D]">Trader</span>
@@ -394,7 +394,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
             </button>
 
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-cyan-400 flex items-center justify-center">
                 <Wallet className="w-4 h-4" />
               </div>
               <h3 className="text-base font-extrabold text-white">Deposit Funds</h3>
@@ -477,7 +477,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
             </button>
 
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-cyan-400 flex items-center justify-center">
                 <Banknote className="w-4 h-4" />
               </div>
               <h3 className="text-base font-extrabold text-white">Withdraw Funds</h3>
@@ -550,7 +550,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
             </button>
 
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-8 h-8 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-cyan-400 flex items-center justify-center">
                 <Headphones className="w-4 h-4" />
               </div>
               <h3 className="text-base font-extrabold text-white">24/7 Member Support</h3>
