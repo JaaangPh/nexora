@@ -102,53 +102,49 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen w-full bg-[#F4F7FB] flex flex-col justify-between antialiased font-sans selection:bg-[#2459C4] selection:text-white">
+    <div className="min-h-screen w-full bg-[#060D1E] flex flex-col justify-between antialiased font-sans selection:bg-[#2459C4] selection:text-white">
       {/* Centered Device / App Canvas Container */}
-      <div className="w-full max-w-[440px] mx-auto min-h-screen sm:min-h-0 sm:my-6 sm:rounded-[36px] bg-[#FFFFFF] shadow-2xl shadow-blue-950/15 overflow-hidden flex flex-col justify-between border sm:border-slate-200/80">
+      <div className="w-full max-w-[440px] mx-auto min-h-screen sm:min-h-[820px] sm:my-6 sm:rounded-[36px] bg-[#08132B] shadow-2xl shadow-blue-950/40 overflow-hidden flex flex-col justify-between border sm:border-[#1E3A78]/50 relative">
         <main className="w-full flex flex-col flex-1">
-          {/* 1. Header Section */}
-          <Header />
+          {currentUser ? (
+            /* Authenticated Member View (Full Mobile App Experience) */
+            <Dashboard user={currentUser} onLogout={handleLogout} onUpdateUser={setCurrentUser} />
+          ) : (
+            /* Unauthenticated Member View */
+            <>
+              <Header />
+              <section className="relative -mt-9 z-20 px-4 sm:px-6 pb-8 bg-white rounded-t-[32px] flex-1 flex flex-col shadow-card">
+                <div className="pt-4 flex-1 flex flex-col">
+                  {/* Tab Switcher */}
+                  <div className="mb-6">
+                    <AuthTabs activeTab={activeTab} onTabChange={setActiveTab} />
+                  </div>
 
-          {/* 2. Overlapping Authentication Card */}
-          <section className="relative -mt-9 z-20 px-4 sm:px-6 pb-8 bg-white rounded-t-[32px] flex-1 flex flex-col shadow-card">
-            {currentUser ? (
-              /* Authenticated Member View */
-              <div className="pt-6 flex-1 flex flex-col justify-center">
-                <Dashboard user={currentUser} onLogout={handleLogout} onUpdateUser={setCurrentUser} />
-              </div>
-            ) : (
-              /* Unauthenticated Auth State with Tabs */
-              <div className="pt-4 flex-1 flex flex-col">
-                {/* Tab Switcher */}
-                <div className="mb-6">
-                  <AuthTabs activeTab={activeTab} onTabChange={setActiveTab} />
+                  {/* Tab Panels */}
+                  <div className="flex-1">
+                    {activeTab === 'login' ? (
+                      <LoginForm
+                        key={`${prefilledPhone}-${prefilledPassword}`}
+                        prefilledPhone={prefilledPhone}
+                        prefilledPassword={prefilledPassword}
+                        onSuccess={handleLoginSuccess}
+                        onNavigateToRegister={() => setActiveTab('register')}
+                      />
+                    ) : (
+                      <RegisterForm
+                        key={prefilledInviteCode}
+                        initialInviteCode={prefilledInviteCode}
+                        onSuccess={handleRegisterSuccess}
+                        onNavigateToLogin={() => setActiveTab('login')}
+                      />
+                    )}
+                  </div>
                 </div>
-
-                {/* Tab Panels */}
-                <div className="flex-1">
-                  {activeTab === 'login' ? (
-                    <LoginForm
-                      key={`${prefilledPhone}-${prefilledPassword}`}
-                      prefilledPhone={prefilledPhone}
-                      prefilledPassword={prefilledPassword}
-                      onSuccess={handleLoginSuccess}
-                      onNavigateToRegister={() => setActiveTab('register')}
-                    />
-                  ) : (
-                    <RegisterForm
-                      key={prefilledInviteCode}
-                      initialInviteCode={prefilledInviteCode}
-                      onSuccess={handleRegisterSuccess}
-                      onNavigateToLogin={() => setActiveTab('login')}
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-          </section>
+              </section>
+            </>
+          )}
         </main>
       </div>
-
     </div>
   );
 };

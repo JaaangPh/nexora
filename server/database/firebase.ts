@@ -90,6 +90,8 @@ export interface FirestoreUser {
   status: 'active' | 'suspended';
   createdAt: string;
   lastLoginAt?: string;
+  balance?: number;
+  totalDeposit?: number;
 }
 
 /**
@@ -179,6 +181,8 @@ export async function createUser(userData: {
   const newUser: FirestoreUser = {
     ...userData,
     username: autoUsername,
+    balance: 0,
+    totalDeposit: 0,
     status: 'active',
     createdAt: new Date().toISOString(),
     lastLoginAt: new Date().toISOString(),

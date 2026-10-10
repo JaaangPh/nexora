@@ -8,6 +8,8 @@ export interface User {
   status?: string;
   createdAt?: string;
   lastLoginAt?: string;
+  balance?: number;
+  totalDeposit?: number;
 }
 
 export interface AuthResponse {
