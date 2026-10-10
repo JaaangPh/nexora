@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Home,
   TrendingUp,
@@ -36,8 +36,36 @@ interface DashboardProps {
 
 type NavTab = 'home' | 'graph' | 'trades' | 'team' | 'me';
 
+function getTabFromUrl(): NavTab {
+  if (typeof window === 'undefined') return 'home';
+  const path = window.location.pathname.toLowerCase();
+  const hash = window.location.hash.toLowerCase();
+
+  if (path.startsWith('/me') || hash.includes('/me') || hash === '#me') return 'me';
+  if (path.startsWith('/graph') || hash.includes('/graph') || hash === '#graph') return 'graph';
+  if (path.startsWith('/trades') || hash.includes('/trades') || hash === '#trades') return 'trades';
+  if (path.startsWith('/team') || hash.includes('/team') || hash === '#team') return 'team';
+  return 'home';
+}
+
 export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUser }) => {
-  const [activeTab, setActiveTab] = useState<NavTab>('home');
+  const [activeTab, setActiveTab] = useState<NavTab>(() => getTabFromUrl());
+
+  const handleTabSelect = (tab: NavTab) => {
+    setActiveTab(tab);
+    const targetPath = tab === 'home' ? '/' : `/${tab}`;
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({ tab }, '', targetPath);
+    }
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveTab(getTabFromUrl());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Modal States
   const [showDepositModal, setShowDepositModal] = useState(false);
@@ -242,7 +270,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
 
                   {/* Action 5: Graph */}
                   <button
-                    onClick={() => setActiveTab('graph')}
+                    onClick={() => handleTabSelect('graph')}
                     className="bg-white hover:bg-slate-50 text-[#0B1A3D] rounded-2xl p-3.5 flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 group"
                   >
                     <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
@@ -253,7 +281,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
 
                   {/* Action 6: Trader */}
                   <button
-                    onClick={() => setActiveTab('trades')}
+                    onClick={() => handleTabSelect('trades')}
                     className="bg-white hover:bg-slate-50 text-[#0B1A3D] rounded-2xl p-3.5 flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 group"
                   >
                     <div className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
@@ -335,7 +363,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
             <button
               key={id}
               type="button"
-              onClick={() => setActiveTab(id as NavTab)}
+              onClick={() => handleTabSelect(id as NavTab)}
               className={`flex-1 h-full flex flex-col items-center justify-center transition-colors select-none relative ${
                 isActive ? 'text-cyan-400' : 'text-blue-200/60 hover:text-blue-100'
               }`}

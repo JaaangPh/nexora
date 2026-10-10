@@ -72,6 +72,9 @@ export const App: React.FC = () => {
     await api.logout();
     setCurrentUser(null);
     setActiveTab('login');
+    if (window.location.pathname !== '/') {
+      window.history.pushState({}, '', '/');
+    }
   };
 
   const handleSelectInviteCode = (code: string) => {
