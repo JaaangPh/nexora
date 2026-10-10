@@ -13,12 +13,12 @@ interface CryptoPair {
 // Fully verified and indexed active decentralized liquidity pools
 const SUPPORTED_PAIRS: CryptoPair[] = [
   {
-    symbol: 'SOL/USDC',
-    name: 'Solana',
-    chain: 'solana',
-    address: 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE', // Orca SOL/USDC ($28.5M+ verified liquidity)
-    network: 'Solana',
-    tvSymbol: 'BINANCE:SOLUSDT',
+    symbol: 'BTC/USDC',
+    name: 'Bitcoin',
+    chain: 'arbitrum',
+    address: '0x0e4831319a50228b9e450861297ab92dee15b44f', // Uniswap v3 WBTC/USDC ($8M+ liquidity)
+    network: 'Arbitrum',
+    tvSymbol: 'BINANCE:BTCUSDT',
   },
   {
     symbol: 'ETH/USDC',
@@ -29,12 +29,12 @@ const SUPPORTED_PAIRS: CryptoPair[] = [
     tvSymbol: 'BINANCE:ETHUSDT',
   },
   {
-    symbol: 'BTC/USDC',
-    name: 'Bitcoin',
-    chain: 'arbitrum',
-    address: '0x0e4831319a50228b9e450861297ab92dee15b44f', // Uniswap v3 WBTC/USDC ($8M+ liquidity)
-    network: 'Arbitrum',
-    tvSymbol: 'BINANCE:BTCUSDT',
+    symbol: 'SOL/USDC',
+    name: 'Solana',
+    chain: 'solana',
+    address: 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE', // Orca SOL/USDC ($28.5M+ verified liquidity)
+    network: 'Solana',
+    tvSymbol: 'BINANCE:SOLUSDT',
   },
   {
     symbol: 'BNB/USDT',
