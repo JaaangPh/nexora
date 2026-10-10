@@ -41,7 +41,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
   const [usernameSuccess, setUsernameSuccess] = useState(false);
 
   const referralCode = user.referralCode || 'NT723906';
-  const inviteLink = `${window.location.origin}/register/${referralCode}`;
+  const inviteLink = `https://nexoratech.live/register/${referralCode}`;
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(user.id);
