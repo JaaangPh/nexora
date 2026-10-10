@@ -102,10 +102,10 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen w-full bg-[#060D1E] flex flex-col justify-between antialiased font-sans selection:bg-[#2459C4] selection:text-white">
+    <div className="min-h-screen w-full bg-[#060D1E] flex flex-col justify-center items-center antialiased font-sans selection:bg-[#2459C4] selection:text-white">
       {/* Centered Device / App Canvas Container */}
-      <div className="w-full max-w-[440px] mx-auto min-h-screen sm:min-h-[820px] sm:my-6 sm:rounded-[36px] bg-[#08132B] shadow-2xl shadow-blue-950/40 overflow-hidden flex flex-col justify-between border sm:border-[#1E3A78]/50 relative">
-        <main className="w-full flex flex-col flex-1">
+      <div className={`w-full max-w-[440px] mx-auto ${currentUser ? 'h-screen sm:h-[840px] sm:my-6 sm:rounded-[36px]' : 'min-h-screen sm:min-h-0 sm:my-6 sm:rounded-[36px]'} bg-[#08132B] shadow-2xl shadow-blue-950/40 overflow-hidden flex flex-col border sm:border-[#1E3A78]/50 relative`}>
+        <main className="w-full flex-1 flex flex-col h-full overflow-hidden">
           {currentUser ? (
             /* Authenticated Member View (Full Mobile App Experience) */
             <Dashboard user={currentUser} onLogout={handleLogout} onUpdateUser={setCurrentUser} />

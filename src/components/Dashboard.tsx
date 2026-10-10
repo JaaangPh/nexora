@@ -174,10 +174,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
   };
 
   return (
-    <div className="w-full bg-[#08132B] text-white min-h-[680px] flex flex-col justify-between font-sans relative overflow-hidden select-none pb-20">
+    <div className="w-full h-full flex flex-col overflow-hidden bg-[#08132B] text-white font-sans select-none">
       
       {/* Scrollable Content Container */}
-      <div className="w-full flex-1 overflow-y-auto">
+      <div className="w-full flex-1 overflow-y-auto min-h-0 pb-4">
 
         {/* ---------------------------------------------------- */}
         {/* TOP HERO BRAND BANNER (Nexora Technologies Header) */}
@@ -689,7 +689,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
       {/* ======================================================== */}
       <nav
         aria-label="Bottom Navigation"
-        className="fixed sm:absolute bottom-0 left-0 right-0 w-full max-w-[440px] mx-auto h-16 bg-[#091738]/95 backdrop-blur-md border-t border-[#1E3A78] flex items-center justify-around z-30 px-1 select-none shadow-2xl"
+        className="flex-shrink-0 w-full h-16 bg-[#091738]/95 backdrop-blur-md border-t border-[#1E3A78] flex items-center justify-around z-30 px-1 select-none shadow-2xl"
       >
         {[
           { id: 'home', label: 'HOME', icon: Home },
