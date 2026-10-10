@@ -9,7 +9,9 @@ import {
   findUserById,
   createUser,
   updateUserLastLogin,
+  updateUserUsername,
   generateUniqueReferralCode,
+  generateAutoUsername,
 } from '../database/firebase.js';
 
 // Helper: Normalize phone numbers (strips spaces, dashes, parentheses)
@@ -128,6 +130,7 @@ export async function register(req: Request, res: Response): Promise<void> {
       user: {
         id: userId,
         phoneNumber: cleanPhone,
+        username: newUser.username || generateAutoUsername(myReferralCode),
         role: 'member',
         referralCode: myReferralCode,
         inviteCodeUsed: usedCode,
@@ -208,6 +211,7 @@ export async function login(req: Request, res: Response): Promise<void> {
       user: {
         id: user.id,
         phoneNumber: user.phoneNumber,
+        username: user.username || generateAutoUsername(user.referralCode),
         role: user.role,
         referralCode: user.referralCode || 'NT723906',
         inviteCodeUsed: user.inviteCodeUsed,
@@ -257,6 +261,7 @@ export async function getMe(req: AuthRequest, res: Response): Promise<void> {
       user: {
         id: user.id,
         phoneNumber: user.phoneNumber,
+        username: user.username || generateAutoUsername(user.referralCode),
         role: user.role,
         referralCode: user.referralCode || 'NT723906',
         inviteCodeUsed: user.inviteCodeUsed,
@@ -267,5 +272,51 @@ export async function getMe(req: AuthRequest, res: Response): Promise<void> {
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error?.message || 'Failed to retrieve profile.' });
+  }
+}
+
+/**
+ * PUT /api/auth/username
+ */
+export async function updateUsername(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Unauthorized session.' });
+      return;
+    }
+
+    const { username } = req.body;
+    if (!username || typeof username !== 'string' || !username.trim()) {
+      res.status(400).json({ success: false, message: 'Please provide a valid username.' });
+      return;
+    }
+
+    const cleanUsername = username.trim();
+    if (cleanUsername.length < 3 || cleanUsername.length > 30) {
+      res.status(400).json({ success: false, message: 'Username must be between 3 and 30 characters long.' });
+      return;
+    }
+
+    await updateUserUsername(req.user.id, cleanUsername);
+    const updatedUser = await findUserById(req.user.id);
+
+    res.json({
+      success: true,
+      message: 'Username updated successfully!',
+      user: {
+        id: updatedUser!.id,
+        phoneNumber: updatedUser!.phoneNumber,
+        username: updatedUser!.username || cleanUsername,
+        role: updatedUser!.role,
+        referralCode: updatedUser!.referralCode || 'NT723906',
+        inviteCodeUsed: updatedUser!.inviteCodeUsed,
+        status: updatedUser!.status,
+        createdAt: updatedUser!.createdAt,
+        lastLoginAt: updatedUser!.lastLoginAt,
+      },
+    });
+  } catch (error: any) {
+    console.error('[Update Username Error]', error);
+    res.status(500).json({ success: false, message: error?.message || 'Failed to update username.' });
   }
 }

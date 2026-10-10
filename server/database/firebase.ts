@@ -82,6 +82,7 @@ export const firestore = new Proxy({} as FirebaseFirestore.Firestore, {
 export interface FirestoreUser {
   id: string;
   phoneNumber: string;
+  username?: string;
   passwordHash: string;
   role: 'member' | 'admin';
   inviteCodeUsed?: string;
@@ -89,6 +90,14 @@ export interface FirestoreUser {
   status: 'active' | 'suspended';
   createdAt: string;
   lastLoginAt?: string;
+}
+
+/**
+ * Generate an auto-generated username (e.g., NexoraMember_723906)
+ */
+export function generateAutoUsername(referralCode?: string): string {
+  const suffix = referralCode ? referralCode.replace(/^NT/, '') : Math.floor(1000 + Math.random() * 9000).toString();
+  return `NexoraMember_${suffix}`;
 }
 
 /**
@@ -123,6 +132,7 @@ export async function initFirebaseDatabase() {
     const adminDoc: FirestoreUser = {
       id: adminId,
       phoneNumber: adminPhone,
+      username: 'NexoraAdmin',
       passwordHash: adminHash,
       role: 'admin',
       inviteCodeUsed: 'SYSTEM-SEED',
@@ -163,9 +173,12 @@ export async function createUser(userData: {
   role: 'member' | 'admin';
   inviteCodeUsed?: string;
   referralCode: string;
+  username?: string;
 }): Promise<FirestoreUser> {
+  const autoUsername = userData.username || generateAutoUsername(userData.referralCode);
   const newUser: FirestoreUser = {
     ...userData,
+    username: autoUsername,
     status: 'active',
     createdAt: new Date().toISOString(),
     lastLoginAt: new Date().toISOString(),
@@ -177,5 +190,11 @@ export async function createUser(userData: {
 export async function updateUserLastLogin(id: string): Promise<void> {
   await firestore.collection('users').doc(id).update({
     lastLoginAt: new Date().toISOString(),
+  });
+}
+
+export async function updateUserUsername(id: string, username: string): Promise<void> {
+  await firestore.collection('users').doc(id).update({
+    username: username.trim(),
   });
 }

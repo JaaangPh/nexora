@@ -14,18 +14,31 @@ import {
   Users,
   Smartphone,
   Download,
+  Edit2,
+  Save,
+  X,
+  Loader2,
 } from 'lucide-react';
 import { User } from '../types/auth';
+import { api } from '../services/api';
 
 interface DashboardProps {
   user: User;
   onLogout: () => void;
+  onUpdateUser?: (user: User) => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUser }) => {
   const [copiedId, setCopiedId] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Username Editing State
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [usernameInput, setUsernameInput] = useState(user.username || '');
+  const [isSavingUsername, setIsSavingUsername] = useState(false);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [usernameSuccess, setUsernameSuccess] = useState(false);
 
   const referralCode = user.referralCode || 'NT723906';
   const inviteLink = `${window.location.origin}/register/${referralCode}`;
@@ -48,6 +61,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
+  const handleSaveUsername = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = usernameInput.trim();
+    if (!clean) return;
+
+    setIsSavingUsername(true);
+    setUsernameError(null);
+
+    try {
+      const res = await api.updateUsername(clean);
+      if (res.user && onUpdateUser) {
+        onUpdateUser(res.user);
+      }
+      setUsernameSuccess(true);
+      setIsEditingUsername(false);
+      setTimeout(() => setUsernameSuccess(false), 2500);
+    } catch (err: any) {
+      setUsernameError(err.message || 'Failed to update username.');
+    } finally {
+      setIsSavingUsername(false);
+    }
+  };
+
   return (
     <div className="w-full animate-fade-in">
       {/* Top Welcome Banner */}
@@ -57,7 +93,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
           <span>AUTHENTICATED MEMBER SESSION</span>
         </div>
         <h2 className="text-2xl sm:text-[28px] font-black text-[#17233B] tracking-tight font-['Plus_Jakarta_Sans',sans-serif]">
-          Welcome, Member
+          Welcome, {user.username || 'Member'}
         </h2>
         <p className="text-xs sm:text-sm text-[#64748B] mt-1 font-medium">
           You are securely signed in to the Nexora Technologies Portal.
@@ -91,6 +127,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout }) => {
 
         {/* Info Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          {/* Editable Username Card */}
+          <div className="bg-white p-3.5 rounded-xl border border-[#E2E8F0] sm:col-span-2">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <UserIcon className="w-4 h-4 text-[#2459C4]" />
+                <p className="text-[10px] uppercase font-bold text-[#64748B]">Account Username</p>
+              </div>
+              {!isEditingUsername && (
+                <button
+                  onClick={() => {
+                    setUsernameInput(user.username || '');
+                    setIsEditingUsername(true);
+                  }}
+                  className="text-xs text-[#2459C4] hover:text-[#142B5B] font-bold flex items-center gap-1 active:scale-95"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Edit</span>
+                </button>
+              )}
+            </div>
+
+            {isEditingUsername ? (
+              <form onSubmit={handleSaveUsername} className="flex items-center gap-2 mt-1.5">
+                <input
+                  type="text"
+                  value={usernameInput}
+                  onChange={(e) => setUsernameInput(e.target.value)}
+                  placeholder="Enter new username"
+                  className="flex-1 px-3 py-1.5 text-xs font-bold text-[#17233B] bg-[#F8FAFC] border border-[#DCE4EF] rounded-lg focus:outline-none focus:border-[#2459C4] focus:bg-white"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  disabled={isSavingUsername || !usernameInput.trim()}
+                  className="px-3 py-1.5 bg-[#2459C4] hover:bg-[#142B5B] text-white text-xs font-bold rounded-lg flex items-center gap-1 disabled:opacity-50 transition-all"
+                >
+                  {isSavingUsername ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>Save</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingUsername(false)}
+                  className="p-1.5 text-[#64748B] hover:text-[#17233B] rounded-lg hover:bg-slate-100"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </form>
+            ) : (
+              <div className="flex items-center justify-between mt-0.5">
+                <p className="text-sm font-black text-[#17233B] font-mono">
+                  {user.username || 'NexoraMember_723906'}
+                </p>
+                {usernameSuccess && (
+                  <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" /> Saved!
+                  </span>
+                )}
+              </div>
+            )}
+            {usernameError && (
+              <p className="text-[11px] font-semibold text-red-500 mt-1">{usernameError}</p>
+            )}
+          </div>
+
           <div className="bg-white p-3 rounded-xl border border-[#E2E8F0] flex items-center gap-2.5">
             <Phone className="w-4 h-4 text-[#2459C4] flex-shrink-0" />
             <div className="min-w-0">

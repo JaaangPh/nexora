@@ -1,6 +1,7 @@
 export interface User {
   id: string;
   phoneNumber: string;
+  username?: string;
   role: 'member' | 'admin';
   inviteCodeUsed?: string;
   referralCode?: string; // e.g. "NT723906"

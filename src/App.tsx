@@ -114,7 +114,7 @@ export const App: React.FC = () => {
             {currentUser ? (
               /* Authenticated Member View */
               <div className="pt-6 flex-1 flex flex-col justify-center">
-                <Dashboard user={currentUser} onLogout={handleLogout} />
+                <Dashboard user={currentUser} onLogout={handleLogout} onUpdateUser={setCurrentUser} />
               </div>
             ) : (
               /* Unauthenticated Auth State with Tabs */

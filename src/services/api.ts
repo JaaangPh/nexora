@@ -135,6 +135,20 @@ export const api = {
     });
   },
 
+  async updateUsername(username: string): Promise<AuthResponse> {
+    const res = await request<AuthResponse>('/api/auth/username', {
+      method: 'PUT',
+      body: JSON.stringify({ username }),
+    });
+    if (res.user) {
+      const currentStored = getStoredUser();
+      if (currentStored) {
+        setStoredSession(getStoredToken() || '', { ...currentStored, ...res.user });
+      }
+    }
+    return res;
+  },
+
   async checkHealth(): Promise<{ status: string; system: string; database: string }> {
     return request<{ status: string; system: string; database: string }>('/api/health', {
       method: 'GET',
