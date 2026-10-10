@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer Ring Accent -->
+    <path
+        android:pathData="M 54, 18 A 36,36 0 1,1 53.9, 18"
+        android:strokeColor="#18B7D5"
+        android:strokeWidth="2.5"
+        android:fillColor="#00000000" />
+
+    <!-- Stylized Futuristic 'N' Glyph -->
+    <path
+        android:pathData="M38,72 L38,36 L43,36 L66,66 L66,36 L71,36 L71,72 L66,72 L43,42 L43,72 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Tech Accent Nodes -->
+    <path
+        android:pathData="M 71, 36 A 3,3 0 1,1 70.9, 36"
+        android:fillColor="#18B7D5" />
+
+    <path
+        android:pathData="M 38, 72 A 3,3 0 1,1 37.9, 72"
+        android:fillColor="#18B7D5" />
+</vector>

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <defs>
+    <linearGradient id="nexoraGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#142B5B" />
+      <stop offset="50%" stop-color="#2459C4" />
+      <stop offset="100%" stop-color="#18B7D5" />
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#18B7D5" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#2459C4" stop-opacity="0.9" />
+    </linearGradient>
+    <filter id="subtleShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#142B5B" flood-opacity="0.25" />
+    </filter>
+  </defs>
+
+  <!-- Outer Ring with Dynamic Tech Cuts -->
+  <circle cx="60" cy="60" r="54" stroke="url(#nexoraGrad)" stroke-width="4.5" stroke-dasharray="280 20" stroke-linecap="round" />
+  
+  <!-- Subtle Internal Orbital Arc -->
+  <circle cx="60" cy="60" r="44" stroke="#18B7D5" stroke-opacity="0.3" stroke-width="2" stroke-dasharray="12 8" />
+
+  <!-- Stylized Futuristic 'N' Core -->
+  <path d="M40 78 V42 C40 39.79 41.79 38 44 38 H47 C48.5 38 49.9 38.8 50.7 40.1 L70 70.5 V42 C70 39.79 71.79 38 74 38 H76 C78.21 38 80 39.79 80 42 V78 C80 80.21 78.21 82 76 82 H73 C71.5 82 70.1 81.2 69.3 79.9 L50 49.5 V78 C50 80.21 48.21 82 46 82 H44 C41.79 82 40 80.21 40 78 Z" 
+        fill="url(#nexoraGrad)" 
+        filter="url(#subtleShadow)" />
+
+  <!-- Accent Nodes -->
+  <circle cx="78" cy="40" r="3.5" fill="#18B7D5" />
+  <circle cx="42" cy="80" r="3.5" fill="#18B7D5" />
+  <circle cx="60" cy="60" r="2.5" fill="#FFFFFF" opacity="0.9" />
+</svg>
