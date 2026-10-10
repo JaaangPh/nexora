@@ -149,11 +149,6 @@ export const App: React.FC = () => {
         </main>
       </div>
 
-      {/* Floating Demo Testing Tools (Invite keys & APK setup) */}
-      <InviteCodeHelper
-        onSelectCode={handleSelectInviteCode}
-        onFillAdminLogin={handleFillAdmin}
-      />
     </div>
   );
 };

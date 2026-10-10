@@ -26,42 +26,17 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Invite code real-time validation state
-  const [isValidatingCode, setIsValidatingCode] = useState(false);
   const [inviteStatus, setInviteStatus] = useState<{
     valid?: boolean;
     message?: string;
   } | null>(null);
 
-  // Auto validate when prefilled from invite link
+  // Auto set invite status when prefilled from invite link
   React.useEffect(() => {
     if (initialInviteCode && initialInviteCode.trim()) {
-      handleCheckInvite(initialInviteCode);
+      setInviteStatus({ valid: true, message: `Referral Pass Applied (${initialInviteCode.trim().toUpperCase()})` });
     }
   }, [initialInviteCode]);
-
-  // Validate Invite Code with Backend
-  const handleCheckInvite = async (codeToCheck?: string) => {
-    const code = (codeToCheck || inviteCode).trim();
-    if (!code) {
-      setInviteStatus(null);
-      return;
-    }
-
-    setIsValidatingCode(true);
-    try {
-      const res = await api.validateInvite(code);
-      if (res.valid) {
-        setInviteStatus({ valid: true, message: res.message || 'Valid Invite Code' });
-      } else {
-        setInviteStatus({ valid: false, message: res.message || 'Invalid or Expired Code' });
-      }
-    } catch {
-      setInviteStatus({ valid: false, message: 'Could not verify code with server.' });
-    } finally {
-      setIsValidatingCode(false);
-    }
-  };
 
   // Submit Registration
   const handleSubmit = async (e: React.FormEvent) => {
@@ -312,30 +287,11 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
               onChange={(e) => {
                 const val = e.target.value.toUpperCase();
                 setInviteCode(val);
-                setInviteStatus(null);
                 if (errorMessage) setErrorMessage(null);
               }}
-              onBlur={() => handleCheckInvite()}
-              placeholder="Enter your invite code"
-              className={`w-full pl-10 pr-24 py-3 sm:py-3.5 bg-[#F8FAFC] text-[#17233B] text-sm rounded-2xl border placeholder:text-[#94A3B8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2459C4]/25 transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
-                inviteStatus?.valid === true
-                  ? 'border-emerald-500 ring-1 ring-emerald-500/20'
-                  : inviteStatus?.valid === false
-                  ? 'border-red-400 ring-1 ring-red-400/20'
-                  : 'border-[#DCE4EF] focus:border-[#2459C4]'
-              }`}
+              placeholder="Referral Code (Optional, e.g. NT723906)"
+              className="w-full pl-10 pr-4 py-3 sm:py-3.5 bg-[#F8FAFC] text-[#17233B] text-sm rounded-2xl border border-[#DCE4EF] focus:border-[#2459C4] placeholder:text-[#94A3B8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2459C4]/25 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             />
-            {/* Verify Button Inline */}
-            <div className="absolute inset-y-0 right-1.5 flex items-center">
-              <button
-                type="button"
-                onClick={() => handleCheckInvite()}
-                disabled={isLoading || isValidatingCode || !inviteCode.trim()}
-                className="px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 active:bg-slate-400 text-[#17233B] text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
-              >
-                {isValidatingCode ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Check'}
-              </button>
-            </div>
           </div>
           {inviteStatus?.message && (
             <p

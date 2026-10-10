@@ -135,19 +135,6 @@ export const api = {
     });
   },
 
-  async validateInvite(code: string): Promise<InviteValidationResponse> {
-    return request<InviteValidationResponse>('/api/auth/validate-invite', {
-      method: 'POST',
-      body: JSON.stringify({ code }),
-    });
-  },
-
-  async getInvites(): Promise<{ success: boolean; inviteCodes: InviteCodeItem[] }> {
-    return request<{ success: boolean; inviteCodes: InviteCodeItem[] }>('/api/auth/invites', {
-      method: 'GET',
-    });
-  },
-
   async checkHealth(): Promise<{ status: string; system: string; database: string }> {
     return request<{ status: string; system: string; database: string }>('/api/health', {
       method: 'GET',
