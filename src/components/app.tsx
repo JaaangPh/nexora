@@ -31,11 +31,11 @@ export const AppModal: React.FC<AppModalProps> = ({ isOpen, onClose }) => {
           
           {/* 1. App Header Info */}
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#091530] via-[#142B5B] to-[#2459C4] p-0.5 shadow-lg flex-shrink-0">
-              <div className="w-full h-full bg-[#08132B] rounded-[14px] flex items-center justify-center border border-cyan-400/30">
-                <ShieldCheck className="w-9 h-9 text-cyan-400" />
-              </div>
-            </div>
+            <img
+              src="/logo.png"
+              alt="Nexora Technologies App Icon"
+              className="w-16 h-16 rounded-2xl shadow-xl border border-cyan-400/30 flex-shrink-0 object-cover"
+            />
             <div>
               <h2 className="text-xl font-black text-[#0B1A3D] leading-tight font-['Plus_Jakarta_Sans',sans-serif]">
                 Nexora Technologies
