@@ -14,10 +14,13 @@ function getCleanPrivateKey(): string | undefined {
   // Strip outer quotes if pasted with quotes in Vercel dashboard
   if (
     (key.startsWith('"') && key.endsWith('"')) ||
-    (key.startsWith("'") && key.endsWith("'"))
+    (key.startsWith("'") && key.endsWith("'")) ||
+    (key.startsWith('`') && key.endsWith('`'))
   ) {
-    key = key.slice(1, -1);
+    key = key.slice(1, -1).trim();
   }
+  // Replace escaped quotes if present
+  key = key.replace(/\\"/g, '"');
   // Convert literal \n to actual newlines
   key = key.replace(/\\n/g, '\n').trim();
   return key;

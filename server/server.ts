@@ -62,7 +62,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   console.error('[Unhandled Server Error]', err);
   res.status(500).json({
     success: false,
-    message: 'An unexpected internal system error occurred.',
+    message: err?.message || 'An unexpected internal system error occurred.',
+    error: err?.name || 'Error',
   });
 });
 
