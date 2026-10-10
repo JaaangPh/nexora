@@ -3,7 +3,8 @@
   "appName": "Nexora Technologies",
   "webDir": "dist",
   "server": {
-    "androidScheme": "http",
+    "url": "https://nexora-rust-nine.vercel.app",
+    "androidScheme": "https",
     "cleartext": true
   },
   "plugins": {
