@@ -20,6 +20,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { User } from '../types/auth';
+import { BrandLogo } from './BrandLogo';
 
 // Separated Tab Components
 import { GraphTab } from './graph';
@@ -156,11 +157,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
 
           {/* Banner Branding Content */}
           <div className="relative z-10 flex flex-col items-center text-center">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#2459C4] to-cyan-400 p-0.5 shadow-lg shadow-cyan-500/20 mb-2.5">
-              <div className="w-full h-full bg-[#091738] rounded-[14px] flex items-center justify-center">
-                <ShieldCheck className="w-7 h-7 text-cyan-400" />
-              </div>
-            </div>
+            <BrandLogo size="sm" className="mb-2.5" />
             
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white uppercase font-['Plus_Jakarta_Sans',sans-serif]">
               Nexora Technologies
