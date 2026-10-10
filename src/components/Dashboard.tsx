@@ -687,68 +687,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
       {/* ======================================================== */}
       {/* BOTTOM NAVIGATION BAR (HOME GRAPH TRADES TEAM ME)        */}
       {/* ======================================================== */}
-      <div className="absolute bottom-0 left-0 right-0 h-16 bg-[#091738]/95 backdrop-blur-md border-t border-[#1E3A78] flex items-center justify-around z-30 px-2">
-        
-        {/* Nav 1: HOME */}
-        <button
-          onClick={() => setActiveTab('home')}
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 transition-all ${
-            activeTab === 'home' ? 'text-cyan-400 font-black scale-105' : 'text-blue-200/60 hover:text-blue-100 font-semibold'
-          }`}
-        >
-          <Home className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] tracking-tight uppercase">Home</span>
-          {activeTab === 'home' && <span className="w-4 h-0.5 bg-cyan-400 rounded-full mt-0.5" />}
-        </button>
-
-        {/* Nav 2: GRAPH */}
-        <button
-          onClick={() => setActiveTab('graph')}
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 transition-all ${
-            activeTab === 'graph' ? 'text-cyan-400 font-black scale-105' : 'text-blue-200/60 hover:text-blue-100 font-semibold'
-          }`}
-        >
-          <TrendingUp className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] tracking-tight uppercase">Graph</span>
-          {activeTab === 'graph' && <span className="w-4 h-0.5 bg-cyan-400 rounded-full mt-0.5" />}
-        </button>
-
-        {/* Nav 3: TRADES */}
-        <button
-          onClick={() => setActiveTab('trades')}
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 transition-all ${
-            activeTab === 'trades' ? 'text-cyan-400 font-black scale-105' : 'text-blue-200/60 hover:text-blue-100 font-semibold'
-          }`}
-        >
-          <Layers className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] tracking-tight uppercase">Trades</span>
-          {activeTab === 'trades' && <span className="w-4 h-0.5 bg-cyan-400 rounded-full mt-0.5" />}
-        </button>
-
-        {/* Nav 4: TEAM */}
-        <button
-          onClick={() => setActiveTab('team')}
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 transition-all ${
-            activeTab === 'team' ? 'text-cyan-400 font-black scale-105' : 'text-blue-200/60 hover:text-blue-100 font-semibold'
-          }`}
-        >
-          <Users className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] tracking-tight uppercase">Team</span>
-          {activeTab === 'team' && <span className="w-4 h-0.5 bg-cyan-400 rounded-full mt-0.5" />}
-        </button>
-
-        {/* Nav 5: ME */}
-        <button
-          onClick={() => setActiveTab('me')}
-          className={`flex-1 flex flex-col items-center justify-center py-1.5 transition-all ${
-            activeTab === 'me' ? 'text-cyan-400 font-black scale-105' : 'text-blue-200/60 hover:text-blue-100 font-semibold'
-          }`}
-        >
-          <UserIcon className="w-5 h-5 mb-0.5" />
-          <span className="text-[10px] tracking-tight uppercase">Me</span>
-          {activeTab === 'me' && <span className="w-4 h-0.5 bg-cyan-400 rounded-full mt-0.5" />}
-        </button>
-      </div>
+      <nav
+        aria-label="Bottom Navigation"
+        className="fixed sm:absolute bottom-0 left-0 right-0 w-full max-w-[440px] mx-auto h-16 bg-[#091738]/95 backdrop-blur-md border-t border-[#1E3A78] flex items-center justify-around z-30 px-1 select-none shadow-2xl"
+      >
+        {[
+          { id: 'home', label: 'HOME', icon: Home },
+          { id: 'graph', label: 'GRAPH', icon: TrendingUp },
+          { id: 'trades', label: 'TRADES', icon: Layers },
+          { id: 'team', label: 'TEAM', icon: Users },
+          { id: 'me', label: 'ME', icon: UserIcon },
+        ].map(({ id, label, icon: Icon }) => {
+          const isActive = activeTab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setActiveTab(id as NavTab)}
+              className={`flex-1 h-full flex flex-col items-center justify-center transition-colors select-none relative ${
+                isActive ? 'text-cyan-400' : 'text-blue-200/60 hover:text-blue-100'
+              }`}
+            >
+              <Icon className="w-5 h-5 flex-shrink-0" />
+              <span className="text-[10px] font-bold tracking-wider mt-1 leading-none uppercase">
+                {label}
+              </span>
+              {/* Static dimension indicator - always present in layout so NOTHING ever shifts or moves */}
+              <span
+                className={`w-6 h-0.5 rounded-full mt-1.5 transition-all flex-shrink-0 ${
+                  isActive ? 'bg-cyan-400 opacity-100' : 'bg-transparent opacity-0'
+                }`}
+              />
+            </button>
+          );
+        })}
+      </nav>
 
       {/* ======================================================== */}
       {/* MODAL 1: DEPOSIT MODAL                                   */}
