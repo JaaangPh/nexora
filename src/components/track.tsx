@@ -102,7 +102,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const selectedRunners = ownedRunners.filter((runner) => selectedRunnerIds.includes(runner.id));
   const selectedRunnerNames = selectedRunners.map((runner) => runner.name).join(' + ');
   const selectedEarningRate = selectedRunners.reduce((total, runner) => total + runner.earningRate, 0);
-  const workoutDistanceLimit = selectedRunners.reduce((limit, runner) => Math.max(limit, runner.kmLimitPerDay), 0);
+  const workoutDistanceLimit = selectedRunners.reduce((total, runner) => total + runner.kmLimitPerDay, 0);
   const selectedRunnersRef = useRef<RunnerItem[]>(selectedRunners);
   selectedRunnersRef.current = selectedRunners;
 
@@ -521,7 +521,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
         const motionDistanceKm = Number((totalSteps * 0.00074).toFixed(3));
         const runners = selectedRunnersRef.current;
-        const currentLimit = runners.reduce((limit, runner) => Math.max(limit, runner.kmLimitPerDay), 0);
+        const currentLimit = runners.reduce((total, runner) => total + runner.kmLimitPerDay, 0);
 
         if (currentLimit > 0 && totalDistanceKmRef.current < motionDistanceKm) {
           const cappedDist = Math.min(motionDistanceKm, currentLimit);
@@ -579,7 +579,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
         if (hasGoodAccuracy && hasMovedSignificantly && isGenuineMovement) {
           const runners = selectedRunnersRef.current;
-          const currentLimit = runners.reduce((limit, runner) => Math.max(limit, runner.kmLimitPerDay), 0);
+          const currentLimit = runners.reduce((total, runner) => total + runner.kmLimitPerDay, 0);
 
           const rawTotal = totalDistanceKmRef.current + delta;
           const cappedDist = Math.min(rawTotal, currentLimit);
