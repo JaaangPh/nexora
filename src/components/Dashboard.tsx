@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   Home,
-  TrendingUp,
-  Layers,
+  ShoppingBag,
+  Footprints,
   Users,
   User as UserIcon,
   Wallet,
@@ -18,13 +18,16 @@ import {
   HelpCircle,
   Send,
   ChevronRight,
+  TrendingUp,
+  Zap,
+  Play,
 } from 'lucide-react';
 import { User } from '../types/auth';
 import { BrandLogo } from './BrandLogo';
 
 // Separated Tab Components
-import { GraphTab } from './graph';
-import { TradesTab } from './trades';
+import { MarketTab } from './market';
+import { TrackTab } from './track';
 import { TeamTab } from './team';
 import { MeTab } from './me';
 import { AppModal } from './app';
@@ -35,7 +38,7 @@ interface DashboardProps {
   onUpdateUser?: (user: User) => void;
 }
 
-type NavTab = 'home' | 'graph' | 'trades' | 'team' | 'me';
+type NavTab = 'home' | 'market' | 'track' | 'team' | 'me';
 
 function getTabFromUrl(): NavTab {
   if (typeof window === 'undefined') return 'home';
@@ -43,14 +46,15 @@ function getTabFromUrl(): NavTab {
   const hash = window.location.hash.toLowerCase();
 
   if (path.startsWith('/me') || hash.includes('/me') || hash === '#me') return 'me';
-  if (path.startsWith('/graph') || hash.includes('/graph') || hash === '#graph') return 'graph';
-  if (path.startsWith('/trades') || hash.includes('/trades') || hash === '#trades') return 'trades';
+  if (path.startsWith('/market') || hash.includes('/market') || hash === '#market' || path.startsWith('/graph') || hash.includes('/graph')) return 'market';
+  if (path.startsWith('/track') || hash.includes('/track') || hash === '#track' || path.startsWith('/trades') || hash.includes('/trades')) return 'track';
   if (path.startsWith('/team') || hash.includes('/team') || hash === '#team') return 'team';
   return 'home';
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUser }) => {
   const [activeTab, setActiveTab] = useState<NavTab>(() => getTabFromUrl());
+  const [equippedSneaker, setEquippedSneaker] = useState<string>('Cyber Aero Walker');
 
   const handleTabSelect = (tab: NavTab) => {
     setActiveTab(tab);
@@ -162,8 +166,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white uppercase font-['Plus_Jakarta_Sans',sans-serif]">
               Nexora Technologies
             </h1>
-            <p className="text-[11px] text-cyan-300/90 font-semibold tracking-wider uppercase mt-0.5">
-              Automated Trading & Investment Portal
+            <p className="text-[10px] sm:text-[11px] text-cyan-300 font-extrabold tracking-wider uppercase mt-0.5">
+              MOVE WITH PURPOSE. EARN WITH EVERY STEP.
             </p>
 
             {/* Account Status Pill */}
@@ -265,65 +269,110 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                     <span className="text-xs font-extrabold text-[#0B1A3D]">APP</span>
                   </button>
 
-                  {/* Action 5: Graph */}
+                  {/* Action 5: Market */}
                   <button
-                    onClick={() => handleTabSelect('graph')}
+                    onClick={() => handleTabSelect('market')}
                     className="bg-white hover:bg-slate-50 text-[#0B1A3D] rounded-2xl p-3.5 flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 group"
                   >
                     <div className="w-10 h-10 rounded-full bg-blue-50 text-[#2459C4] flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                      <TrendingUp className="w-5 h-5" />
+                      <ShoppingBag className="w-5 h-5" />
                     </div>
-                    <span className="text-xs font-extrabold text-[#0B1A3D]">Graph</span>
+                    <span className="text-xs font-extrabold text-[#0B1A3D]">Market</span>
                   </button>
 
-                  {/* Action 6: Trader */}
+                  {/* Action 6: Track */}
                   <button
-                    onClick={() => handleTabSelect('trades')}
+                    onClick={() => handleTabSelect('track')}
                     className="bg-white hover:bg-slate-50 text-[#0B1A3D] rounded-2xl p-3.5 flex flex-col items-center justify-center text-center shadow-lg transition-all active:scale-95 group"
                   >
                     <div className="w-10 h-10 rounded-full bg-blue-50 text-[#2459C4] flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                      <Activity className="w-5 h-5" />
+                      <Footprints className="w-5 h-5" />
                     </div>
-                    <span className="text-xs font-extrabold text-[#0B1A3D]">Trader</span>
+                    <span className="text-xs font-extrabold text-[#0B1A3D]">Track</span>
                   </button>
                 </div>
               </div>
 
-              {/* 3. FEATURED PROJECTS / AVAILABLE TRADER SECTION */}
+              {/* 3. FEATURED MOVE-TO-EARN GEAR & WORKOUT SHORTCUT */}
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className="w-1.5 h-4 bg-cyan-400 rounded-full inline-block" />
                     <h3 className="text-sm font-extrabold text-white tracking-tight">
-                      Featured Projects
+                      Equipped Move Gear
                     </h3>
                   </div>
-                  <span className="text-[10px] font-bold tracking-wider uppercase text-cyan-300/70">
-                    AVAILABLE TRADERS
-                  </span>
+                  <button
+                    onClick={() => handleTabSelect('market')}
+                    className="text-[10px] font-bold tracking-wider uppercase text-cyan-300 hover:text-white flex items-center gap-1"
+                  >
+                    <span>VIEW MARKET</span>
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
                 </div>
 
-                <div className="bg-[#0C1F4A]/80 border border-[#1E3E80]/60 rounded-2xl p-6 text-center shadow-lg relative overflow-hidden">
-                  <div className="w-12 h-12 rounded-full bg-[#183674] text-cyan-400 flex items-center justify-center mx-auto mb-3 border border-cyan-500/20">
-                    <Briefcase className="w-6 h-6" />
+                <div className="bg-[#0C1F4A]/80 border border-[#1E3E80]/60 rounded-2xl p-4 shadow-lg relative overflow-hidden flex items-center gap-4">
+                  <div className="w-20 h-20 rounded-2xl bg-white p-1.5 flex items-center justify-center flex-shrink-0 shadow-md">
+                    <img
+                      src="/images/sneaker_cyan.jpg"
+                      alt="Cyber Aero Walker"
+                      className="w-full h-full object-contain drop-shadow"
+                    />
                   </div>
-                  <h4 className="text-sm font-extrabold text-white mb-1">
-                    No Available Projects Right Now
-                  </h4>
-                  <p className="text-xs text-blue-200/60 max-w-xs mx-auto leading-relaxed">
-                    New algorithmic trading projects and automated trader packages will be featured here soon.
-                  </p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="px-2 py-0.5 rounded-md bg-cyan-400/20 text-cyan-300 text-[9px] font-black uppercase">
+                        SLOW • LV.1
+                      </span>
+                      <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-0.5">
+                        <Zap className="w-3 h-3" />
+                        +8.4 NEX/km
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-black text-white truncate">
+                      {equippedSneaker}
+                    </h4>
+                    <p className="text-[11px] text-blue-200/60 line-clamp-1 mb-2">
+                      Optimal pace: 1 - 6 km/h (Walking & Jogging)
+                    </p>
+                    <button
+                      onClick={() => handleTabSelect('track')}
+                      className="w-full py-2 bg-[#D8FD2F] hover:bg-[#cbf128] text-black font-black text-[11px] rounded-xl flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-black" />
+                      <span>START WORKOUT NOW</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
             </div>
           )}
 
-          {/* TAB 2: GRAPH (from graph.tsx) */}
-          {activeTab === 'graph' && <GraphTab />}
+          {/* TAB 2: MARKET (from market.tsx) */}
+          {activeTab === 'market' && (
+            <MarketTab
+              currentBalance={currentBalance}
+              onEquipSneaker={(snk) => setEquippedSneaker(snk.name)}
+              equippedSneakerId="snk-1"
+            />
+          )}
 
-          {/* TAB 3: TRADES (from trades.tsx) */}
-          {activeTab === 'trades' && <TradesTab currentBalance={currentBalance} />}
+          {/* TAB 3: TRACK (from track.tsx) */}
+          {activeTab === 'track' && (
+            <TrackTab
+              user={user}
+              equippedSneakerName={equippedSneaker}
+              onWorkoutFinish={(earned) => {
+                if (onUpdateUser && earned > 0) {
+                  onUpdateUser({
+                    ...user,
+                    balance: currentBalance + (earned * 50)
+                  });
+                }
+              }}
+            />
+          )}
 
           {/* TAB 4: TEAM (from team.tsx) */}
           {activeTab === 'team' && <TeamTab user={user} />}
@@ -342,7 +391,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
       </div>
 
       {/* ======================================================== */}
-      {/* BOTTOM NAVIGATION BAR (HOME GRAPH TRADES TEAM ME)        */}
+      {/* BOTTOM NAVIGATION BAR (HOME MARKET TRACK TEAM ME)        */}
       {/* ======================================================== */}
       <nav
         aria-label="Bottom Navigation"
@@ -350,8 +399,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
       >
         {[
           { id: 'home', label: 'HOME', icon: Home },
-          { id: 'graph', label: 'GRAPH', icon: TrendingUp },
-          { id: 'trades', label: 'TRADES', icon: Layers },
+          { id: 'market', label: 'MARKET', icon: ShoppingBag },
+          { id: 'track', label: 'TRACK', icon: Footprints },
           { id: 'team', label: 'TEAM', icon: Users },
           { id: 'me', label: 'ME', icon: UserIcon },
         ].map(({ id, label, icon: Icon }) => {

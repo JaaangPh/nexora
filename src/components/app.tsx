@@ -79,7 +79,7 @@ export const AppModal: React.FC<AppModalProps> = ({ isOpen, onClose }) => {
           <div>
             <h4 className="text-sm font-extrabold text-[#0B1A3D] mb-1.5">About this app</h4>
             <p className="text-xs text-slate-600 leading-relaxed font-medium">
-              Nexora Technologies lets you manage your account, explore new features, and enjoy a fast and secure mobile experience.
+              Nexora Technologies — Move With Purpose. Earn with every step. Explore the Sneaker Marketplace, track your outdoor workouts with live GPS, and manage your account seamlessly.
             </p>
           </div>
 
@@ -93,7 +93,7 @@ export const AppModal: React.FC<AppModalProps> = ({ isOpen, onClose }) => {
               </div>
               <div className="flex justify-between p-3 bg-white">
                 <span className="text-slate-400 font-medium">Updated on</span>
-                <span className="font-extrabold text-[#0B1A3D]">October 10, 2026</span>
+                <span className="font-extrabold text-[#0B1A3D]">October 11, 2026</span>
               </div>
               <div className="flex justify-between p-3 bg-white">
                 <span className="text-slate-400 font-medium">Downloads</span>
@@ -109,7 +109,7 @@ export const AppModal: React.FC<AppModalProps> = ({ isOpen, onClose }) => {
               </div>
               <div className="flex justify-between p-3 bg-white">
                 <span className="text-slate-400 font-medium">Category</span>
-                <span className="font-extrabold text-[#0B1A3D]">Finance</span>
+                <span className="font-extrabold text-[#0B1A3D]">Health, Fitness & Lifestyle</span>
               </div>
               <div className="flex justify-between p-3 bg-white">
                 <span className="text-slate-400 font-medium">Developer</span>
