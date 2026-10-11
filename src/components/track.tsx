@@ -122,6 +122,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   // Accelerometer step detector refs
   const lastAccelMagnitudeRef = useRef<number>(9.8);
   const lastStepTimestampRef = useRef<number>(0);
+  const pedometerPeakArmedRef = useRef<boolean>(false);
 
   // Map & Leaflet References
   const mapElementId = useId().replace(/:/g, '-');
@@ -396,20 +397,29 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       if (!acc || acc.x === null || acc.y === null || acc.z === null) return;
 
       const magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
-      const deltaMag = Math.abs(magnitude - lastAccelMagnitudeRef.current);
-      lastAccelMagnitudeRef.current = magnitude;
-
       const now = Date.now();
-      // Cadence filter: humans cannot take steps faster than ~220ms
-      if (deltaMag > 2.8 && now - lastStepTimestampRef.current > 240) {
+
+      // Peak-to-Valley Biometric Pedometer:
+      // 1. Arm step cycle on forward heel strike peak (> 11.2 m/s²)
+      if (magnitude >= 11.2) {
+        pedometerPeakArmedRef.current = true;
+      }
+
+      // 2. Count step when foot drops/recoils into valley (< 9.0 m/s²) with cadence debounce (>= 330ms)
+      if (
+        pedometerPeakArmedRef.current &&
+        magnitude <= 9.0 &&
+        now - lastStepTimestampRef.current >= 330
+      ) {
         lastStepTimestampRef.current = now;
+        pedometerPeakArmedRef.current = false;
         motionStepCountRef.current += 1;
 
         // Reconcile with total steps
         const totalSteps = Math.max(motionStepCountRef.current, gpsStepCountRef.current);
         setStepCount(totalSteps);
 
-        // If GPS distance is still 0 or lower than motion step distance, advance distance based on stride (~0.74m/step)
+        // Distance from steps (average human stride ~0.74m/step = 0.00074 km)
         const motionDistanceKm = Number((totalSteps * 0.00074).toFixed(3));
         if (totalDistanceKmRef.current < motionDistanceKm) {
           totalDistanceKmRef.current = motionDistanceKm;
@@ -417,10 +427,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           setTokensEarned(Number((motionDistanceKm * 8.4).toFixed(3)));
         }
 
-        // Approximate calories from physical cadence
-        setCaloriesBurned((prev) => {
-          const cal = Math.floor(totalDistanceKmRef.current * 65) + Math.floor(totalSteps * 0.04);
-          return Math.max(prev, cal);
+        // Realistic MET Calories: ~62 kcal per km or ~0.04 kcal per step (no double counting)
+        setCaloriesBurned(() => {
+          return Math.max(Math.round(totalDistanceKmRef.current * 62), Math.round(totalSteps * 0.04));
         });
       }
     };
@@ -493,8 +502,15 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           lng
         );
 
-        // Filter noise: must be >= 2 meters (0.002 km) and accuracy <= 80 meters
-        if (delta >= 0.002 && accuracy <= 80) {
+        // High-precision GPS noise & indoor drift filter:
+        // 1. Must have good satellite accuracy (<= 35m) to filter out indoor multipath bounce
+        // 2. Must move at least 5 meters (0.005 km)
+        // 3. Must have active movement velocity (speed >= 0.4 m/s or delta >= 0.008 km)
+        const hasGoodAccuracy = accuracy <= 35;
+        const hasMovedSignificantly = delta >= 0.005;
+        const isGenuineMovement = speed === null || speed >= 0.4 || delta >= 0.008;
+
+        if (hasGoodAccuracy && hasMovedSignificantly && isGenuineMovement) {
           // Accumulate raw unrounded distance
           totalDistanceKmRef.current += delta;
           const currentTotalKm = totalDistanceKmRef.current;
@@ -507,8 +523,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           const combinedSteps = Math.max(motionStepCountRef.current, stepsFromGps);
           setStepCount(combinedSteps);
 
-          // Calories burned (~65 kcal per km)
-          const cals = Math.floor(currentTotalKm * 65) + Math.floor(combinedSteps * 0.04);
+          // Calories burned (~62 kcal per km or ~0.04 kcal per step, no double-counting)
+          const cals = Math.max(Math.round(currentTotalKm * 62), Math.round(combinedSteps * 0.04));
           setCaloriesBurned(cals);
 
           // Token reward calculation (+8.4 NEX per km)
