@@ -29,6 +29,21 @@ interface TrackTabProps {
 
 type WorkoutMode = 'running' | 'cycling' | 'transit';
 
+// Haversine formula to compute genuine GPS distance between two coordinates in kilometers
+function calculateHaversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth's mean radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export const TrackTab: React.FC<TrackTabProps> = ({
   user,
   equippedSneakerName = 'Cyber Aero Walker',
@@ -42,6 +57,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const [isPaused, setIsPaused] = useState(false);
   const [simulatedProgress, setSimulatedProgress] = useState(0.35); // 0 to 1 position along route
   const [isSimulating, setIsSimulating] = useState(false);
+  const [trackingEngine, setTrackingEngine] = useState<'gps' | 'simulator'>('gps');
 
   // Stats
   const [secondsElapsed, setSecondsElapsed] = useState(0);
@@ -49,11 +65,14 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const [caloriesBurned, setCaloriesBurned] = useState(0);
   const [stepCount, setStepCount] = useState(0);
   const [tokensEarned, setTokensEarned] = useState(0);
+  const [currentSpeedKmh, setCurrentSpeedKmh] = useState<number>(0);
 
   // Real GPS state
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'searching' | 'active' | 'denied'>('idle');
+  const [gpsErrorMsg, setGpsErrorMsg] = useState<string | null>(null);
   const [realCoords, setRealCoords] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
   const [gpsWatchId, setGpsWatchId] = useState<number | null>(null);
+  const lastCoordRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // Route & Destination Search
   const [destination, setDestination] = useState('1584 Thornridge Cir. Shiloh');
@@ -70,63 +89,108 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       interval = setInterval(() => {
         setSecondsElapsed((prev) => prev + 1);
 
-        // Increment stats
+        // Increment step count & calories
         setStepCount((prev) => prev + Math.floor(Math.random() * 2 + 1));
         setCaloriesBurned((prev) => Math.round(prev + 0.15));
         setTokensEarned((prev) => Number((prev + 0.005).toFixed(3)));
 
-        // If simulated run is active, progress the marker along the curve
-        if (isSimulating) {
+        // If virtual simulation mode is active, smoothly progress along route
+        if (isSimulating || trackingEngine === 'simulator') {
           setSimulatedProgress((prev) => {
             const next = prev + 0.008;
             return next >= 1 ? 0.05 : next;
           });
           setDistanceKm((prev) => Number((prev + 0.002).toFixed(2)));
+          setCurrentSpeedKmh(8.5); // standard jogger pace in simulator
         }
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isTracking, isPaused, isSimulating]);
+  }, [isTracking, isPaused, isSimulating, trackingEngine]);
 
-  // Handle Real GPS detection
+  // Handle Real Hardware GPS detection
   const startRealGps = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
+      setGpsErrorMsg('Geolocation is not supported by your browser or device.');
+      setGpsStatus('denied');
       return;
     }
+
     setGpsStatus('searching');
+    setGpsErrorMsg(null);
+
+    // Initial fix
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setRealCoords({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: Math.round(pos.coords.accuracy)
-        });
-        setGpsStatus('active');
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const accuracy = Math.round(pos.coords.accuracy);
 
-        // Watch position
+        setRealCoords({ lat, lng, accuracy });
+        setGpsStatus('active');
+        lastCoordRef.current = { lat, lng };
+
+        // Real-time continuous watch
         const id = navigator.geolocation.watchPosition(
           (watchPos) => {
-            setRealCoords({
-              lat: watchPos.coords.latitude,
-              lng: watchPos.coords.longitude,
-              accuracy: Math.round(watchPos.coords.accuracy)
-            });
+            const newLat = watchPos.coords.latitude;
+            const newLng = watchPos.coords.longitude;
+            const newAcc = Math.round(watchPos.coords.accuracy);
+            const speedMs = watchPos.coords.speed;
+
+            setRealCoords({ lat: newLat, lng: newLng, accuracy: newAcc });
             setGpsStatus('active');
+
+            if (speedMs !== null && speedMs > 0) {
+              setCurrentSpeedKmh(Number((speedMs * 3.6).toFixed(1)));
+            }
+
+            // Compute real distance moved using Haversine formula
+            if (isTracking && !isPaused && trackingEngine === 'gps') {
+              if (lastCoordRef.current) {
+                const delta = calculateHaversineKm(
+                  lastCoordRef.current.lat,
+                  lastCoordRef.current.lng,
+                  newLat,
+                  newLng
+                );
+                // Filter out small stationary jitter (< 3 meters)
+                if (delta >= 0.003 && newAcc < 60) {
+                  setDistanceKm((prev) => Number((prev + delta).toFixed(2)));
+                  lastCoordRef.current = { lat: newLat, lng: newLng };
+                }
+              } else {
+                lastCoordRef.current = { lat: newLat, lng: newLng };
+              }
+            }
           },
           (err) => {
-            console.warn('GPS Watch error:', err);
+            console.warn('GPS continuous watch error:', err);
+            handleGpsError(err);
           },
-          { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+          { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
         );
         setGpsWatchId(id);
       },
       (err) => {
-        console.warn('GPS error:', err);
-        setGpsStatus('denied');
+        console.warn('Initial GPS error:', err);
+        handleGpsError(err);
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
+  };
+
+  const handleGpsError = (err: GeolocationPositionError) => {
+    setGpsStatus('denied');
+    if (err.code === 1) {
+      setGpsErrorMsg('Location permission denied. Please grant location access in your device settings.');
+    } else if (err.code === 2) {
+      setGpsErrorMsg('Device GPS / Location is turned OFF. Please turn on Location in your phone settings to track outdoor runs.');
+    } else if (err.code === 3) {
+      setGpsErrorMsg('Acquiring satellite lock timed out. Move outdoors with an open sky view.');
+    } else {
+      setGpsErrorMsg('Could not detect GPS coordinates. Make sure Location is enabled on your device.');
+    }
   };
 
   const stopRealGps = () => {
@@ -141,8 +205,11 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const handleStartWorkout = () => {
     setIsTracking(true);
     setIsPaused(false);
-    setIsSimulating(true);
-    startRealGps();
+    if (trackingEngine === 'gps') {
+      startRealGps();
+    } else {
+      setIsSimulating(true);
+    }
   };
 
   const handlePauseWorkout = () => {
@@ -218,17 +285,45 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         </button>
       </div>
 
-      {/* GPS Status Notice if searching/active */}
-      {gpsStatus !== 'idle' && (
-        <div className="flex items-center justify-between px-3 py-1.5 bg-[#141820] border border-[#232936] rounded-xl text-[11px]">
+      {/* Live GPS Active or Error Banner */}
+      {gpsErrorMsg ? (
+        <div className="bg-amber-500/15 border border-amber-500/40 rounded-2xl p-3 text-xs space-y-2 animate-fade-in">
+          <div className="flex items-start gap-2 text-amber-300 font-bold">
+            <Radio className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-400" />
+            <div className="flex-1">
+              <span className="block font-black text-amber-200">Device GPS Required</span>
+              <span className="text-[11px] font-normal text-amber-300/90 leading-relaxed">
+                {gpsErrorMsg}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pt-0.5">
+            <button
+              onClick={startRealGps}
+              className="px-3 py-1 bg-amber-400 hover:bg-amber-300 text-black text-[11px] font-black rounded-xl transition-all active:scale-95"
+            >
+              Retry GPS
+            </button>
+            <button
+              onClick={() => {
+                setTrackingEngine('simulator');
+                setIsSimulating(true);
+                setGpsErrorMsg(null);
+              }}
+              className="px-3 py-1 bg-[#1A1E26] text-slate-300 hover:text-white text-[11px] font-bold rounded-xl border border-white/10"
+            >
+              Use Indoor Simulation
+            </button>
+          </div>
+        </div>
+      ) : gpsStatus !== 'idle' ? (
+        <div className="flex items-center justify-between px-3 py-1.5 bg-[#141820] border border-[#232936] rounded-xl text-[11px] animate-fade-in">
           <div className="flex items-center gap-2">
             <Radio className={`w-3.5 h-3.5 ${gpsStatus === 'active' ? 'text-emerald-400 animate-pulse' : 'text-amber-400 animate-spin'}`} />
             <span className="font-semibold text-slate-300">
               {gpsStatus === 'active'
-                ? `GPS Locked: ${realCoords?.lat.toFixed(4)}, ${realCoords?.lng.toFixed(4)} (±${realCoords?.accuracy}m)`
-                : gpsStatus === 'searching'
-                ? 'Acquiring GPS Satellite Signal...'
-                : 'GPS Permission Denied. Using Virtual Route.'}
+                ? `GPS Active: ${realCoords?.lat.toFixed(4)}, ${realCoords?.lng.toFixed(4)} (±${realCoords?.accuracy}m) • ${currentSpeedKmh} km/h`
+                : 'Acquiring GPS Satellite Signal...'}
             </span>
           </div>
           <button
@@ -238,7 +333,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
             Dismiss
           </button>
         </div>
-      )}
+      ) : null}
 
       {/* ---------------------------------------------------- */}
       {/* 2. MAIN MAP VIEW (Exact dark vector map design)       */}
