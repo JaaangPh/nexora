@@ -26,6 +26,7 @@ import {
   SunMedium,
   Smartphone
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { Geolocation, Position } from '@capacitor/geolocation';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -78,8 +79,16 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   // GPS state
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'searching' | 'active' | 'denied'>('idle');
   const [realCoords, setRealCoords] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
-  const [gpsWatchId, setGpsWatchId] = useState<string | null>(null);
   const [gpsErrorMessage, setGpsErrorMessage] = useState<string | null>(null);
+
+  // Watch references (Capacitor native string ID vs Web number ID)
+  const nativeWatchIdRef = useRef<string | null>(null);
+  const webWatchIdRef = useRef<number | null>(null);
+
+  // Insecure context detection (iOS Safari blocks Geolocation on non-HTTPS origins)
+  const isInsecureContext = typeof window !== 'undefined'
+    ? (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
+    : false;
 
   // Modal to request turning on GPS / Location
   const [showGpsModal, setShowGpsModal] = useState(false);
@@ -198,26 +207,115 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     }
   }
 
+  interface DeviceFix {
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+    speed: number | null;
+  }
+
+  // Cross-platform GPS position fetcher: handles Capacitor APK, iOS Safari, Android Chrome
+  const getDevicePosition = async (): Promise<DeviceFix> => {
+    // 1. Native Capacitor platform (Android APK)
+    if (Capacitor.isNativePlatform()) {
+      const perm = await Geolocation.checkPermissions();
+      if (perm.location === 'prompt' || perm.location === 'prompt-with-rationale') {
+        const req = await Geolocation.requestPermissions();
+        if (req.location !== 'granted') {
+          throw new Error('Location permission denied on device.');
+        }
+      } else if (perm.location === 'denied') {
+        throw new Error('Location permission is denied. Please open Settings and enable Location for Nexora.');
+      }
+
+      const pos = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10000
+      });
+
+      if (!pos || !pos.coords) {
+        throw new Error('GPS satellite fix unavailable. Please check that GPS is turned on.');
+      }
+
+      return {
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: Math.round(pos.coords.accuracy),
+        speed: pos.coords.speed
+      };
+    }
+
+    // 2. Web browser (iOS Safari, Chrome, etc.)
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      throw new Error('Geolocation is not supported by your browser.');
+    }
+
+    // Fast attempt: High Accuracy GPS (6 second timeout)
+    const tryHighAccuracy = () =>
+      new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 6000,
+          maximumAge: 10000
+        });
+      });
+
+    // Fallback: Standard Accuracy (cellular / Wi-Fi / cached)
+    const tryStandardAccuracy = () =>
+      new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: false,
+          timeout: 9000,
+          maximumAge: 30000
+        });
+      });
+
+    let rawPos: GeolocationPosition;
+    try {
+      rawPos = await tryHighAccuracy();
+    } catch (highErr: any) {
+      // If user clicked "Don't Allow" (code 1), fail immediately with actionable explanation
+      if (highErr && highErr.code === 1) {
+        if (isInsecureContext) {
+          throw new Error('iOS Safari blocks GPS over unencrypted HTTP. Use HTTPS or tap "Start Run with Motion Sensors".');
+        }
+        throw new Error('Location permission was denied. Tap the search bar settings icon in Safari/Chrome to Allow location.');
+      }
+
+      console.warn('High accuracy GPS timed out or unavailable, attempting standard accuracy fallback...', highErr);
+      try {
+        rawPos = await tryStandardAccuracy();
+      } catch (fallbackErr: any) {
+        if (fallbackErr && fallbackErr.code === 1) {
+          throw new Error('Location permission was denied. Please allow location access in your browser settings.');
+        }
+        throw fallbackErr;
+      }
+    }
+
+    return {
+      latitude: rawPos.coords.latitude,
+      longitude: rawPos.coords.longitude,
+      accuracy: Math.round(rawPos.coords.accuracy),
+      speed: rawPos.coords.speed
+    };
+  };
+
   // --------------------------------------------------------------------------
   // 2. CHECK INITIAL LOCATION (Passive)
   // --------------------------------------------------------------------------
   const checkInitialGps = async (mapInstance?: L.Map) => {
     try {
-      const pos = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 6000
-      });
-      if (pos && pos.coords) {
-        const { latitude, longitude, accuracy } = pos.coords;
-        setRealCoords({ lat: latitude, lng: longitude, accuracy: Math.round(accuracy) });
-        setGpsStatus('active');
-        lastPositionRef.current = { lat: latitude, lng: longitude };
+      const pos = await getDevicePosition();
+      const { latitude, longitude, accuracy } = pos;
+      setRealCoords({ lat: latitude, lng: longitude, accuracy });
+      setGpsStatus('active');
+      lastPositionRef.current = { lat: latitude, lng: longitude };
 
-        const targetMap = mapInstance || mapRef.current;
-        if (targetMap) {
-          targetMap.setView([latitude, longitude], 17);
-          updateMapMarker(latitude, longitude, Math.round(accuracy));
-        }
+      const targetMap = mapInstance || mapRef.current;
+      if (targetMap) {
+        targetMap.setView([latitude, longitude], 17);
+        updateMapMarker(latitude, longitude, accuracy);
       }
     } catch {
       setGpsStatus('idle');
@@ -311,6 +409,14 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         const totalSteps = Math.max(motionStepCountRef.current, gpsStepCountRef.current);
         setStepCount(totalSteps);
 
+        // If GPS distance is still 0 or lower than motion step distance, advance distance based on stride (~0.74m/step)
+        const motionDistanceKm = Number((totalSteps * 0.00074).toFixed(3));
+        if (totalDistanceKmRef.current < motionDistanceKm) {
+          totalDistanceKmRef.current = motionDistanceKm;
+          setDistanceKm(motionDistanceKm);
+          setTokensEarned(Number((motionDistanceKm * 8.4).toFixed(3)));
+        }
+
         // Approximate calories from physical cadence
         setCaloriesBurned((prev) => {
           const cal = Math.floor(totalDistanceKmRef.current * 65) + Math.floor(totalSteps * 0.04);
@@ -347,10 +453,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
         // 3. Immediately query fresh GPS position to catch up distance moved while screen was off
         try {
-          const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 5000 });
-          if (pos && pos.coords) {
-            handleNewGpsFix(pos.coords.latitude, pos.coords.longitude, Math.round(pos.coords.accuracy), pos.coords.speed);
-          }
+          const pos = await getDevicePosition();
+          handleNewGpsFix(pos.latitude, pos.longitude, pos.accuracy, pos.speed);
         } catch (e) {
           console.warn('Screen turn-on GPS refresh error:', e);
         }
@@ -437,46 +541,30 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       return;
     }
 
+    // iOS 13+ user gesture required to enable accelerometer
+    if (typeof (DeviceMotionEvent as any)?.requestPermission === 'function') {
+      try {
+        await (DeviceMotionEvent as any).requestPermission();
+      } catch (e) {
+        console.warn('DeviceMotion permission request:', e);
+      }
+    }
+
     setIsRequestingPermission(true);
     setGpsErrorMessage(null);
 
     try {
-      // Check or request permission
-      const perm = await Geolocation.checkPermissions();
-      if (perm.location === 'prompt' || perm.location === 'prompt-with-rationale') {
-        const req = await Geolocation.requestPermissions();
-        if (req.location !== 'granted') {
-          setShowGpsModal(true);
-          setGpsErrorMessage('Location permission was denied. Please allow location access in your device settings.');
-          setIsRequestingPermission(false);
-          return;
-        }
-      } else if (perm.location === 'denied') {
-        setShowGpsModal(true);
-        setGpsErrorMessage('Location permission is denied. Please open your device Settings and grant Location permission to Nexora.');
-        setIsRequestingPermission(false);
-        return;
-      }
-
-      // Verify GPS lock
       setGpsStatus('searching');
-      const pos = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 10000
-      });
+      const pos = await getDevicePosition();
 
-      if (!pos || !pos.coords) {
-        throw new Error('Device location is unavailable. Make sure your device GPS is turned on.');
-      }
-
-      const { latitude, longitude, accuracy } = pos.coords;
-      setRealCoords({ lat: latitude, lng: longitude, accuracy: Math.round(accuracy) });
+      const { latitude, longitude, accuracy, speed } = pos;
+      setRealCoords({ lat: latitude, lng: longitude, accuracy });
       setGpsStatus('active');
       lastPositionRef.current = { lat: latitude, lng: longitude };
 
       if (mapRef.current) {
         mapRef.current.setView([latitude, longitude], 17);
-        updateMapMarker(latitude, longitude, Math.round(accuracy));
+        updateMapMarker(latitude, longitude, accuracy);
       }
 
       setShowGpsModal(false);
@@ -487,45 +575,115 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       setGpsStatus('denied');
       setShowGpsModal(true);
 
-      const msg = err.message || '';
-      if (msg.includes('disabled') || msg.includes('Location services are not enabled') || msg.includes('location unavailable')) {
-        setGpsErrorMessage('Your device GPS / Location is turned OFF. Please turn on Location in your device settings to start tracking.');
-      } else if (msg.includes('denied') || msg.includes('permission')) {
-        setGpsErrorMessage('Location permission is required to track outdoor workouts. Please allow location access in your settings.');
+      const msg = err?.message || '';
+      if (msg.includes('HTTP') || msg.includes('secure')) {
+        setGpsErrorMessage(msg);
+      } else if (msg.includes('denied') || msg.includes('permission') || err?.code === 1) {
+        setGpsErrorMessage('Location permission was denied. Tap the address bar settings icon in Safari/Chrome to Allow location access.');
+      } else if (msg.includes('unavailable') || err?.code === 2) {
+        setGpsErrorMessage('Your device GPS / Location is turned OFF. Please turn on Location in your device settings.');
+      } else if (msg.includes('timed out') || err?.code === 3) {
+        setGpsErrorMessage('GPS satellite signal timed out. You can tap "Start Run with Motion Sensors" to begin tracking immediately!');
       } else {
-        setGpsErrorMessage('Could not acquire GPS satellite signal. Please turn on your device GPS and ensure clear sky view.');
+        setGpsErrorMessage(msg || 'Could not connect to GPS. Please ensure Location is enabled in Settings.');
       }
     } finally {
       setIsRequestingPermission(false);
     }
   };
 
+  const handleStartWorkoutWithMotion = async () => {
+    // Request motion permission if iOS
+    if (typeof (DeviceMotionEvent as any)?.requestPermission === 'function') {
+      try {
+        await (DeviceMotionEvent as any).requestPermission();
+      } catch (e) {
+        console.warn('DeviceMotion permission request:', e);
+      }
+    }
+
+    setShowGpsModal(false);
+    setGpsStatus('searching');
+    startWorkoutTracking();
+    // Continue attempting GPS in background so if permission or satellites become active, map seamlessly updates
+    startContinuousGpsWatch();
+  };
+
   // --------------------------------------------------------------------------
-  // 9. CONTINUOUS REAL-TIME GPS WATCH
+  // 9. CONTINUOUS REAL-TIME GPS WATCH (Cross-Platform)
   // --------------------------------------------------------------------------
   const startContinuousGpsWatch = async () => {
-    try {
-      const watchId = await Geolocation.watchPosition(
-        { enableHighAccuracy: true },
-        (position: Position | null, err) => {
-          if (err) {
-            console.warn('Continuous GPS watch error:', err);
-            return;
-          }
+    stopContinuousGpsWatch();
 
-          if (position && position.coords) {
-            handleNewGpsFix(
-              position.coords.latitude,
-              position.coords.longitude,
-              Math.round(position.coords.accuracy),
-              position.coords.speed
-            );
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const watchId = await Geolocation.watchPosition(
+          { enableHighAccuracy: true },
+          (position: Position | null, err) => {
+            if (err) {
+              console.warn('Native GPS watch error:', err);
+              return;
+            }
+
+            if (position && position.coords) {
+              handleNewGpsFix(
+                position.coords.latitude,
+                position.coords.longitude,
+                Math.round(position.coords.accuracy),
+                position.coords.speed
+              );
+            }
           }
-        }
-      );
-      setGpsWatchId(watchId);
-    } catch (e) {
-      console.warn('Failed to start watchPosition:', e);
+        );
+        nativeWatchIdRef.current = watchId;
+      } catch (e) {
+        console.warn('Native watchPosition failed:', e);
+      }
+      return;
+    }
+
+    // Web browser / iOS Safari
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      try {
+        const watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            if (pos && pos.coords) {
+              handleNewGpsFix(
+                pos.coords.latitude,
+                pos.coords.longitude,
+                Math.round(pos.coords.accuracy),
+                pos.coords.speed
+              );
+            }
+          },
+          (err) => {
+            console.warn('Web watchPosition notice:', err.message);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 2000
+          }
+        );
+        webWatchIdRef.current = watchId;
+      } catch (e) {
+        console.warn('Web watchPosition failed:', e);
+      }
+    }
+  };
+
+  const stopContinuousGpsWatch = async () => {
+    if (nativeWatchIdRef.current) {
+      try {
+        await Geolocation.clearWatch({ id: nativeWatchIdRef.current });
+      } catch (e) {}
+      nativeWatchIdRef.current = null;
+    }
+    if (webWatchIdRef.current !== null) {
+      try {
+        navigator.geolocation.clearWatch(webWatchIdRef.current);
+      } catch (e) {}
+      webWatchIdRef.current = null;
     }
   };
 
@@ -576,10 +734,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     setIsPaused(false);
     releaseWakeLock();
 
-    if (gpsWatchId) {
-      await Geolocation.clearWatch({ id: gpsWatchId });
-      setGpsWatchId(null);
-    }
+    await stopContinuousGpsWatch();
 
     if (onWorkoutFinish) {
       onWorkoutFinish(tokensEarned);
@@ -944,21 +1099,39 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               </p>
             </div>
 
+            {/* Insecure context warning for iOS Safari */}
+            {isInsecureContext && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 text-[11px] text-amber-200 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-amber-300">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>iOS Safari Security Notice:</span>
+                </div>
+                <p className="leading-tight">
+                  Apple iOS blocks GPS over plain HTTP. Tap <strong className="text-white">Start Run with Motion Sensors</strong> below to immediately track your steps, calories, pace, and tokens using your iPhone sensors!
+                </p>
+              </div>
+            )}
+
             {/* Platform Instructions Card */}
             <div className="bg-[#0E1118] border border-[#232936] rounded-2xl p-3.5 text-[11px] space-y-2 text-slate-300">
               <div className="font-bold text-amber-300 flex items-center gap-1.5">
                 <Settings className="w-3.5 h-3.5" />
-                <span>How to turn on Location:</span>
+                <span>How to enable Location:</span>
               </div>
               <ul className="space-y-1.5 list-disc pl-4 text-slate-300 leading-normal">
+                <li>
+                  <strong className="text-white">iPhone (iOS Safari):</strong>
+                  <div className="text-[10px] text-slate-300 mt-0.5 space-y-0.5">
+                    <div>• <em>Settings &gt; Privacy &amp; Security &gt; Location Services</em> &gt; Turn <strong>ON</strong>.</div>
+                    <div>• <em>Settings &gt; Safari &gt; Location</em> &gt; Set to <strong>Allow</strong>.</div>
+                    <div>• In Safari, tap the <strong>aA</strong> / Settings icon in the search bar &gt; <em>Website Settings &gt; Location: Allow</em>.</div>
+                  </div>
+                </li>
                 <li>
                   <strong className="text-white">Android / APK:</strong> Swipe down notification bar &gt; turn ON <span className="text-amber-300 font-bold">Location</span> &gt; Allow app permissions.
                 </li>
                 <li>
-                  <strong className="text-white">iPhone (iOS):</strong> Go to <em>Settings &gt; Privacy &gt; Location Services</em> &gt; Turn ON.
-                </li>
-                <li>
-                  <strong className="text-white">Browser:</strong> Tap the lock or tune icon in the address bar &gt; Allow Location.
+                  <strong className="text-white">Mobile Browser:</strong> Tap the lock or tune icon in the address bar &gt; Allow Location.
                 </li>
               </ul>
             </div>
@@ -967,9 +1140,18 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               <button
                 onClick={handleStartWorkoutClick}
                 disabled={isRequestingPermission}
-                className="w-full py-3.5 rounded-2xl bg-[#D8FD2F] hover:bg-[#c6ec22] text-[#0A0D11] font-black text-xs uppercase tracking-wider shadow-lg shadow-[#D8FD2F]/20 active:scale-95 transition-all"
+                className="w-full py-3.5 rounded-2xl bg-[#D8FD2F] hover:bg-[#c6ec22] text-[#0A0D11] font-black text-xs uppercase tracking-wider shadow-lg shadow-[#D8FD2F]/20 active:scale-95 transition-all flex items-center justify-center gap-2"
               >
-                {isRequestingPermission ? 'Connecting to GPS...' : 'I Turned It On — Start Run'}
+                <Navigation className="w-4 h-4" />
+                <span>{isRequestingPermission ? 'Connecting to GPS...' : 'I Turned It On — Start Run'}</span>
+              </button>
+
+              <button
+                onClick={handleStartWorkoutWithMotion}
+                className="w-full py-3 rounded-2xl bg-[#1C2538] hover:bg-[#25324D] text-cyan-300 border border-cyan-500/30 font-extrabold text-xs active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md"
+              >
+                <Smartphone className="w-4 h-4 text-cyan-400" />
+                <span>Start Run with Motion Sensors</span>
               </button>
 
               <button
@@ -978,7 +1160,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                   setIsDemoMode(true);
                   startWorkoutTracking();
                 }}
-                className="w-full py-2.5 rounded-2xl bg-[#1F2430] hover:bg-[#282F3F] text-slate-300 font-bold text-xs active:scale-95 transition-all border border-white/10"
+                className="w-full py-2.5 rounded-2xl bg-[#1F2430] hover:bg-[#282F3F] text-slate-400 font-bold text-xs active:scale-95 transition-all border border-white/10"
               >
                 Test With Indoor Simulator
               </button>
