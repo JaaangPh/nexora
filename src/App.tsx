@@ -19,7 +19,10 @@ export const App: React.FC = () => {
   const [isUpdatingApp, setIsUpdatingApp] = useState(
     () => sessionStorage.getItem('nexora_update_in_progress') === '1'
   );
+  const [isRefreshingAccount, setIsRefreshingAccount] = useState(false);
   const updateAvailableRef = useRef(false);
+  const pullStartRef = useRef<{ x: number; y: number } | null>(null);
+  const refreshInProgressRef = useRef(false);
 
   // 1. Check URL for invitation link or referral code on mount
   useEffect(() => {
@@ -131,10 +134,12 @@ export const App: React.FC = () => {
     };
 
     const handleSafeToUpdate = () => reloadWhenSafe();
+    const handleRequestedUpdateCheck = () => void checkForAppUpdate();
     const intervalId = window.setInterval(checkForAppUpdate, 60000);
     window.addEventListener('focus', checkForAppUpdate);
     document.addEventListener('visibilitychange', checkForAppUpdate);
     window.addEventListener('nexora:workout-safe-to-update', handleSafeToUpdate);
+    window.addEventListener('nexora:check-app-update', handleRequestedUpdateCheck);
     void checkForAppUpdate();
 
     return () => {
@@ -142,6 +147,7 @@ export const App: React.FC = () => {
       window.removeEventListener('focus', checkForAppUpdate);
       document.removeEventListener('visibilitychange', checkForAppUpdate);
       window.removeEventListener('nexora:workout-safe-to-update', handleSafeToUpdate);
+      window.removeEventListener('nexora:check-app-update', handleRequestedUpdateCheck);
     };
   }, []);
 
@@ -188,6 +194,56 @@ export const App: React.FC = () => {
     const token = getStoredToken();
     if (token) {
       setStoredSession(token, updatedUser);
+    }
+  };
+
+  const refreshAccountFromPull = async () => {
+    if (!currentUser || refreshInProgressRef.current) return;
+    refreshInProgressRef.current = true;
+    setIsRefreshingAccount(true);
+    let timeoutId = 0;
+    try {
+      const result = await Promise.race([
+        api.getMe(),
+        new Promise<never>((_, reject) => {
+          timeoutId = window.setTimeout(() => reject(new Error('Account refresh timed out.')), 15000);
+        }),
+      ]);
+      handleUpdateUser({ ...currentUser, ...result.user });
+      if (Capacitor.isNativePlatform()) {
+        window.dispatchEvent(new Event('nexora:check-app-update'));
+      }
+    } catch {
+      // Keep cached account data when offline; API auth failures log the user out.
+    } finally {
+      window.clearTimeout(timeoutId);
+      refreshInProgressRef.current = false;
+      setIsRefreshingAccount(false);
+    }
+  };
+
+  const handleDashboardTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!Capacitor.isNativePlatform()) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const scrollContainer = target.closest('.dashboard-scroll');
+    if (!(scrollContainer instanceof HTMLElement) || scrollContainer.scrollTop > 0) {
+      pullStartRef.current = null;
+      return;
+    }
+    const touch = event.touches[0];
+    pullStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleDashboardTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const start = pullStartRef.current;
+    pullStartRef.current = null;
+    if (!start || !currentUser) return;
+    const touch = event.changedTouches[0];
+    const pullDistance = touch.clientY - start.y;
+    const horizontalDistance = Math.abs(touch.clientX - start.x);
+    if (pullDistance >= 90 && pullDistance > horizontalDistance * 1.4) {
+      void refreshAccountFromPull();
     }
   };
 
@@ -238,7 +294,11 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen w-full bg-[#060D1E] flex flex-col justify-center items-center antialiased font-sans selection:bg-[#2459C4] selection:text-white">
+    <div
+      className="min-h-screen w-full bg-[#060D1E] flex flex-col justify-center items-center antialiased font-sans selection:bg-[#2459C4] selection:text-white"
+      onTouchStart={handleDashboardTouchStart}
+      onTouchEnd={handleDashboardTouchEnd}
+    >
       {/* Centered Device / App Canvas Container */}
       <div className={`w-full max-w-[440px] mx-auto ${currentUser ? 'h-screen sm:h-[840px] sm:my-6 sm:rounded-[36px]' : 'min-h-screen sm:min-h-0 sm:my-6 sm:rounded-[36px]'} bg-[#08132B] shadow-2xl shadow-blue-950/40 overflow-hidden flex flex-col border sm:border-[#1E3A78]/50 relative`}>
         <main className="w-full flex-1 flex flex-col h-full overflow-hidden">
@@ -286,10 +346,12 @@ export const App: React.FC = () => {
           )}
         </main>
       </div>
-      {isUpdatingApp && (
+      {(isUpdatingApp || isRefreshingAccount) && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-[#060D1E] text-white">
           <RefreshCw className="h-10 w-10 animate-spin text-[#D8FD2F]" />
-          <span className="text-sm font-extrabold uppercase tracking-wider">Updating Nexora...</span>
+          <span className="text-sm font-extrabold uppercase tracking-wider">
+            {isUpdatingApp ? 'Updating Nexora...' : 'Refreshing account...'}
+          </span>
         </div>
       )}
     </div>
