@@ -14,7 +14,7 @@
     "cap:sync": "npm run build && npx cap sync android",
     "cap:open": "npx cap open android",
     "build:apk": "npm run cap:sync && cd android && gradlew.bat assembleRelease && cd .. && npm run copy:apk",
-    "copy:apk": "node -e \"const fs = require('fs'); fs.mkdirSync('public/downloads', {recursive:true}); const d = 'android/app/build/outputs/apk/debug/app-debug.apk'; const r = 'android/app/build/outputs/apk/release/app-release-unsigned.apk'; const src = (fs.existsSync(r) && (!fs.existsSync(d) || fs.statSync(r).mtimeMs > fs.statSync(d).mtimeMs)) ? r : d; fs.copyFileSync(src, 'public/downloads/nexora-technologies.apk'); console.log('APK copied to public/downloads/nexora-technologies.apk');\""
+    "copy:apk": "node -e \"const fs = require('fs'); const src = 'android/app/build/outputs/apk/release/app-release.apk'; if (!fs.existsSync(src)) throw new Error('Signed release APK not found. Run npm run build:apk first.'); fs.mkdirSync('public/downloads', {recursive:true}); fs.copyFileSync(src, 'public/downloads/nexora-technologies.apk'); console.log('Signed release APK copied to public/downloads/nexora-technologies.apk');\""
   },
   "keywords": [],
   "author": "",
