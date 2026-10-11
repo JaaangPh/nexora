@@ -11,10 +11,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "cap:add": "npx cap add android",
-    "cap:sync": "npm run build && npx cap sync android",
+    "cap:sync": "npm run build && node -e \"require('fs').rmSync('dist/downloads/nexora-technologies.apk', {force:true})\" && npx cap sync android",
     "cap:open": "npx cap open android",
     "build:apk": "npm run cap:sync && cd android && gradlew.bat assembleRelease && cd .. && npm run copy:apk",
-    "copy:apk": "node -e \"const fs = require('fs'); const src = 'android/app/build/outputs/apk/release/app-release.apk'; if (!fs.existsSync(src)) throw new Error('Signed release APK not found. Run npm run build:apk first.'); fs.mkdirSync('public/downloads', {recursive:true}); fs.copyFileSync(src, 'public/downloads/nexora-technologies.apk'); console.log('Signed release APK copied to public/downloads/nexora-technologies.apk');\""
+    "copy:apk": "node -e \"const fs = require('fs'); const src = 'android/app/build/outputs/apk/release/app-release.apk'; const publicTarget = 'public/downloads/nexora-technologies.apk'; const distTarget = 'dist/downloads/nexora-technologies.apk'; if (!fs.existsSync(src)) throw new Error('Signed release APK not found. Run npm run build:apk first.'); fs.mkdirSync('public/downloads', {recursive:true}); fs.copyFileSync(src, publicTarget); if (fs.existsSync('dist')) { fs.mkdirSync('dist/downloads', {recursive:true}); fs.copyFileSync(src, distTarget); } console.log('Signed release APK copied to public and dist downloads.');\""
   },
   "keywords": [],
   "author": "",

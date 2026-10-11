@@ -40,7 +40,7 @@ interface TrackTabProps {
   onNavigateTab?: (tab: 'home' | 'market' | 'track' | 'team' | 'me') => void;
   equippedSneakerName?: string;
   onEquipSneaker?: (runner: RunnerItem) => void;
-  onWorkoutFinish?: (earned: number, runnerId?: string) => void;
+  onWorkoutFinish?: (earned: number, runnerIds?: string[]) => void;
 }
 
 type WorkoutMode = 'running' | 'cycling' | 'transit';
@@ -75,29 +75,36 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   // Owned runners detection
   const ownedRunnerIds = user?.ownedRunners || [];
   const ownedRunners = RUNNER_CATALOG.filter((r) => ownedRunnerIds.includes(r.id));
+  const eligibleOwnedRunners = ownedRunners.filter((runner) => (user?.runnerCooldowns?.[runner.id] || 0) <= Date.now());
 
   // Determine initial selected runner
-  const [selectedRunnerId, setSelectedRunnerId] = useState<string>(() => {
-    if (user?.equippedRunnerId && ownedRunnerIds.includes(user.equippedRunnerId)) {
-      return user.equippedRunnerId;
+  const [selectedRunnerIds, setSelectedRunnerIds] = useState<string[]>(() => {
+    if (user?.equippedRunnerId && eligibleOwnedRunners.some((runner) => runner.id === user.equippedRunnerId)) {
+      return [user.equippedRunnerId];
     }
-    return ownedRunners[0]?.id || '';
+    return eligibleOwnedRunners[0] ? [eligibleOwnedRunners[0].id] : [];
   });
   const [showFinishModal, setShowFinishModal] = useState(false);
 
-  // Keep selectedRunnerId in sync when user updates
+  // Keep the selection limited to owned runners when account data changes.
   useEffect(() => {
     if (isTrackingRef.current || showFinishModal) return;
-    if (user?.equippedRunnerId && ownedRunnerIds.includes(user.equippedRunnerId)) {
-      setSelectedRunnerId(user.equippedRunnerId);
-    } else if (ownedRunners.length > 0 && !ownedRunnerIds.includes(selectedRunnerId)) {
-      setSelectedRunnerId(ownedRunners[0].id);
-    }
-  }, [user?.equippedRunnerId, ownedRunnerIds.length, showFinishModal]);
+    setSelectedRunnerIds((current) => {
+      const retained = current.filter((runnerId) => eligibleOwnedRunners.some((runner) => runner.id === runnerId));
+      if (retained.length > 0) return retained;
+      const fallbackId = user?.equippedRunnerId && eligibleOwnedRunners.some((runner) => runner.id === user.equippedRunnerId)
+        ? user.equippedRunnerId
+        : eligibleOwnedRunners[0]?.id;
+      return fallbackId ? [fallbackId] : [];
+    });
+  }, [user?.equippedRunnerId, user?.runnerCooldowns, ownedRunnerIds.join(','), showFinishModal]);
 
-  const activeRunner = RUNNER_CATALOG.find((r) => r.id === selectedRunnerId) || ownedRunners[0] || null;
-  const activeRunnerRef = useRef<RunnerItem | null>(activeRunner);
-  activeRunnerRef.current = activeRunner;
+  const selectedRunners = ownedRunners.filter((runner) => selectedRunnerIds.includes(runner.id));
+  const selectedRunnerNames = selectedRunners.map((runner) => runner.name).join(' + ');
+  const selectedEarningRate = selectedRunners.reduce((total, runner) => total + runner.earningRate, 0);
+  const workoutDistanceLimit = selectedRunners.reduce((limit, runner) => Math.max(limit, runner.kmLimitPerDay), 0);
+  const selectedRunnersRef = useRef<RunnerItem[]>(selectedRunners);
+  selectedRunnersRef.current = selectedRunners;
 
   // Workout Finish Modal & Last Summary State
   const [lastWorkoutSummary, setLastWorkoutSummary] = useState({
@@ -107,7 +114,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     calories: 0,
     runnerName: '',
   });
-  const [sessionRunnerId, setSessionRunnerId] = useState('');
+  const [sessionRunnerIds, setSessionRunnerIds] = useState<string[]>([]);
 
   // Workout state
   const [isTracking, setIsTracking] = useState(false);
@@ -159,7 +166,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const workoutStartTimeRef = useRef<number>(0);
   const pauseStartTimeRef = useRef<number>(0);
   const pausedDurationRef = useRef<number>(0);
-  const sessionRunnerIdRef = useRef<string>('');
+  const sessionRunnerIdsRef = useRef<string[]>([]);
 
   // Leaflet map refs
   const rawId = useId();
@@ -188,7 +195,10 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     return { isCooling: false, remaining: '', cdTimestamp: cd };
   };
 
-  const activeRunnerCooldown = activeRunner ? getRunnerCooldown(activeRunner.id) : { isCooling: false, remaining: '' };
+  const coolingSelectedRunners = selectedRunners.filter((runner) => getRunnerCooldown(runner.id).isCooling);
+
+  const calculateWorkoutEarnings = (distance: number, runners = selectedRunnersRef.current) =>
+    Number(runners.reduce((total, runner) => total + Math.min(distance, runner.kmLimitPerDay) * runner.earningRate, 0).toFixed(2));
 
   // --------------------------------------------------------------------------
   // 1. SAVE/RESTORE ACTIVE WORKOUT SESSION (Background / Reload persistence)
@@ -197,7 +207,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     if (!isTrackingRef.current && !pendingFinish) return;
     try {
       const snapshot = {
-        runnerId: sessionRunnerIdRef.current || activeRunnerRef.current?.id || '',
+        runnerIds: sessionRunnerIdsRef.current.length > 0
+          ? sessionRunnerIdsRef.current
+          : selectedRunnersRef.current.map((runner) => runner.id),
         isTracking: isTrackingRef.current,
         pendingFinish,
         lastWorkoutSummary: summary,
@@ -226,9 +238,10 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         const data = JSON.parse(saved);
         if (data.pendingFinish) {
           if (data.lastWorkoutSummary) setLastWorkoutSummary(data.lastWorkoutSummary);
-          sessionRunnerIdRef.current = data.runnerId || '';
-          setSessionRunnerId(sessionRunnerIdRef.current);
-          if (data.runnerId) setSelectedRunnerId(data.runnerId);
+          const runnerIds = data.runnerIds || (data.runnerId ? [data.runnerId] : []);
+          sessionRunnerIdsRef.current = runnerIds;
+          setSessionRunnerIds(runnerIds);
+          if (runnerIds.length > 0) setSelectedRunnerIds(runnerIds);
           setShowFinishModal(true);
         } else if (data.isTracking && data.workoutStartTime) {
           isTrackingRef.current = true;
@@ -241,10 +254,11 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           gpsStepCountRef.current = data.stepCount || 0;
           routePointsRef.current = data.routePoints || [];
 
-          if (data.runnerId) {
-            sessionRunnerIdRef.current = data.runnerId;
-            setSessionRunnerId(data.runnerId);
-            setSelectedRunnerId(data.runnerId);
+          const runnerIds = data.runnerIds || (data.runnerId ? [data.runnerId] : []);
+          if (runnerIds.length > 0) {
+            sessionRunnerIdsRef.current = runnerIds;
+            setSessionRunnerIds(runnerIds);
+            setSelectedRunnerIds(runnerIds);
           }
 
           setIsTracking(true);
@@ -503,15 +517,14 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         setStepCount(totalSteps);
 
         const motionDistanceKm = Number((totalSteps * 0.00074).toFixed(3));
-        const runner = activeRunnerRef.current;
-        const currentLimit = runner ? runner.kmLimitPerDay : 6;
-        const rate = runner ? runner.earningRate : 8.4;
+        const runners = selectedRunnersRef.current;
+        const currentLimit = runners.reduce((limit, runner) => Math.max(limit, runner.kmLimitPerDay), 0);
 
-        if (totalDistanceKmRef.current < motionDistanceKm) {
+        if (currentLimit > 0 && totalDistanceKmRef.current < motionDistanceKm) {
           const cappedDist = Math.min(motionDistanceKm, currentLimit);
           totalDistanceKmRef.current = cappedDist;
           setDistanceKm(cappedDist);
-          setTokensEarned(Number((cappedDist * rate).toFixed(2)));
+          setTokensEarned(calculateWorkoutEarnings(cappedDist, runners));
         }
 
         setCaloriesBurned(Math.max(Math.round(totalDistanceKmRef.current * 62), Math.round(totalSteps * 0.04)));
@@ -562,12 +575,12 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         const isGenuineMovement = speed === null || speed >= 0.4 || delta >= 0.008;
 
         if (hasGoodAccuracy && hasMovedSignificantly && isGenuineMovement) {
-          const runner = activeRunnerRef.current;
-          const currentLimit = runner ? runner.kmLimitPerDay : 6;
-          const rate = runner ? runner.earningRate : 8.4;
+          const runners = selectedRunnersRef.current;
+          const currentLimit = runners.reduce((limit, runner) => Math.max(limit, runner.kmLimitPerDay), 0);
 
           const rawTotal = totalDistanceKmRef.current + delta;
           const cappedDist = Math.min(rawTotal, currentLimit);
+          if (currentLimit <= 0) return;
           totalDistanceKmRef.current = cappedDist;
 
           setDistanceKm(cappedDist);
@@ -580,7 +593,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           const cals = Math.max(Math.round(cappedDist * 62), Math.round(combinedSteps * 0.04));
           setCaloriesBurned(cals);
 
-          setTokensEarned(Number((cappedDist * rate).toFixed(2)));
+          setTokensEarned(calculateWorkoutEarnings(cappedDist, runners));
 
           routePointsRef.current.push([lat, lng]);
           if (routePolylineRef.current) {
@@ -675,7 +688,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       return;
     }
 
-    if (activeRunnerCooldown.isCooling) {
+    if (selectedRunners.length === 0 || coolingSelectedRunners.length > 0) {
       return;
     }
 
@@ -726,6 +739,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   };
 
   const handleStartWorkoutWithMotion = async () => {
+    if (selectedRunners.length === 0 || coolingSelectedRunners.length > 0) return;
     if (typeof (DeviceMotionEvent as any)?.requestPermission === 'function') {
       try {
         await (DeviceMotionEvent as any).requestPermission();
@@ -739,8 +753,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   };
 
   const startWorkoutTracking = () => {
-    sessionRunnerIdRef.current = activeRunnerRef.current?.id || '';
-    setSessionRunnerId(sessionRunnerIdRef.current);
+    sessionRunnerIdsRef.current = selectedRunnersRef.current.map((runner) => runner.id);
+    setSessionRunnerIds(sessionRunnerIdsRef.current);
     isTrackingRef.current = true;
     isPausedRef.current = false;
     setIsTracking(true);
@@ -800,7 +814,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       distance: distanceKm.toFixed(2),
       time: formatTime(secondsElapsed),
       calories: caloriesBurned,
-      runnerName: activeRunner ? activeRunner.name : 'Runner',
+      runnerName: selectedRunnersRef.current.map((runner) => runner.name).join(' + ') || 'Runner',
     };
     isTrackingRef.current = false;
     isPausedRef.current = false;
@@ -822,16 +836,19 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     setShowFinishModal(false);
 
     const finalEarned = lastWorkoutSummary.earned;
-    const runnerId = sessionRunnerIdRef.current || sessionRunnerId || activeRunner?.id;
+    const runnerIds = sessionRunnerIdsRef.current.length > 0
+      ? sessionRunnerIdsRef.current
+      : sessionRunnerIds;
 
-    onWorkoutFinish?.(finalEarned, runnerId);
+    onWorkoutFinish?.(finalEarned, runnerIds);
 
     // Clear active workout session
     try {
       localStorage.removeItem(ACTIVE_WORKOUT_STORAGE_KEY);
     } catch (e) {}
-    sessionRunnerIdRef.current = '';
-    setSessionRunnerId('');
+    sessionRunnerIdsRef.current = [];
+    setSessionRunnerIds([]);
+    setSelectedRunnerIds((current) => current.filter((runnerId) => !runnerIds.includes(runnerId)));
 
     // Reset stats for next session
     totalDistanceKmRef.current = 0.0;
@@ -881,8 +898,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
   const displayDistance = distanceKm.toFixed(2);
   const displayMeters = Math.round(distanceKm * 1000);
-  const currentLimit = activeRunner ? activeRunner.kmLimitPerDay : 6;
-  const isLimitReached = distanceKm >= currentLimit;
+  const currentLimit = workoutDistanceLimit;
+  const isLimitReached = currentLimit > 0 && distanceKm >= currentLimit;
 
   return (
     <div className="w-full flex flex-col space-y-3 animate-fade-in text-white select-none pb-4">
@@ -996,11 +1013,11 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         </div>
 
         {/* Floating Live Runner Equipped Badge */}
-        {activeRunner && (
+        {selectedRunners.length > 0 && (
           <div className="absolute bottom-3 left-3 z-20 flex items-center gap-2 bg-[#11141B]/90 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-white/15 shadow-lg">
             <Zap className="w-3.5 h-3.5 text-[#D8FD2F]" />
             <span className="text-[10px] font-extrabold text-white">
-              {activeRunner.name} (+₱{activeRunner.earningRate.toFixed(2)}/km)
+              {selectedRunners.length} Runners (+₱{selectedEarningRate.toFixed(2)}/km)
             </span>
           </div>
         )}
@@ -1040,28 +1057,34 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs px-1">
                   <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                    Choose Your Runner ({ownedRunners.length} Owned)
+                    Choose Runners ({ownedRunners.length} Owned)
                   </span>
-                  {activeRunner && (
+                  {selectedRunners.length > 0 && (
                     <span className="text-cyan-400 font-extrabold text-[10px]">
-                      Limit: {activeRunner.kmLimitPerDay} KM/day
+                      {selectedRunners.length} selected · +₱{selectedEarningRate.toFixed(2)}/km · {workoutDistanceLimit} KM max
                     </span>
                   )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
                   {ownedRunners.map((runner) => {
-                    const isSelected = selectedRunnerId === runner.id;
+                    const isSelected = selectedRunnerIds.includes(runner.id);
                     const cdInfo = getRunnerCooldown(runner.id);
 
                     return (
                       <button
                         key={runner.id}
                         type="button"
-                        disabled={cdInfo.isCooling}
-                        onClick={() => setSelectedRunnerId(runner.id)}
+                        aria-pressed={isSelected}
+                        onClick={() => setSelectedRunnerIds((current) => {
+                          if (current.includes(runner.id)) return current.filter((id) => id !== runner.id);
+                          if (cdInfo.isCooling) return current;
+                          return [...current, runner.id];
+                        })}
                         className={`p-2.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between ${
-                          cdInfo.isCooling
+                          isSelected && cdInfo.isCooling
+                            ? 'bg-red-950/30 border-red-500/50'
+                            : cdInfo.isCooling
                             ? 'bg-[#12151D] border-red-500/30 opacity-60 cursor-not-allowed'
                             : isSelected
                             ? 'bg-[#1C263A] border-[#D8FD2F] shadow-lg shadow-[#D8FD2F]/10'
@@ -1095,7 +1118,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                             </span>
                           ) : isSelected ? (
                             <span className="text-[#D8FD2F] font-black uppercase">
-                              SELECTED
+                              SELECTED · REMOVE
                             </span>
                           ) : (
                             <span className="text-slate-400">
@@ -1112,20 +1135,20 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           </div>
         ) : (
           /* ACTIVE RUNNER DISPLAY WHEN TRACKING */
-          activeRunner && (
+          selectedRunners.length > 0 && (
             <div className="bg-[#121620] border border-[#252C3D] rounded-2xl p-3 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <img
-                  src={activeRunner.image}
-                  alt={activeRunner.name}
+                  src={selectedRunners[0].image}
+                  alt={selectedRunnerNames}
                   className="w-10 h-10 object-contain rounded-xl bg-[#090C12] p-1 border border-white/10"
                 />
                 <div>
-                  <h4 className="text-xs font-black text-white">{activeRunner.name}</h4>
+                  <h4 className="text-xs font-black text-white">{selectedRunnerNames}</h4>
                   <div className="flex items-center gap-2 text-[10px] text-slate-300 font-mono mt-0.5">
-                    <span className="text-emerald-400 font-bold">+₱{activeRunner.earningRate.toFixed(2)}/km</span>
+                    <span className="text-emerald-400 font-bold">+₱{selectedEarningRate.toFixed(2)}/km combined</span>
                     <span>•</span>
-                    <span>Limit: {activeRunner.kmLimitPerDay}KM/day</span>
+                    <span>Max: {workoutDistanceLimit}KM</span>
                   </div>
                 </div>
               </div>
@@ -1150,9 +1173,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 {displayDistance}
               </span>
               <span className="text-sm font-bold text-slate-300">km</span>
-              {activeRunner && (
+              {workoutDistanceLimit > 0 && (
                 <span className="text-xs font-mono font-bold text-slate-400 ml-1">
-                  / {activeRunner.kmLimitPerDay} km
+                  / {workoutDistanceLimit} km
                 </span>
               )}
             </div>
@@ -1179,13 +1202,21 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 <Lock className="w-4 h-4 text-amber-400" />
                 <span>Buy Runner First</span>
               </button>
-            ) : activeRunnerCooldown.isCooling ? (
+            ) : selectedRunners.length === 0 ? (
+              <button
+                disabled
+                className="px-5 py-3 rounded-full bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-2 font-extrabold text-xs cursor-not-allowed"
+              >
+                <Lock className="w-4 h-4 text-amber-400" />
+                <span>Select a Runner</span>
+              </button>
+            ) : coolingSelectedRunners.length > 0 ? (
               <button
                 disabled
                 className="px-5 py-3 rounded-full bg-red-950/60 text-red-300 border border-red-500/30 flex items-center gap-1.5 font-extrabold text-xs cursor-not-allowed"
               >
                 <Hourglass className="w-4 h-4 text-red-400" />
-                <span>In Cooldown ({activeRunnerCooldown.remaining})</span>
+                <span>Deselect cooling Runners</span>
               </button>
             ) : (
               <button
@@ -1383,7 +1414,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 Workout Complete!
               </h3>
               <p className="text-xs text-slate-300 mt-1">
-                Your workout for <span className="text-[#D8FD2F] font-bold">{lastWorkoutSummary.runnerName}</span> has ended. Upon collecting, your earnings are credited and this runner enters a 24-hour daily cooldown.
+                Your workout using <span className="text-[#D8FD2F] font-bold">{lastWorkoutSummary.runnerName}</span> has ended. Collect your reward to place each selected Runner on a 24-hour cooldown.
               </p>
             </div>
 
@@ -1412,7 +1443,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-[10px] text-amber-200 flex items-center justify-center gap-1.5 font-semibold">
               <Hourglass className="w-3.5 h-3.5 text-amber-400" />
-              <span>{lastWorkoutSummary.runnerName} will be locked for 24 hours.</span>
+              <span>Each selected Runner will be locked for 24 hours.</span>
             </div>
 
             <button
