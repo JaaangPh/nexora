@@ -167,6 +167,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const pauseStartTimeRef = useRef<number>(0);
   const pausedDurationRef = useRef<number>(0);
   const sessionRunnerIdsRef = useRef<string[]>([]);
+  const finishWasPausedRef = useRef(false);
 
   // Leaflet map refs
   const rawId = useId();
@@ -212,6 +213,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           : selectedRunnersRef.current.map((runner) => runner.id),
         isTracking: isTrackingRef.current,
         pendingFinish,
+        pendingWasPaused: finishWasPausedRef.current,
         lastWorkoutSummary: summary,
         isPaused: isPausedRef.current,
         workoutStartTime: workoutStartTimeRef.current,
@@ -241,6 +243,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           const runnerIds = data.runnerIds || (data.runnerId ? [data.runnerId] : []);
           sessionRunnerIdsRef.current = runnerIds;
           setSessionRunnerIds(runnerIds);
+          finishWasPausedRef.current = !!data.pendingWasPaused;
           if (runnerIds.length > 0) setSelectedRunnerIds(runnerIds);
           setShowFinishModal(true);
         } else if (data.isTracking && data.workoutStartTime) {
@@ -809,6 +812,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   // 9. END & EARN -> OPEN CELEBRATION MODAL
   // --------------------------------------------------------------------------
   const handleFinishWorkout = async () => {
+    finishWasPausedRef.current = isPausedRef.current;
     const summary = {
       earned: Math.round(tokensEarned * 100) / 100,
       distance: distanceKm.toFixed(2),
@@ -829,6 +833,24 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     saveWorkoutSnapshot(true, summary);
   };
 
+  const handleCancelFinish = () => {
+    setShowFinishModal(false);
+    isTrackingRef.current = true;
+    isPausedRef.current = finishWasPausedRef.current;
+    setIsTracking(true);
+    setIsPaused(finishWasPausedRef.current);
+
+    if (finishWasPausedRef.current) {
+      pauseStartTimeRef.current = Date.now();
+      releaseWakeLock();
+    } else {
+      pauseStartTimeRef.current = 0;
+      void startContinuousGpsWatch();
+      if (keepScreenOn) requestWakeLock();
+    }
+    saveWorkoutSnapshot();
+  };
+
   // --------------------------------------------------------------------------
   // 10. COLLECT & CONTINUE (Claims reward, sets 24h cooldown, resets)
   // --------------------------------------------------------------------------
@@ -846,6 +868,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     try {
       localStorage.removeItem(ACTIVE_WORKOUT_STORAGE_KEY);
     } catch (e) {}
+    window.dispatchEvent(new Event('nexora:workout-safe-to-update'));
     sessionRunnerIdsRef.current = [];
     setSessionRunnerIds([]);
     setSelectedRunnerIds((current) => current.filter((runnerId) => !runnerIds.includes(runnerId)));
@@ -1446,6 +1469,12 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               <span>Each selected Runner will be locked for 24 hours.</span>
             </div>
 
+            <button
+              onClick={handleCancelFinish}
+              className="w-full py-3 rounded-2xl bg-[#202633] hover:bg-[#2b3445] text-white border border-white/10 font-black text-xs uppercase tracking-wider active:scale-95 transition-all"
+            >
+              Cancel & Continue Workout
+            </button>
             <button
               onClick={handleCollectAndContinue}
               className="w-full py-3.5 rounded-2xl bg-[#D8FD2F] hover:bg-[#c6ec22] text-[#0A0D11] font-black text-xs uppercase tracking-wider shadow-lg shadow-[#D8FD2F]/20 active:scale-95 transition-all"

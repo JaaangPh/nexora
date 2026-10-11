@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { RefreshCw } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { Header } from './components/Header';
 import { AuthTabs, AuthMode } from './components/AuthTabs';
 import { LoginForm } from './components/LoginForm';
@@ -13,6 +15,11 @@ export const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [prefilledInviteCode, setPrefilledInviteCode] = useState<string>('');
+  const [sessionExpiredNotice, setSessionExpiredNotice] = useState('');
+  const [isUpdatingApp, setIsUpdatingApp] = useState(
+    () => sessionStorage.getItem('nexora_update_in_progress') === '1'
+  );
+  const updateAvailableRef = useRef(false);
 
   // 1. Check URL for invitation link or referral code on mount
   useEffect(() => {
@@ -36,6 +43,106 @@ export const App: React.FC = () => {
       setPrefilledInviteCode(formatted);
       setActiveTab('register');
     }
+  }, []);
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setCurrentUser(null);
+      setActiveTab('login');
+      setSessionExpiredNotice('You were signed out because this account was opened on another device.');
+      if (window.location.pathname !== '/') window.history.pushState({}, '', '/');
+    };
+
+    window.addEventListener('nexora:session-expired', handleSessionExpired);
+    return () => window.removeEventListener('nexora:session-expired', handleSessionExpired);
+  }, []);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    document.body.classList.add('nexora-native');
+    return () => document.body.classList.remove('nexora-native');
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let isChecking = false;
+    const validateCurrentSession = async () => {
+      if (isChecking || document.visibilityState !== 'visible') return;
+      isChecking = true;
+      try {
+        await api.getMe();
+      } catch {
+        // The API request dispatches the session-expired event for invalidated sessions.
+      } finally {
+        isChecking = false;
+      }
+    };
+
+    const intervalId = window.setInterval(validateCurrentSession, 20000);
+    window.addEventListener('focus', validateCurrentSession);
+    document.addEventListener('visibilitychange', validateCurrentSession);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', validateCurrentSession);
+      document.removeEventListener('visibilitychange', validateCurrentSession);
+    };
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let isChecking = false;
+    const workoutStorageKey = 'nexora_active_workout';
+
+    const hasWorkoutInProgress = () => {
+      try {
+        const workout = JSON.parse(localStorage.getItem(workoutStorageKey) || 'null');
+        return !!(workout?.isTracking || workout?.pendingFinish);
+      } catch {
+        return false;
+      }
+    };
+
+    const reloadWhenSafe = () => {
+      if (!updateAvailableRef.current || hasWorkoutInProgress()) return;
+      updateAvailableRef.current = false;
+      sessionStorage.setItem('nexora_update_in_progress', '1');
+      setIsUpdatingApp(true);
+      window.setTimeout(() => window.location.reload(), 300);
+    };
+
+    const checkForAppUpdate = async () => {
+      if (isChecking || document.visibilityState !== 'visible') return;
+      isChecking = true;
+      try {
+        const response = await fetch(`/version.json?check=${Date.now()}`, { cache: 'no-store' });
+        if (!response.ok) return;
+        const version = await response.json() as { buildId?: string };
+        if (version.buildId && version.buildId !== __APP_BUILD_ID__) {
+          updateAvailableRef.current = true;
+          reloadWhenSafe();
+        }
+      } catch {
+        // Offline APK sessions will retry when the app is visible again.
+      } finally {
+        isChecking = false;
+      }
+    };
+
+    const handleSafeToUpdate = () => reloadWhenSafe();
+    const intervalId = window.setInterval(checkForAppUpdate, 60000);
+    window.addEventListener('focus', checkForAppUpdate);
+    document.addEventListener('visibilitychange', checkForAppUpdate);
+    window.addEventListener('nexora:workout-safe-to-update', handleSafeToUpdate);
+    void checkForAppUpdate();
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', checkForAppUpdate);
+      document.removeEventListener('visibilitychange', checkForAppUpdate);
+      window.removeEventListener('nexora:workout-safe-to-update', handleSafeToUpdate);
+    };
   }, []);
 
   // 2. Check existing session on load
@@ -69,6 +176,13 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isInitializing && isUpdatingApp) {
+      sessionStorage.removeItem('nexora_update_in_progress');
+      setIsUpdatingApp(false);
+    }
+  }, [isInitializing, isUpdatingApp]);
+
   const handleUpdateUser = (updatedUser: User) => {
     setCurrentUser(updatedUser);
     const token = getStoredToken();
@@ -78,10 +192,12 @@ export const App: React.FC = () => {
   };
 
   const handleLoginSuccess = (user: User) => {
+    setSessionExpiredNotice('');
     setCurrentUser(user);
   };
 
   const handleRegisterSuccess = (user: User) => {
+    setSessionExpiredNotice('');
     setCurrentUser(user);
   };
 
@@ -114,7 +230,7 @@ export const App: React.FC = () => {
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-4 border-[#142B5B] border-t-cyan-400 rounded-full animate-spin" />
           <span className="text-xs font-bold tracking-wider text-[#142B5B] uppercase">
-            Loading Nexora Portal...
+            {isUpdatingApp ? 'Updating Nexora...' : 'Loading Nexora Portal...'}
           </span>
         </div>
       </div>
@@ -135,6 +251,11 @@ export const App: React.FC = () => {
               <Header />
               <section className="relative -mt-9 z-20 px-4 sm:px-6 pb-8 bg-white rounded-t-[32px] flex-1 flex flex-col shadow-card">
                 <div className="pt-4 flex-1 flex flex-col">
+                  {sessionExpiredNotice && (
+                    <p role="alert" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+                      {sessionExpiredNotice}
+                    </p>
+                  )}
                   {/* Tab Switcher */}
                   <div className="mb-6">
                     <AuthTabs activeTab={activeTab} onTabChange={setActiveTab} />
@@ -165,6 +286,12 @@ export const App: React.FC = () => {
           )}
         </main>
       </div>
+      {isUpdatingApp && (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-[#060D1E] text-white">
+          <RefreshCw className="h-10 w-10 animate-spin text-[#D8FD2F]" />
+          <span className="text-sm font-extrabold uppercase tracking-wider">Updating Nexora...</span>
+        </div>
+      )}
     </div>
   );
 };

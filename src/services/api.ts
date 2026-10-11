@@ -84,6 +84,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   }));
 
   if (!response.ok) {
+    const isAuthenticationEntryPoint = endpoint.includes('/api/auth/login') || endpoint.includes('/api/auth/register');
+    if (response.status === 401 && token && !isAuthenticationEntryPoint) {
+      clearStoredSession();
+      window.dispatchEvent(new Event('nexora:session-expired'));
+    }
     const errorMsg = data.message || `Request failed with status ${response.status}`;
     throw new Error(errorMsg);
   }

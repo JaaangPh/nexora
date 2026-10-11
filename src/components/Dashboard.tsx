@@ -153,7 +153,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
     <div className="w-full h-full flex flex-col overflow-hidden bg-[#08132B] text-white font-sans select-none">
       
       {/* Scrollable Content Container */}
-      <div className="w-full flex-1 overflow-y-auto min-h-0 pb-4">
+      <div className="dashboard-scroll w-full flex-1 overflow-y-auto min-h-0 pb-4">
 
         {/* ---------------------------------------------------- */}
         {/* TOP HERO BRAND BANNER (Nexora Technologies Header) */}

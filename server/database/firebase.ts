@@ -95,6 +95,7 @@ export interface FirestoreUser {
   ownedRunners?: string[];
   equippedRunnerId?: string;
   runnerCooldowns?: Record<string, number>;
+  activeSessionId?: string | null;
 }
 
 /**
@@ -198,6 +199,10 @@ export async function updateUserLastLogin(id: string): Promise<void> {
   await firestore.collection('users').doc(id).update({
     lastLoginAt: new Date().toISOString(),
   });
+}
+
+export async function updateUserActiveSession(id: string, sessionId: string | null): Promise<void> {
+  await firestore.collection('users').doc(id).update({ activeSessionId: sessionId });
 }
 
 export async function updateUserUsername(id: string, username: string): Promise<void> {

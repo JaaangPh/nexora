@@ -9,6 +9,7 @@ import {
   findUserById,
   createUser,
   updateUserLastLogin,
+  updateUserActiveSession,
   updateUserUsername,
   updateUserBalance,
   updateUserRunners,
@@ -28,9 +29,11 @@ function isValidPhone(phone: string): boolean {
 }
 
 // Helper: Issue JWT Session Token & set HTTP-only cookie
-function issueSession(user: { id: string; phoneNumber: string; role: string }, res: Response): string {
+async function issueSession(user: { id: string; phoneNumber: string; role: string }, res: Response): Promise<string> {
+  const sessionId = crypto.randomUUID();
+  await updateUserActiveSession(user.id, sessionId);
   const token = jwt.sign(
-    { id: user.id, phoneNumber: user.phoneNumber, role: user.role },
+    { id: user.id, phoneNumber: user.phoneNumber, role: user.role, sessionId },
     config.jwtSecret,
     { expiresIn: config.jwtExpiresIn as any }
   );
@@ -123,7 +126,7 @@ export async function register(req: Request, res: Response): Promise<void> {
       role: 'member',
     };
 
-    const token = issueSession(userPayload, res);
+    const token = await issueSession(userPayload, res);
 
     res.status(201).json({
       success: true,
@@ -209,7 +212,7 @@ export async function login(req: Request, res: Response): Promise<void> {
       role: user.role,
     };
 
-    const token = issueSession(userPayload, res);
+    const token = await issueSession(userPayload, res);
 
     res.json({
       success: true,
@@ -243,7 +246,10 @@ export async function login(req: Request, res: Response): Promise<void> {
 /**
  * POST /api/auth/logout
  */
-export async function logout(req: Request, res: Response): Promise<void> {
+export async function logout(req: AuthRequest, res: Response): Promise<void> {
+  if (req.user) {
+    await updateUserActiveSession(req.user.id, null);
+  }
   res.clearCookie('nexora_token');
   res.json({
     success: true,

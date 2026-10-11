@@ -16,6 +16,16 @@
     color: #17233B;
     -webkit-tap-highlight-color: transparent;
   }
+
+  body.nexora-native,
+  body.nexora-native #root {
+    overscroll-behavior-y: none;
+  }
+}
+
+.nexora-native .dashboard-scroll {
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Custom subtle scrollbar */

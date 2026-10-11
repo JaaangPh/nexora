@@ -8,6 +8,7 @@ export interface AuthRequest extends Request {
     id: string;
     phoneNumber: string;
     role: string;
+    sessionId: string;
   };
 }
 
@@ -38,6 +39,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       id: string;
       phoneNumber: string;
       role: string;
+      sessionId?: string;
     };
 
     // Verify user exists in Firestore
@@ -51,10 +53,19 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       return;
     }
 
+    if (!decoded.sessionId || user.activeSessionId !== decoded.sessionId) {
+      res.status(401).json({
+        success: false,
+        message: 'This account was signed in on another device. Please log in again.',
+      });
+      return;
+    }
+
     req.user = {
       id: user.id,
       phoneNumber: user.phoneNumber,
       role: user.role,
+      sessionId: decoded.sessionId,
     };
 
     next();

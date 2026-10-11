@@ -16,7 +16,7 @@ const router = Router();
 // Public Authentication endpoints with rate limiting
 router.post('/register', authLimiter, register);
 router.post('/login', authLimiter, login);
-router.post('/logout', logout);
+router.post('/logout', authMiddleware, logout);
 
 // Protected endpoints
 router.get('/me', authMiddleware, getMe);

@@ -28,6 +28,7 @@ public class MainActivity extends BridgeActivity {
         super.onStart();
         if (bridge != null && bridge.getWebView() != null) {
             WebView webView = bridge.getWebView();
+            webView.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
             WebSettings settings = webView.getSettings();
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
             settings.setGeolocationEnabled(true);
