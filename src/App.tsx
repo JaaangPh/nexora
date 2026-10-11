@@ -6,7 +6,7 @@ import { RegisterForm } from './components/RegisterForm';
 import { Dashboard } from './components/Dashboard';
 import { InviteCodeHelper } from './components/InviteCodeHelper';
 import { User } from './types/auth';
-import { getStoredUser, api } from './services/api';
+import { getStoredUser, getStoredToken, setStoredSession, api } from './services/api';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AuthMode>('login');
@@ -47,7 +47,13 @@ export const App: React.FC = () => {
       api
         .getMe()
         .then((res) => {
-          if (res.user) setCurrentUser(res.user);
+          if (res.user) {
+            setCurrentUser({
+              ...res.user,
+              balance: res.user.balance !== undefined ? res.user.balance : (cachedUser.balance ?? 0),
+              totalDeposit: res.user.totalDeposit !== undefined ? res.user.totalDeposit : (cachedUser.totalDeposit ?? 0),
+            });
+          }
         })
         .catch(() => {
           setCurrentUser(null);
@@ -59,6 +65,14 @@ export const App: React.FC = () => {
       setIsInitializing(false);
     }
   }, []);
+
+  const handleUpdateUser = (updatedUser: User) => {
+    setCurrentUser(updatedUser);
+    const token = getStoredToken();
+    if (token) {
+      setStoredSession(token, updatedUser);
+    }
+  };
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
@@ -111,7 +125,7 @@ export const App: React.FC = () => {
         <main className="w-full flex-1 flex flex-col h-full overflow-hidden">
           {currentUser ? (
             /* Authenticated Member View (Full Mobile App Experience) */
-            <Dashboard user={currentUser} onLogout={handleLogout} onUpdateUser={setCurrentUser} />
+            <Dashboard user={currentUser} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />
           ) : (
             /* Unauthenticated Member View */
             <>

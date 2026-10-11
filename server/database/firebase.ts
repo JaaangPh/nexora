@@ -202,3 +202,9 @@ export async function updateUserUsername(id: string, username: string): Promise<
     username: username.trim(),
   });
 }
+
+export async function updateUserBalance(id: string, balance: number): Promise<void> {
+  await firestore.collection('users').doc(id).update({
+    balance,
+  });
+}

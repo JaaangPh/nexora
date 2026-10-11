@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { User } from '../types/auth';
 import { BrandLogo } from './BrandLogo';
+import { api } from '../services/api';
 
 // Separated Tab Components
 import { MarketTab } from './market';
@@ -99,12 +100,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
 
     setIsProcessingDeposit(true);
     setTimeout(() => {
+      const newBal = Number((currentBalance + amt).toFixed(2));
       const updatedUser: User = {
         ...user,
-        balance: currentBalance + amt,
+        balance: newBal,
         totalDeposit: currentTotalDeposit + amt,
       };
       if (onUpdateUser) onUpdateUser(updatedUser);
+      api.updateBalance(newBal).catch((err) => console.warn('[Deposit Sync]', err));
       setIsProcessingDeposit(false);
       setDepositSuccessMsg(`Successfully deposited ₱${amt.toLocaleString('en-US', { minimumFractionDigits: 2 })} via ${depositMethod}!`);
       setTimeout(() => {
@@ -129,11 +132,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
     setIsProcessingWithdraw(true);
     setWithdrawMsg(null);
     setTimeout(() => {
+      const newBal = Math.max(0, Number((currentBalance - amt).toFixed(2)));
       const updatedUser: User = {
         ...user,
-        balance: Math.max(0, currentBalance - amt),
+        balance: newBal,
       };
       if (onUpdateUser) onUpdateUser(updatedUser);
+      api.updateBalance(newBal).catch((err) => console.warn('[Withdraw Sync]', err));
       setIsProcessingWithdraw(false);
       setWithdrawMsg(`Withdrawal request of ₱${amt.toLocaleString('en-US', { minimumFractionDigits: 2 })} submitted successfully!`);
       setTimeout(() => {
@@ -326,7 +331,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                       </span>
                       <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-0.5">
                         <Zap className="w-3 h-3" />
-                        +8.4 NEX/km
+                        +₱8.40/km
                       </span>
                     </div>
                     <h4 className="text-sm font-black text-white truncate">
@@ -364,10 +369,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
               user={user}
               equippedSneakerName={equippedSneaker}
               onWorkoutFinish={(earned) => {
-                if (onUpdateUser && earned > 0) {
-                  onUpdateUser({
+                if (earned > 0) {
+                  const newBalance = Number((currentBalance + earned).toFixed(2));
+                  const updatedUser = {
                     ...user,
-                    balance: currentBalance + (earned * 50)
+                    balance: newBalance,
+                  };
+                  if (onUpdateUser) {
+                    onUpdateUser(updatedUser);
+                  }
+                  api.updateBalance(newBalance).catch((err) => {
+                    console.warn('[Workout Balance Sync]', err);
                   });
                 }
               }}

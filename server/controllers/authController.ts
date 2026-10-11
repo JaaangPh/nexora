@@ -10,6 +10,7 @@ import {
   createUser,
   updateUserLastLogin,
   updateUserUsername,
+  updateUserBalance,
   generateUniqueReferralCode,
   generateAutoUsername,
 } from '../database/firebase.js';
@@ -135,6 +136,8 @@ export async function register(req: Request, res: Response): Promise<void> {
         referralCode: myReferralCode,
         inviteCodeUsed: usedCode,
         createdAt: newUser.createdAt,
+        balance: newUser.balance ?? 0,
+        totalDeposit: newUser.totalDeposit ?? 0,
       },
     });
   } catch (error: any) {
@@ -217,6 +220,8 @@ export async function login(req: Request, res: Response): Promise<void> {
         inviteCodeUsed: user.inviteCodeUsed,
         createdAt: user.createdAt,
         lastLoginAt: new Date().toISOString(),
+        balance: user.balance ?? 0,
+        totalDeposit: user.totalDeposit ?? 0,
       },
     });
   } catch (error: any) {
@@ -268,6 +273,8 @@ export async function getMe(req: AuthRequest, res: Response): Promise<void> {
         status: user.status,
         createdAt: user.createdAt,
         lastLoginAt: user.lastLoginAt,
+        balance: user.balance ?? 0,
+        totalDeposit: user.totalDeposit ?? 0,
       },
     });
   } catch (error: any) {
@@ -313,10 +320,55 @@ export async function updateUsername(req: AuthRequest, res: Response): Promise<v
         status: updatedUser!.status,
         createdAt: updatedUser!.createdAt,
         lastLoginAt: updatedUser!.lastLoginAt,
+        balance: updatedUser!.balance ?? 0,
+        totalDeposit: updatedUser!.totalDeposit ?? 0,
       },
     });
   } catch (error: any) {
     console.error('[Update Username Error]', error);
     res.status(500).json({ success: false, message: error?.message || 'Failed to update username.' });
+  }
+}
+
+/**
+ * PUT /api/auth/balance
+ */
+export async function updateBalance(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Unauthorized session.' });
+      return;
+    }
+
+    const { balance } = req.body;
+    if (typeof balance !== 'number' || isNaN(balance) || balance < 0) {
+      res.status(400).json({ success: false, message: 'Invalid balance amount.' });
+      return;
+    }
+
+    const cleanBalance = Math.round(balance * 100) / 100;
+    await updateUserBalance(req.user.id, cleanBalance);
+    const updatedUser = await findUserById(req.user.id);
+
+    res.json({
+      success: true,
+      message: 'Balance updated successfully!',
+      user: {
+        id: updatedUser!.id,
+        phoneNumber: updatedUser!.phoneNumber,
+        username: updatedUser!.username,
+        role: updatedUser!.role,
+        referralCode: updatedUser!.referralCode || 'NT723906',
+        inviteCodeUsed: updatedUser!.inviteCodeUsed,
+        status: updatedUser!.status,
+        createdAt: updatedUser!.createdAt,
+        lastLoginAt: updatedUser!.lastLoginAt,
+        balance: updatedUser!.balance ?? cleanBalance,
+        totalDeposit: updatedUser!.totalDeposit ?? 0,
+      },
+    });
+  } catch (error: any) {
+    console.error('[Update Balance Error]', error);
+    res.status(500).json({ success: false, message: error?.message || 'Failed to update balance.' });
   }
 }

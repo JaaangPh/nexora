@@ -24,18 +24,20 @@ import {
   Settings,
   X,
   SunMedium,
-  Smartphone
+  Smartphone,
+  Sparkles
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation, Position } from '@capacitor/geolocation';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { User } from '../types/auth';
+import { SNEAKER_CATALOG } from './market';
 
 interface TrackTabProps {
   user?: User;
   equippedSneakerName?: string;
-  onWorkoutFinish?: (earnedTokens: number) => void;
+  onWorkoutFinish?: (earned: number) => void;
 }
 
 type WorkoutMode = 'running' | 'cycling' | 'transit';
@@ -63,6 +65,21 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 }) => {
   // Activity Mode
   const [selectedMode, setSelectedMode] = useState<WorkoutMode>('running');
+
+  // Equipped Sneaker Earning Rate in ₱ per km
+  const equippedSneakerItem = SNEAKER_CATALOG.find((s) => s.name === equippedSneakerName);
+  const earningRate = equippedSneakerItem ? equippedSneakerItem.efficiency : 8.4;
+  const earningRateRef = useRef(earningRate);
+  earningRateRef.current = earningRate;
+
+  // Workout Finish Modal & Last Summary State
+  const [showFinishModal, setShowFinishModal] = useState(false);
+  const [lastWorkoutSummary, setLastWorkoutSummary] = useState({
+    earned: 0,
+    distance: '0.00',
+    time: '00:00',
+    calories: 0,
+  });
 
   // Workout state
   const [isTracking, setIsTracking] = useState(false);
@@ -424,7 +441,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         if (totalDistanceKmRef.current < motionDistanceKm) {
           totalDistanceKmRef.current = motionDistanceKm;
           setDistanceKm(motionDistanceKm);
-          setTokensEarned(Number((motionDistanceKm * 8.4).toFixed(3)));
+          setTokensEarned(Number((motionDistanceKm * earningRateRef.current).toFixed(2)));
         }
 
         // Realistic MET Calories: ~62 kcal per km or ~0.04 kcal per step (no double counting)
@@ -527,8 +544,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           const cals = Math.max(Math.round(currentTotalKm * 62), Math.round(combinedSteps * 0.04));
           setCaloriesBurned(cals);
 
-          // Token reward calculation (+8.4 NEX per km)
-          setTokensEarned(Number((currentTotalKm * 8.4).toFixed(3)));
+          // Reward calculation (+₱ per km based on sneaker efficiency)
+          setTokensEarned(Number((currentTotalKm * earningRateRef.current).toFixed(2)));
 
           // Append to polyline on map
           routePointsRef.current.push([lat, lng]);
@@ -752,9 +769,38 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
     await stopContinuousGpsWatch();
 
+    const finalEarned = Math.round(tokensEarned * 100) / 100;
+    const finalDistance = distanceKm.toFixed(2);
+    const finalTime = formatTime(secondsElapsed);
+    const finalCalories = caloriesBurned;
+
+    setLastWorkoutSummary({
+      earned: finalEarned,
+      distance: finalDistance,
+      time: finalTime,
+      calories: finalCalories,
+    });
+    setShowFinishModal(true);
+
     if (onWorkoutFinish) {
-      onWorkoutFinish(tokensEarned);
+      onWorkoutFinish(finalEarned);
     }
+  };
+
+  const handleDismissFinishModal = () => {
+    setShowFinishModal(false);
+    totalDistanceKmRef.current = 0.0;
+    motionStepCountRef.current = 0;
+    gpsStepCountRef.current = 0;
+    routePointsRef.current = [];
+    if (routePolylineRef.current) {
+      routePolylineRef.current.setLatLngs([]);
+    }
+    setDistanceKm(0);
+    setStepCount(0);
+    setCaloriesBurned(0);
+    setTokensEarned(0);
+    setSecondsElapsed(0);
   };
 
   // --------------------------------------------------------------------------
@@ -774,7 +820,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           setDistanceKm(totalDistanceKmRef.current);
           setStepCount(Math.round(totalDistanceKmRef.current * 1350));
           setCaloriesBurned(Math.round(totalDistanceKmRef.current * 65));
-          setTokensEarned(Number((totalDistanceKmRef.current * 8.4).toFixed(3)));
+          setTokensEarned(Number((totalDistanceKmRef.current * earningRateRef.current).toFixed(2)));
           setCurrentSpeedKmh(7.8);
         }
       }, 1000);
@@ -826,9 +872,14 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               </span>
               <span className={`w-1.5 h-1.5 rounded-full ${gpsStatus === 'active' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
             </div>
-            <span className="text-xs font-bold text-white block">
-              {user?.username || 'Arindo Runner'}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-white block">
+                {user?.username || 'Nexora Runner'}
+              </span>
+              <span className="text-[10px] font-extrabold text-[#D8FD2F] font-mono bg-[#D8FD2F]/10 px-2 py-0.5 rounded-md border border-[#D8FD2F]/20">
+                ₱{(user?.balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -922,7 +973,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         <div className="absolute bottom-3 left-3 z-20 flex items-center gap-2 bg-[#11141B]/90 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-white/15 shadow-lg">
           <Zap className="w-3.5 h-3.5 text-[#D8FD2F]" />
           <span className="text-[10px] font-extrabold text-white">
-            {equippedSneakerName} (+8.4 NEX/km)
+            {equippedSneakerName} (+₱{earningRate.toFixed(2)}/km)
           </span>
         </div>
       </div>
@@ -1034,7 +1085,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 EARNED
               </span>
               <span className="text-xs font-mono font-black text-cyan-300">
-                +{tokensEarned} NEX
+                +₱{tokensEarned.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
           </div>
@@ -1184,8 +1235,61 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* ==================================================== */}
+      {/* 6. WORKOUT COMPLETED / REWARD CLAIMED MODAL          */}
+      {/* ==================================================== */}
+      {showFinishModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#151922] border border-[#2C3344] rounded-[32px] p-6 w-full max-w-sm text-white shadow-2xl relative space-y-4 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-[#D8FD2F]/20 border border-[#D8FD2F]/40 text-[#D8FD2F] flex items-center justify-center mx-auto shadow-lg shadow-[#D8FD2F]/15">
+              <Sparkles className="w-7 h-7 text-[#D8FD2F] animate-pulse" />
+            </div>
+
+            <div>
+              <h3 className="text-xl font-black text-white tracking-tight">
+                Workout Complete!
+              </h3>
+              <p className="text-xs text-slate-300 mt-1">
+                Your workout has ended and earnings have been credited to your balance.
+              </p>
+            </div>
+
+            <div className="bg-[#0E1118] border border-[#232936] rounded-2xl p-4 space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                Total Reward Earned
+              </span>
+              <div className="text-3xl font-black font-mono text-[#D8FD2F]">
+                +₱{lastWorkoutSummary.earned.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <div className="grid grid-cols-3 gap-2 pt-3 border-t border-[#1C2230] text-center">
+                <div>
+                  <span className="text-[9px] text-slate-400 block font-bold uppercase">Distance</span>
+                  <span className="text-xs font-mono font-bold text-white">{lastWorkoutSummary.distance} km</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-slate-400 block font-bold uppercase">Time</span>
+                  <span className="text-xs font-mono font-bold text-white">{lastWorkoutSummary.time}</span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-slate-400 block font-bold uppercase">Burned</span>
+                  <span className="text-xs font-mono font-bold text-orange-400">{lastWorkoutSummary.calories} kcal</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleDismissFinishModal}
+              className="w-full py-3.5 rounded-2xl bg-[#D8FD2F] hover:bg-[#c6ec22] text-[#0A0D11] font-black text-xs uppercase tracking-wider shadow-lg shadow-[#D8FD2F]/20 active:scale-95 transition-all"
+            >
+              Collect & Continue
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default TrackTab;
+

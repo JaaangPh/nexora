@@ -370,7 +370,7 @@ export const MarketTab: React.FC<MarketTabProps> = ({
                   <span>Efficiency</span>
                 </div>
                 <div className="font-mono font-extrabold text-white text-sm">
-                  +{selectedSneaker.efficiency} NEX/km
+                  +₱{selectedSneaker.efficiency.toFixed(2)}/km
                 </div>
               </div>
 

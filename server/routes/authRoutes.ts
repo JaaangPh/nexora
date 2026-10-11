@@ -5,6 +5,7 @@ import {
   logout,
   getMe,
   updateUsername,
+  updateBalance,
 } from '../controllers/authController.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
@@ -19,5 +20,6 @@ router.post('/logout', logout);
 // Protected endpoints
 router.get('/me', authMiddleware, getMe);
 router.put('/username', authMiddleware, updateUsername);
+router.put('/balance', authMiddleware, updateBalance);
 
 export default router;
