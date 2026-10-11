@@ -10,121 +10,143 @@ import {
   CheckCircle2,
   X,
   ShoppingBag,
-  ArrowUpRight,
   ChevronRight,
-  Filter
+  Filter,
+  Lock,
+  Compass
 } from 'lucide-react';
+import { User } from '../types/auth';
+import { api } from '../services/api';
 
-export interface SneakerItem {
+export interface RunnerItem {
   id: string;
   name: string;
-  category: 'SLOW' | 'NORMAL' | 'FAST' | 'TRAINER';
+  category: string;
   level: string;
   serial: string;
-  priceAvax: number;
   pricePhp: number;
   image: string;
   speedRange: string;
-  efficiency: number;
-  comfort: number;
-  resilience: number;
-  durability: number;
+  earningRate: number; // +₱/km
+  comfort: number; // / 10
+  healthLimit: number; // Health Limit (before Resilience)
+  kmLimitPerDay: number; // KM Limit per day
   description: string;
   accentColor: string;
+  // Aliases for compatibility with existing references
+  efficiency: number;
+  resilience: number;
 }
 
-export const SNEAKER_CATALOG: SneakerItem[] = [
+export const RUNNER_CATALOG: RunnerItem[] = [
   {
     id: 'snk-1',
     name: 'Cyber Aero Walker',
-    category: 'SLOW',
+    category: 'WALKER',
     level: 'LV.1',
-    serial: '#30209202',
-    priceAvax: 1.5,
-    pricePhp: 2450,
+    serial: '#30209201',
+    pricePhp: 500,
     image: '/images/sneaker_cyan.jpg',
-    speedRange: '1 - 6 km/h',
-    efficiency: 8.4,
-    comfort: 7.2,
-    resilience: 9.1,
-    durability: 100,
-    description: 'Engineered for smooth low-impact walks and daily commuting with high energy recovery.',
+    speedRange: '1 - 6 KM',
+    earningRate: 8.40,
+    efficiency: 8.40,
+    comfort: 5,
+    healthLimit: 10,
+    resilience: 10,
+    kmLimitPerDay: 6,
+    description: 'Comfortable daily commuter runner engineered for steady walking cadence and entry-level outdoor tracking.',
     accentColor: '#00E5FF'
   },
   {
     id: 'snk-2',
     name: 'Bio Surge Trainer',
-    category: 'SLOW',
+    category: 'TRAINER',
     level: 'LV.1',
     serial: '#30209202',
-    priceAvax: 1.5,
-    pricePhp: 2450,
+    pricePhp: 1000,
     image: '/images/sneaker_green.jpg',
-    speedRange: '1 - 6 km/h',
-    efficiency: 8.8,
-    comfort: 8.0,
-    resilience: 8.6,
-    durability: 100,
-    description: 'Eco-composite lightweight sneaker optimized for steady cadence and maximum comfort.',
+    speedRange: '1 - 10 KM',
+    earningRate: 10.20,
+    efficiency: 10.20,
+    comfort: 7,
+    healthLimit: 13,
+    resilience: 13,
+    kmLimitPerDay: 10,
+    description: 'Eco-composite responsive trainer offering enhanced rebound, 10KM daily limits, and higher step yields.',
     accentColor: '#76FF03'
   },
   {
     id: 'snk-3',
-    name: 'Vortex Blaze Sprint',
-    category: 'FAST',
+    name: 'Cobalt Aero Jogger',
+    category: 'JOGGER',
     level: 'LV.1',
-    serial: '#30209202',
-    priceAvax: 1.5,
-    pricePhp: 2450,
-    image: '/images/sneaker_orange.jpg',
-    speedRange: '8 - 20 km/h',
-    efficiency: 10.5,
-    comfort: 6.8,
-    resilience: 9.4,
-    durability: 100,
-    description: 'High-tempo racing shoe designed for competitive fast runs and maximum token yields.',
-    accentColor: '#FF6D00'
+    serial: '#30209203',
+    pricePhp: 2000,
+    image: '/images/sneaker_blue.jpg',
+    speedRange: '1 - 20 KM',
+    earningRate: 20.10,
+    efficiency: 20.10,
+    comfort: 8,
+    healthLimit: 20,
+    resilience: 20,
+    kmLimitPerDay: 20,
+    description: 'High-end performance jogger engineered for endurance athletes with a 20KM daily limit and high yield.',
+    accentColor: '#2979FF'
   },
   {
     id: 'snk-4',
-    name: 'Cobalt Aero Jogger',
-    category: 'NORMAL',
+    name: 'Vortex Blaze Sprint',
+    category: 'SPRINT',
     level: 'LV.1',
-    serial: '#30209202',
-    priceAvax: 1.5,
-    pricePhp: 2450,
-    image: '/images/sneaker_blue.jpg',
-    speedRange: '4 - 10 km/h',
-    efficiency: 9.2,
-    comfort: 7.9,
-    resilience: 8.9,
-    durability: 100,
-    description: 'Versatile all-around jogging sneaker with balanced efficiency and durable treads.',
-    accentColor: '#2979FF'
+    serial: '#30209204',
+    pricePhp: 3500,
+    image: '/images/sneaker_orange.jpg',
+    speedRange: '1 - 35 KM',
+    earningRate: 40.00,
+    efficiency: 40.00,
+    comfort: 10,
+    healthLimit: 25,
+    resilience: 25,
+    kmLimitPerDay: 35,
+    description: 'Flagship elite racing runner delivering maximum token yields of ₱40/km, 10/10 comfort, and 35KM daily limit.',
+    accentColor: '#FF6D00'
   }
 ];
 
+// Backwards-compatible aliases
+export const SNEAKER_CATALOG = RUNNER_CATALOG;
+export type SneakerItem = RunnerItem;
+
 interface MarketTabProps {
+  user?: User;
   currentBalance?: number;
-  onEquipSneaker?: (sneaker: SneakerItem) => void;
+  onEquipSneaker?: (runner: RunnerItem) => void;
+  onUpdateUser?: (user: User) => void;
+  onNavigateTab?: (tab: 'home' | 'market' | 'track' | 'team' | 'me') => void;
   equippedSneakerId?: string;
 }
 
 export const MarketTab: React.FC<MarketTabProps> = ({
-  currentBalance = 1000,
+  user,
+  currentBalance = 0,
   onEquipSneaker,
-  equippedSneakerId = 'snk-1'
+  onUpdateUser,
+  onNavigateTab,
+  equippedSneakerId
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSneaker, setSelectedSneaker] = useState<SneakerItem | null>(null);
+  const [selectedRunner, setSelectedRunner] = useState<RunnerItem | null>(null);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [purchaseSuccess, setPurchaseSuccess] = useState<string | null>(null);
-  const [equippedId, setEquippedId] = useState<string>(equippedSneakerId);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [filterSort, setFilterSort] = useState<'featured' | 'priceAsc' | 'priceDesc'>('featured');
 
-  const filteredSneakers = SNEAKER_CATALOG.filter((item) => {
+  const ownedRunnerIds = user?.ownedRunners || [];
+  const equippedId = user?.equippedRunnerId || equippedSneakerId || '';
+
+  const filteredRunners = RUNNER_CATALOG.filter((item) => {
     const matchesCat = selectedCategory === 'ALL' || item.category === selectedCategory;
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -132,39 +154,96 @@ export const MarketTab: React.FC<MarketTabProps> = ({
       item.category.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCat && matchesSearch;
   }).sort((a, b) => {
-    if (filterSort === 'priceAsc') return a.priceAvax - b.priceAvax;
-    if (filterSort === 'priceDesc') return b.priceAvax - a.priceAvax;
+    if (filterSort === 'priceAsc') return a.pricePhp - b.pricePhp;
+    if (filterSort === 'priceDesc') return b.pricePhp - a.pricePhp;
     return 0;
   });
 
-  const handleBuyOrEquip = (sneaker: SneakerItem) => {
+  const handleBuyRunner = async (runner: RunnerItem) => {
+    if (currentBalance < runner.pricePhp) {
+      setPurchaseError(`Insufficient balance. You need ₱${runner.pricePhp.toLocaleString()} but currently have ₱${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}.`);
+      setTimeout(() => setPurchaseError(null), 3000);
+      return;
+    }
+
     setIsPurchasing(true);
+    setPurchaseError(null);
+
+    const newBalance = Number((currentBalance - runner.pricePhp).toFixed(2));
+    const nextOwned = Array.from(new Set([...ownedRunnerIds, runner.id]));
+
+    const updatedUser: User = {
+      ...user!,
+      balance: newBalance,
+      ownedRunners: nextOwned,
+      equippedRunnerId: runner.id,
+    };
+
+    if (onUpdateUser) {
+      onUpdateUser(updatedUser);
+    }
+    if (onEquipSneaker) {
+      onEquipSneaker(runner);
+    }
+
+    try {
+      await api.updateRunners({
+        balance: newBalance,
+        ownedRunners: nextOwned,
+        equippedRunnerId: runner.id,
+      });
+    } catch (err) {
+      console.warn('[Marketplace] Error syncing runner purchase to backend:', err);
+    }
+
+    setIsPurchasing(false);
+    setPurchaseSuccess(`🎉 Purchased ${runner.name}! It is now equipped and ready for Track workouts.`);
     setTimeout(() => {
-      setIsPurchasing(false);
-      setEquippedId(sneaker.id);
-      if (onEquipSneaker) {
-        onEquipSneaker(sneaker);
-      }
-      setPurchaseSuccess(`Equipped ${sneaker.name} successfully! Ready for Move Tracking.`);
-      setTimeout(() => {
-        setPurchaseSuccess(null);
-        setSelectedSneaker(null);
-      }, 1500);
-    }, 800);
+      setPurchaseSuccess(null);
+      setSelectedRunner(null);
+    }, 2000);
+  };
+
+  const handleEquipRunner = async (runner: RunnerItem) => {
+    const updatedUser: User = {
+      ...user!,
+      equippedRunnerId: runner.id,
+    };
+
+    if (onUpdateUser) {
+      onUpdateUser(updatedUser);
+    }
+    if (onEquipSneaker) {
+      onEquipSneaker(runner);
+    }
+
+    try {
+      await api.updateRunners({
+        equippedRunnerId: runner.id,
+      });
+    } catch (err) {
+      console.warn('[Marketplace] Error syncing equipped runner to backend:', err);
+    }
+
+    setPurchaseSuccess(`Equipped ${runner.name}! Ready for Track workouts.`);
+    setTimeout(() => {
+      setPurchaseSuccess(null);
+      setSelectedRunner(null);
+    }, 1500);
   };
 
   return (
-    <div className="space-y-4 animate-fade-in text-white">
+    <div className="space-y-4 animate-fade-in text-white pb-6 select-none">
       {/* ---------------------------------------------------- */}
       {/* TOP HEADER: Marketplace Title + Filter Controls       */}
       {/* ---------------------------------------------------- */}
       <div className="flex items-center justify-between pt-1">
         <div>
           <h2 className="text-2xl font-black tracking-tight text-white font-['Plus_Jakarta_Sans',sans-serif]">
-            Marketplace
+            Runners Market
           </h2>
           <p className="text-[11px] font-semibold text-cyan-300/80 uppercase tracking-wider">
-            Move-To-Earn Sneaker Gear
+            Acquire Runners to Unlock Move & Earn Tracking
           </p>
         </div>
 
@@ -185,7 +264,7 @@ export const MarketTab: React.FC<MarketTabProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search sneakers, serials, attributes..."
+            placeholder="Search runners, models, speed ranges..."
             className="w-full bg-[#0B1A3D]/90 border border-[#1E3A78] rounded-xl pl-9 pr-3.5 py-2 text-xs font-semibold text-white placeholder-blue-300/40 focus:outline-none focus:border-cyan-400 transition-colors"
           />
           {searchQuery && (
@@ -200,7 +279,7 @@ export const MarketTab: React.FC<MarketTabProps> = ({
 
         {/* Quick Filter Categories */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
-          {['ALL', 'SLOW', 'NORMAL', 'FAST'].map((cat) => {
+          {['ALL', 'WALKER', 'TRAINER', 'JOGGER', 'SPRINT'].map((cat) => {
             const isActive = selectedCategory === cat;
             return (
               <button
@@ -212,7 +291,7 @@ export const MarketTab: React.FC<MarketTabProps> = ({
                     : 'bg-[#0D204A] text-blue-200/70 hover:text-white border border-[#1E3E80]'
                 }`}
               >
-                {cat === 'ALL' ? 'ALL SNEAKERS' : cat}
+                {cat === 'ALL' ? 'ALL RUNNERS' : cat}
               </button>
             );
           })}
@@ -220,65 +299,88 @@ export const MarketTab: React.FC<MarketTabProps> = ({
       </div>
 
       {/* ---------------------------------------------------- */}
-      {/* SECTION TITLE: NEW BEST                              */}
+      {/* SECTION TITLE: CATALOG                               */}
       {/* ---------------------------------------------------- */}
       <div className="flex items-center justify-between pt-1">
         <span className="text-xs font-black tracking-widest text-blue-300 uppercase">
-          NEW BEST
+          AVAILABLE RUNNERS ({filteredRunners.length})
         </span>
-        <span className="text-[10px] font-bold text-cyan-300/70 uppercase tracking-wider">
-          {filteredSneakers.length} Available
+        <span className="text-[10px] font-bold text-cyan-300/80 font-mono">
+          Bal: ₱{currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
         </span>
       </div>
 
       {/* ---------------------------------------------------- */}
-      {/* 2-COLUMN SNEAKER GRID (Matches User Picture 1)       */}
+      {/* 2-COLUMN RUNNER GRID                                 */}
       {/* ---------------------------------------------------- */}
       <div className="grid grid-cols-2 gap-3">
-        {filteredSneakers.map((sneaker) => {
-          const isEquipped = equippedId === sneaker.id;
+        {filteredRunners.map((runner) => {
+          const isOwned = ownedRunnerIds.includes(runner.id);
+          const isEquipped = equippedId === runner.id;
 
           return (
             <div
-              key={sneaker.id}
-              onClick={() => setSelectedSneaker(sneaker)}
-              className="bg-white rounded-3xl p-3 flex flex-col justify-between shadow-lg hover:shadow-cyan-400/10 cursor-pointer transition-all transform hover:-translate-y-0.5 active:scale-[0.98] relative overflow-hidden group select-none"
+              key={runner.id}
+              onClick={() => setSelectedRunner(runner)}
+              className={`bg-[#0C1B3E] border rounded-3xl p-3 flex flex-col justify-between shadow-lg hover:shadow-cyan-400/10 cursor-pointer transition-all transform hover:-translate-y-0.5 active:scale-[0.98] relative overflow-hidden group select-none ${
+                isEquipped
+                  ? 'border-emerald-500/80 shadow-emerald-500/10'
+                  : isOwned
+                  ? 'border-cyan-500/50'
+                  : 'border-[#1E3A78]'
+              }`}
             >
-              {/* Equipped Badge */}
-              {isEquipped && (
-                <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-10 bg-emerald-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-sm uppercase tracking-wider">
-                  EQUIPPED
-                </div>
-              )}
-
-              {/* Top Row: Category Tag (e.g. SLOW) & Level (e.g. LV.1) */}
-              <div className="flex items-center justify-between w-full z-10">
-                <span className="text-xs font-black text-slate-800 tracking-tight">
-                  {sneaker.category}
+              {/* Top Badges */}
+              <div className="flex items-center justify-between w-full z-10 mb-1">
+                <span className="text-[10px] font-black uppercase tracking-wider text-cyan-300 bg-cyan-950/70 px-2 py-0.5 rounded-md border border-cyan-500/30">
+                  {runner.category}
                 </span>
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  {sneaker.level}
-                </span>
+                {isEquipped ? (
+                  <span className="bg-emerald-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-sm uppercase tracking-wider">
+                    EQUIPPED
+                  </span>
+                ) : isOwned ? (
+                  <span className="bg-cyan-500/30 text-cyan-300 border border-cyan-400/40 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    OWNED
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-slate-400 font-mono">
+                    {runner.level}
+                  </span>
+                )}
               </div>
 
-              {/* Sneaker Image Container */}
-              <div className="w-full aspect-square my-1 relative flex items-center justify-center overflow-hidden rounded-2xl bg-slate-50 group-hover:scale-105 transition-transform duration-300">
+              {/* Runner Image Container */}
+              <div className="w-full aspect-square my-1 relative flex items-center justify-center overflow-hidden rounded-2xl bg-[#07132F]/80 border border-[#162B5B] group-hover:scale-105 transition-transform duration-300">
                 <img
-                  src={sneaker.image}
-                  alt={sneaker.name}
+                  src={runner.image}
+                  alt={runner.name}
                   className="w-full h-full object-contain drop-shadow-md"
                   loading="lazy"
                 />
               </div>
 
-              {/* Bottom Info: Serial ID and Price */}
-              <div className="flex flex-col items-center text-center mt-1 w-full">
-                <span className="text-[10px] font-semibold text-slate-400 tracking-wider">
-                  {sneaker.serial}
-                </span>
-                <span className="text-xs font-black text-slate-900 tracking-tight mt-0.5">
-                  {sneaker.priceAvax} AVAX
-                </span>
+              {/* Info: Name, Earning Rate & Price */}
+              <div className="flex flex-col items-center text-center mt-1.5 w-full space-y-1">
+                <h4 className="text-xs font-black text-white truncate max-w-full">
+                  {runner.name}
+                </h4>
+                
+                <div className="flex items-center justify-between w-full text-[10px] px-1 font-mono">
+                  <span className="text-emerald-400 font-bold">
+                    +₱{runner.earningRate.toFixed(2)}/km
+                  </span>
+                  <span className="text-slate-400 font-semibold">
+                    {runner.kmLimitPerDay}KM/day
+                  </span>
+                </div>
+
+                <div className="w-full pt-1.5 border-t border-[#193268] flex items-center justify-between text-xs">
+                  <span className="text-[10px] text-blue-300/70 font-bold">PRICE</span>
+                  <span className="font-black text-amber-400 font-mono text-sm">
+                    ₱{runner.pricePhp.toLocaleString()}
+                  </span>
+                </div>
               </div>
             </div>
           );
@@ -286,113 +388,102 @@ export const MarketTab: React.FC<MarketTabProps> = ({
       </div>
 
       {/* ---------------------------------------------------- */}
-      {/* BOTTOM BANNER: Better than everything                */}
-      {/* Matches user screenshot Picture 1                    */}
+      {/* RUNNER DETAILS & BUY/EQUIP MODAL                     */}
       {/* ---------------------------------------------------- */}
-      <div className="relative w-full rounded-3xl overflow-hidden shadow-2xl border border-purple-500/30 group">
-        <div className="w-full h-36 relative">
-          <img
-            src="/images/m2e_banner.jpg"
-            alt="Better than everything"
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-purple-950/90 via-[#0B1533]/80 to-transparent" />
-          
-          <div className="absolute inset-0 p-4 flex flex-col justify-center max-w-[70%]">
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-300 mb-0.5">
-              SEASON EXCLUSIVE
-            </span>
-            <h3 className="text-base sm:text-lg font-black text-white leading-tight drop-shadow-md">
-              Better than everything
-            </h3>
-            <p className="text-[11px] text-purple-200/90 font-medium mt-1 leading-snug line-clamp-2">
-              Supercharge your step earnings with high-tier Move-To-Earn gear.
-            </p>
-            <div className="mt-2 flex items-center gap-1.5 text-[10px] font-extrabold text-cyan-300">
-              <span>EXPLORE DROPS</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ---------------------------------------------------- */}
-      {/* SNEAKER DETAILS & EQUIP MODAL                        */}
-      {/* ---------------------------------------------------- */}
-      {selectedSneaker && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
-          <div className="bg-[#0B1A3D] border border-[#1E3E80] w-full max-w-sm rounded-t-[32px] sm:rounded-[32px] p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+      {selectedRunner && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in">
+          <div className="bg-[#0B1A3D] border border-[#1E3E80] w-full max-w-sm rounded-t-[32px] sm:rounded-[32px] p-5 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-[#1E3A78]/60 pb-3">
               <div>
                 <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest">
-                  {selectedSneaker.category} • {selectedSneaker.level}
+                  {selectedRunner.category} • {selectedRunner.level}
                 </span>
                 <h3 className="text-lg font-black text-white tracking-tight">
-                  {selectedSneaker.name}
+                  {selectedRunner.name}
                 </h3>
               </div>
               <button
-                onClick={() => setSelectedSneaker(null)}
+                onClick={() => { setSelectedRunner(null); setPurchaseError(null); }}
                 className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-300 hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Sneaker Preview Image */}
-            <div className="w-full aspect-square rounded-2xl bg-white p-4 flex items-center justify-center relative shadow-inner">
+            {/* Runner Preview Image */}
+            <div className="w-full aspect-square rounded-2xl bg-[#07132F] border border-[#1A346C] p-4 flex items-center justify-center relative shadow-inner">
               <img
-                src={selectedSneaker.image}
-                alt={selectedSneaker.name}
-                className="w-full h-full object-contain drop-shadow-xl"
+                src={selectedRunner.image}
+                alt={selectedRunner.name}
+                className="w-full h-full object-contain drop-shadow-2xl"
               />
-              <span className="absolute bottom-2 right-3 text-[10px] font-mono font-bold text-slate-500">
-                {selectedSneaker.serial}
+              <span className="absolute bottom-2 right-3 text-[10px] font-mono font-bold text-slate-400">
+                {selectedRunner.serial}
               </span>
             </div>
 
-            {/* Attributes Grid */}
+            {/* Description */}
+            <p className="text-xs text-blue-200/80 leading-relaxed">
+              {selectedRunner.description}
+            </p>
+
+            {/* EXACT STATS SPECIFIED BY USER */}
             <div className="grid grid-cols-2 gap-2 text-xs">
+              {/* 1. Speed Range */}
               <div className="bg-[#08132B] p-2.5 rounded-xl border border-[#1E3A78]/50">
                 <div className="flex items-center gap-1.5 text-cyan-300 font-bold mb-1">
                   <Zap className="w-3.5 h-3.5" />
                   <span>Speed Range</span>
                 </div>
                 <div className="font-mono font-extrabold text-white text-sm">
-                  {selectedSneaker.speedRange}
+                  {selectedRunner.speedRange}
                 </div>
               </div>
 
+              {/* 2. Earning (before Efficiency) */}
               <div className="bg-[#08132B] p-2.5 rounded-xl border border-[#1E3A78]/50">
                 <div className="flex items-center gap-1.5 text-emerald-400 font-bold mb-1">
                   <Flame className="w-3.5 h-3.5" />
-                  <span>Efficiency</span>
+                  <span>Earning</span>
                 </div>
-                <div className="font-mono font-extrabold text-white text-sm">
-                  +₱{selectedSneaker.efficiency.toFixed(2)}/km
+                <div className="font-mono font-extrabold text-emerald-300 text-sm">
+                  +₱{selectedRunner.earningRate.toFixed(2)}/km
                 </div>
               </div>
 
+              {/* 3. Comfort */}
               <div className="bg-[#08132B] p-2.5 rounded-xl border border-[#1E3A78]/50">
                 <div className="flex items-center gap-1.5 text-purple-400 font-bold mb-1">
                   <Heart className="w-3.5 h-3.5" />
                   <span>Comfort</span>
                 </div>
                 <div className="font-mono font-extrabold text-white text-sm">
-                  {selectedSneaker.comfort} / 10
+                  {selectedRunner.comfort} / 10
                 </div>
               </div>
 
+              {/* 4. Health Limit (before Resilience) */}
               <div className="bg-[#08132B] p-2.5 rounded-xl border border-[#1E3A78]/50">
                 <div className="flex items-center gap-1.5 text-amber-400 font-bold mb-1">
                   <Shield className="w-3.5 h-3.5" />
-                  <span>Resilience</span>
+                  <span>Health Limit</span>
                 </div>
                 <div className="font-mono font-extrabold text-white text-sm">
-                  {selectedSneaker.resilience} / 10
+                  {selectedRunner.healthLimit}
                 </div>
               </div>
+            </div>
+
+            {/* Daily KM Limit Bar */}
+            <div className="bg-[#07132F] border border-cyan-500/30 rounded-2xl p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Compass className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-bold text-white">Daily KM Limit</span>
+              </div>
+              <span className="text-sm font-black text-cyan-300 font-mono">
+                {selectedRunner.kmLimitPerDay} KM / Day
+              </span>
             </div>
 
             {/* Price & Action Button */}
@@ -401,39 +492,61 @@ export const MarketTab: React.FC<MarketTabProps> = ({
                 <span className="text-[10px] text-blue-200/60 uppercase font-bold block">
                   PRICE
                 </span>
-                <span className="text-lg font-black text-white font-mono">
-                  {selectedSneaker.priceAvax} AVAX
-                </span>
-                <span className="text-[10px] text-cyan-300 font-bold block">
-                  ≈ ₱{selectedSneaker.pricePhp.toLocaleString()}
+                <span className="text-xl font-black text-amber-400 font-mono">
+                  ₱{selectedRunner.pricePhp.toLocaleString()}
                 </span>
               </div>
 
-              <button
-                onClick={() => handleBuyOrEquip(selectedSneaker)}
-                disabled={isPurchasing}
-                className={`px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg transition-all active:scale-95 ${
-                  equippedId === selectedSneaker.id
-                    ? 'bg-emerald-500 text-white hover:bg-emerald-400'
-                    : 'bg-cyan-400 text-[#08132B] hover:bg-cyan-300 shadow-cyan-400/20'
-                }`}
-              >
-                {isPurchasing ? (
-                  <span>Processing...</span>
-                ) : equippedId === selectedSneaker.id ? (
-                  <>
+              {ownedRunnerIds.includes(selectedRunner.id) ? (
+                /* ALREADY OWNED */
+                equippedId === selectedRunner.id ? (
+                  <button
+                    disabled
+                    className="px-5 py-3 rounded-2xl bg-emerald-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg opacity-90 cursor-default"
+                  >
                     <CheckCircle2 className="w-4 h-4" />
                     <span>Equipped & Active</span>
-                  </>
+                  </button>
                 ) : (
-                  <>
-                    <ShoppingBag className="w-4 h-4" />
-                    <span>Equip & Run</span>
-                  </>
-                )}
-              </button>
+                  <button
+                    onClick={() => handleEquipRunner(selectedRunner)}
+                    className="px-5 py-3 rounded-2xl bg-cyan-400 hover:bg-cyan-300 text-[#08132B] font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-cyan-400/20 active:scale-95 transition-all"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Equip Runner</span>
+                  </button>
+                )
+              ) : (
+                /* NOT OWNED: BUY BUTTON */
+                <button
+                  onClick={() => handleBuyRunner(selectedRunner)}
+                  disabled={isPurchasing}
+                  className={`px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg transition-all active:scale-95 ${
+                    currentBalance < selectedRunner.pricePhp
+                      ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                      : 'bg-[#D8FD2F] hover:bg-[#cbf128] text-black shadow-[#D8FD2F]/20'
+                  }`}
+                >
+                  {isPurchasing ? (
+                    <span>Processing...</span>
+                  ) : (
+                    <>
+                      <ShoppingBag className="w-4 h-4" />
+                      <span>Buy Runner</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
 
+            {/* Error Message */}
+            {purchaseError && (
+              <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-center text-xs font-bold text-red-300 animate-fade-in">
+                {purchaseError}
+              </div>
+            )}
+
+            {/* Success Message */}
             {purchaseSuccess && (
               <div className="p-3 bg-emerald-500/20 border border-emerald-500/50 rounded-xl text-center text-xs font-bold text-emerald-300 animate-fade-in">
                 {purchaseSuccess}

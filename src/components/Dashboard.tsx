@@ -357,34 +357,42 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
           {/* TAB 2: MARKET (from market.tsx) */}
           {activeTab === 'market' && (
             <MarketTab
+              user={user}
               currentBalance={currentBalance}
               onEquipSneaker={(snk) => setEquippedSneaker(snk.name)}
-              equippedSneakerId="snk-1"
+              onUpdateUser={onUpdateUser}
+              onNavigateTab={handleTabSelect}
+              equippedSneakerId={user.equippedRunnerId}
             />
           )}
 
           {/* TAB 3: TRACK (from track.tsx) */}
-          {activeTab === 'track' && (
+          <div className={activeTab === 'track' ? 'block' : 'hidden'}>
             <TrackTab
               user={user}
+              isActiveTab={activeTab === 'track'}
+              onNavigateTab={handleTabSelect}
               equippedSneakerName={equippedSneaker}
-              onWorkoutFinish={(earned) => {
-                if (earned > 0) {
-                  const newBalance = Number((currentBalance + earned).toFixed(2));
-                  const updatedUser = {
-                    ...user,
-                    balance: newBalance,
-                  };
-                  if (onUpdateUser) {
-                    onUpdateUser(updatedUser);
-                  }
-                  api.updateBalance(newBalance).catch((err) => {
-                    console.warn('[Workout Balance Sync]', err);
-                  });
-                }
+              onWorkoutFinish={(earned, runnerId) => {
+                const newBalance = Number((currentBalance + earned).toFixed(2));
+                const updatedCooldowns = runnerId
+                  ? {
+                      ...(user.runnerCooldowns || {}),
+                      [runnerId]: Date.now() + 24 * 60 * 60 * 1000,
+                    }
+                  : user.runnerCooldowns || {};
+                const updatedUser = {
+                  ...user,
+                  balance: newBalance,
+                  runnerCooldowns: updatedCooldowns,
+                };
+                onUpdateUser?.(updatedUser);
+                api.updateRunners({ balance: newBalance, runnerCooldowns: updatedCooldowns }).catch((err) => {
+                  console.warn('[Workout Reward Sync]', err);
+                });
               }}
             />
-          )}
+          </div>
 
           {/* TAB 4: TEAM (from team.tsx) */}
           {activeTab === 'team' && <TeamTab user={user} />}

@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef, useId } from 'react';
 import {
-  SlidersHorizontal,
-  Search,
   Navigation,
   Play,
   Pause,
@@ -17,7 +15,6 @@ import {
   Layers,
   Radio,
   Zap,
-  Award,
   AlertTriangle,
   LocateFixed,
   Globe,
@@ -25,23 +22,31 @@ import {
   X,
   SunMedium,
   Smartphone,
-  Sparkles
+  Sparkles,
+  Lock,
+  ShoppingBag,
+  Hourglass
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation, Position } from '@capacitor/geolocation';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { User } from '../types/auth';
-import { SNEAKER_CATALOG } from './market';
+import { RUNNER_CATALOG, RunnerItem } from './market';
 
 interface TrackTabProps {
   user?: User;
+  isActiveTab?: boolean;
+  onNavigateTab?: (tab: 'home' | 'market' | 'track' | 'team' | 'me') => void;
   equippedSneakerName?: string;
-  onWorkoutFinish?: (earned: number) => void;
+  onEquipSneaker?: (runner: RunnerItem) => void;
+  onWorkoutFinish?: (earned: number, runnerId?: string) => void;
 }
 
 type WorkoutMode = 'running' | 'cycling' | 'transit';
 type MapLayerType = 'google-road' | 'google-hybrid' | 'google-sat';
+
+const ACTIVE_WORKOUT_STORAGE_KEY = 'nexora_active_workout';
 
 // Haversine formula to compute exact distance between two coordinates in kilometers
 function calculateHaversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -60,32 +65,55 @@ function calculateHaversineKm(lat1: number, lon1: number, lat2: number, lon2: nu
 
 export const TrackTab: React.FC<TrackTabProps> = ({
   user,
-  equippedSneakerName = 'Cyber Aero Walker',
-  onWorkoutFinish
+  isActiveTab = true,
+  onNavigateTab,
+  onWorkoutFinish,
 }) => {
   // Activity Mode
   const [selectedMode, setSelectedMode] = useState<WorkoutMode>('running');
 
-  // Equipped Sneaker Earning Rate in ₱ per km
-  const equippedSneakerItem = SNEAKER_CATALOG.find((s) => s.name === equippedSneakerName);
-  const earningRate = equippedSneakerItem ? equippedSneakerItem.efficiency : 8.4;
-  const earningRateRef = useRef(earningRate);
-  earningRateRef.current = earningRate;
+  // Owned runners detection
+  const ownedRunnerIds = user?.ownedRunners || [];
+  const ownedRunners = RUNNER_CATALOG.filter((r) => ownedRunnerIds.includes(r.id));
+
+  // Determine initial selected runner
+  const [selectedRunnerId, setSelectedRunnerId] = useState<string>(() => {
+    if (user?.equippedRunnerId && ownedRunnerIds.includes(user.equippedRunnerId)) {
+      return user.equippedRunnerId;
+    }
+    return ownedRunners[0]?.id || '';
+  });
+  const [showFinishModal, setShowFinishModal] = useState(false);
+
+  // Keep selectedRunnerId in sync when user updates
+  useEffect(() => {
+    if (isTrackingRef.current || showFinishModal) return;
+    if (user?.equippedRunnerId && ownedRunnerIds.includes(user.equippedRunnerId)) {
+      setSelectedRunnerId(user.equippedRunnerId);
+    } else if (ownedRunners.length > 0 && !ownedRunnerIds.includes(selectedRunnerId)) {
+      setSelectedRunnerId(ownedRunners[0].id);
+    }
+  }, [user?.equippedRunnerId, ownedRunnerIds.length, showFinishModal]);
+
+  const activeRunner = RUNNER_CATALOG.find((r) => r.id === selectedRunnerId) || ownedRunners[0] || null;
+  const activeRunnerRef = useRef<RunnerItem | null>(activeRunner);
+  activeRunnerRef.current = activeRunner;
 
   // Workout Finish Modal & Last Summary State
-  const [showFinishModal, setShowFinishModal] = useState(false);
   const [lastWorkoutSummary, setLastWorkoutSummary] = useState({
     earned: 0,
     distance: '0.00',
     time: '00:00',
     calories: 0,
+    runnerName: '',
   });
+  const [sessionRunnerId, setSessionRunnerId] = useState('');
 
   // Workout state
   const [isTracking, setIsTracking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
-  // Stats: Real initial values
+  // Stats
   const [secondsElapsed, setSecondsElapsed] = useState(0);
   const [distanceKm, setDistanceKm] = useState(0.0);
   const [caloriesBurned, setCaloriesBurned] = useState(0);
@@ -102,7 +130,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const nativeWatchIdRef = useRef<string | null>(null);
   const webWatchIdRef = useRef<number | null>(null);
 
-  // Insecure context detection (iOS Safari blocks Geolocation on non-HTTPS origins)
+  // Insecure context detection
   const isInsecureContext = typeof window !== 'undefined'
     ? (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
     : false;
@@ -115,402 +143,412 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const [keepScreenOn, setKeepScreenOn] = useState(true);
   const wakeLockRef = useRef<any>(null);
 
-  // Optional Demo Mode
-  const [isDemoMode, setIsDemoMode] = useState(false);
-
   // Map settings
   const [mapLayer, setMapLayer] = useState<MapLayerType>('google-road');
-  const [destination, setDestination] = useState('Central Park Fitness Loop');
 
-  // CRITICAL REFS to completely prevent stale closures and preserve state when screen is OFF
+  // CRITICAL REFS to prevent stale closures and preserve state across background/tab changes
   const isTrackingRef = useRef(false);
   const isPausedRef = useRef(false);
-  const isDemoModeRef = useRef(false);
   const totalDistanceKmRef = useRef<number>(0.0);
   const lastPositionRef = useRef<{ lat: number; lng: number } | null>(null);
   const motionStepCountRef = useRef<number>(0);
   const gpsStepCountRef = useRef<number>(0);
-
-  // Timestamp refs to handle screen lock & off state perfectly
-  const workoutStartTimeRef = useRef<number>(0);
-  const pausedDurationRef = useRef<number>(0);
-  const pauseStartTimeRef = useRef<number>(0);
-
-  // Accelerometer step detector refs
-  const lastAccelMagnitudeRef = useRef<number>(9.8);
-  const lastStepTimestampRef = useRef<number>(0);
-  const pedometerPeakArmedRef = useRef<boolean>(false);
-
-  // Map & Leaflet References
-  const mapElementId = useId().replace(/:/g, '-');
-  const mapRef = useRef<L.Map | null>(null);
-  const userMarkerRef = useRef<L.Marker | null>(null);
-  const accuracyCircleRef = useRef<L.Circle | null>(null);
-  const routePolylineRef = useRef<L.Polyline | null>(null);
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const routePointsRef = useRef<[number, number][]>([]);
 
-  // Keep refs in sync with state
-  useEffect(() => {
-    isTrackingRef.current = isTracking;
-  }, [isTracking]);
+  // Timing refs
+  const workoutStartTimeRef = useRef<number>(0);
+  const pauseStartTimeRef = useRef<number>(0);
+  const pausedDurationRef = useRef<number>(0);
+  const sessionRunnerIdRef = useRef<string>('');
 
-  useEffect(() => {
-    isPausedRef.current = isPaused;
-  }, [isPaused]);
+  // Leaflet map refs
+  const rawId = useId();
+  const mapElementId = useRef(`map_${rawId.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Math.floor(Math.random() * 10000)}`).current;
+  const mapRef = useRef<L.Map | null>(null);
+  const markerRef = useRef<L.Marker | null>(null);
+  const accuracyCircleRef = useRef<L.Circle | null>(null);
+  const routePolylineRef = useRef<L.Polyline | null>(null);
+  const googleTileLayerRef = useRef<L.TileLayer | null>(null);
 
-  useEffect(() => {
-    isDemoModeRef.current = isDemoMode;
-  }, [isDemoMode]);
+  // Pedometer refs
+  const lastAccelMagnitudeRef = useRef<number>(9.8);
+  const pedometerPeakArmedRef = useRef<boolean>(true);
+  const lastStepTimestampRef = useRef<number>(0);
+
+  // Helper: check if a runner is in 24h cooldown
+  const getRunnerCooldown = (runnerId: string) => {
+    const cd = user?.runnerCooldowns?.[runnerId] || 0;
+    const now = Date.now();
+    if (cd > now) {
+      const diff = cd - now;
+      const h = Math.floor(diff / (1000 * 60 * 60));
+      const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      return { isCooling: true, remaining: `${h}h ${m}m`, cdTimestamp: cd };
+    }
+    return { isCooling: false, remaining: '', cdTimestamp: cd };
+  };
+
+  const activeRunnerCooldown = activeRunner ? getRunnerCooldown(activeRunner.id) : { isCooling: false, remaining: '' };
 
   // --------------------------------------------------------------------------
-  // 1. INITIALIZE REAL LEAFLET MAP WITH GOOGLE MAPS TILE LAYER
+  // 1. SAVE/RESTORE ACTIVE WORKOUT SESSION (Background / Reload persistence)
   // --------------------------------------------------------------------------
+  const saveWorkoutSnapshot = (pendingFinish = false, summary = lastWorkoutSummary) => {
+    if (!isTrackingRef.current && !pendingFinish) return;
+    try {
+      const snapshot = {
+        runnerId: sessionRunnerIdRef.current || activeRunnerRef.current?.id || '',
+        isTracking: isTrackingRef.current,
+        pendingFinish,
+        lastWorkoutSummary: summary,
+        isPaused: isPausedRef.current,
+        workoutStartTime: workoutStartTimeRef.current,
+        pauseStartTime: pauseStartTimeRef.current,
+        pausedDuration: pausedDurationRef.current,
+        distanceKm: totalDistanceKmRef.current,
+        stepCount: Math.max(motionStepCountRef.current, gpsStepCountRef.current),
+        caloriesBurned: caloriesBurned,
+        tokensEarned: tokensEarned,
+        routePoints: routePointsRef.current,
+        lastUpdated: Date.now(),
+      };
+      localStorage.setItem(ACTIVE_WORKOUT_STORAGE_KEY, JSON.stringify(snapshot));
+    } catch (e) {
+      // Ignore quota errors
+    }
+  };
+
+  // Restore on mount if workout was running
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem(ACTIVE_WORKOUT_STORAGE_KEY);
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data.pendingFinish) {
+          if (data.lastWorkoutSummary) setLastWorkoutSummary(data.lastWorkoutSummary);
+          sessionRunnerIdRef.current = data.runnerId || '';
+          setSessionRunnerId(sessionRunnerIdRef.current);
+          if (data.runnerId) setSelectedRunnerId(data.runnerId);
+          setShowFinishModal(true);
+        } else if (data.isTracking && data.workoutStartTime) {
+          isTrackingRef.current = true;
+          isPausedRef.current = !!data.isPaused;
+          workoutStartTimeRef.current = data.workoutStartTime;
+          pauseStartTimeRef.current = data.pauseStartTime || 0;
+          pausedDurationRef.current = data.pausedDuration || 0;
+          totalDistanceKmRef.current = data.distanceKm || 0;
+          motionStepCountRef.current = data.stepCount || 0;
+          gpsStepCountRef.current = data.stepCount || 0;
+          routePointsRef.current = data.routePoints || [];
+
+          if (data.runnerId) {
+            sessionRunnerIdRef.current = data.runnerId;
+            setSessionRunnerId(data.runnerId);
+            setSelectedRunnerId(data.runnerId);
+          }
+
+          setIsTracking(true);
+          setIsPaused(!!data.isPaused);
+          setDistanceKm(data.distanceKm || 0);
+          setStepCount(data.stepCount || 0);
+          setCaloriesBurned(data.caloriesBurned || 0);
+          setTokensEarned(data.tokensEarned || 0);
+
+          const now = Date.now();
+          const curPaused = data.isPaused && data.pauseStartTime ? (now - data.pauseStartTime) : 0;
+          const elapsed = Math.max(0, Math.floor((now - data.workoutStartTime - (data.pausedDuration || 0) - curPaused) / 1000));
+          setSecondsElapsed(elapsed);
+
+          if (!data.isPaused) {
+            startContinuousGpsWatch();
+            requestWakeLock();
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed restoring workout session:', err);
+    }
+  }, []);
+
+  // When tab visibility changes or user refocuses, recompute elapsed time
+  useEffect(() => {
+    const handleVisibilityOrFocus = () => {
+      if (isTrackingRef.current && !isPausedRef.current && workoutStartTimeRef.current > 0) {
+        const now = Date.now();
+        const elapsed = Math.max(0, Math.floor((now - workoutStartTimeRef.current - pausedDurationRef.current) / 1000));
+        setSecondsElapsed(elapsed);
+        saveWorkoutSnapshot();
+      }
+      if (isActiveTab && mapRef.current) {
+        setTimeout(() => mapRef.current?.invalidateSize(), 200);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+    };
+  }, [isActiveTab]);
+
+  // When switching back to TrackTab, resize map so tiles are sharp
+  useEffect(() => {
+    if (isActiveTab && mapRef.current) {
+      setTimeout(() => mapRef.current?.invalidateSize(), 150);
+    }
+  }, [isActiveTab]);
+
+  // --------------------------------------------------------------------------
+  // 2. SCREEN WAKE LOCK
+  // --------------------------------------------------------------------------
+  const requestWakeLock = async () => {
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator) {
+      try {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+      } catch (err) {
+        console.warn('Wake Lock request notice:', err);
+      }
+    }
+  };
+
+  const releaseWakeLock = () => {
+    if (wakeLockRef.current) {
+      try {
+        wakeLockRef.current.release();
+      } catch (err) {}
+      wakeLockRef.current = null;
+    }
+  };
+
+  // --------------------------------------------------------------------------
+  // 3. MAP INITIALIZATION & TILE LAYERS
+  // --------------------------------------------------------------------------
+  const getGoogleLayerUrl = (type: MapLayerType): string => {
+    switch (type) {
+      case 'google-hybrid':
+        return 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+      case 'google-sat':
+        return 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
+      case 'google-road':
+      default:
+        return 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+    }
+  };
+
+  useEffect(() => {
+    if (mapRef.current) return;
     const container = document.getElementById(`map-${mapElementId}`);
-    if (!container || mapRef.current) return;
+    if (!container) return;
 
-    const initialLat = 14.5995;
-    const initialLng = 120.9842;
+    const defaultLat = 14.5995;
+    const defaultLng = 120.9842;
 
     const map = L.map(container, {
-      center: [initialLat, initialLng],
+      center: [defaultLat, defaultLng],
       zoom: 16,
       zoomControl: false,
-      attributionControl: false
+      attributionControl: false,
     });
 
-    const tileUrl = getGoogleTileUrl(mapLayer);
-    const tiles = L.tileLayer(tileUrl, {
-      maxZoom: 20,
-      subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+    const tileLayer = L.tileLayer(getGoogleLayerUrl(mapLayer), {
+      maxZoom: 21,
+      subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
     }).addTo(map);
 
-    tileLayerRef.current = tiles;
+    googleTileLayerRef.current = tileLayer;
 
     const polyline = L.polyline([], {
-      color: '#CCFF00',
-      weight: 6,
-      opacity: 0.95,
-      lineCap: 'round',
-      lineJoin: 'round'
+      color: '#00E5FF',
+      weight: 5,
+      opacity: 0.9,
+      smoothFactor: 1,
     }).addTo(map);
-
     routePolylineRef.current = polyline;
-    mapRef.current = map;
 
-    // Check location passively on load
-    checkInitialGps(map);
+    mapRef.current = map;
+    checkInitialGps();
 
     return () => {
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [mapElementId]);
 
   useEffect(() => {
-    if (!mapRef.current || !tileLayerRef.current) return;
-    tileLayerRef.current.setUrl(getGoogleTileUrl(mapLayer));
+    if (!mapRef.current || !googleTileLayerRef.current) return;
+    googleTileLayerRef.current.setUrl(getGoogleLayerUrl(mapLayer));
   }, [mapLayer]);
 
-  function getGoogleTileUrl(layer: MapLayerType): string {
-    switch (layer) {
-      case 'google-sat':
-        return 'https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
-      case 'google-hybrid':
-        return 'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
-      case 'google-road':
-      default:
-        return 'https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
-    }
-  }
+  const updateMapMarker = (lat: number, lng: number, accuracy?: number) => {
+    if (!mapRef.current) return;
 
-  interface DeviceFix {
-    latitude: number;
-    longitude: number;
-    accuracy: number;
-    speed: number | null;
-  }
-
-  // Cross-platform GPS position fetcher: handles Capacitor APK, iOS Safari, Android Chrome
-  const getDevicePosition = async (): Promise<DeviceFix> => {
-    // 1. Native Capacitor platform (Android APK)
-    if (Capacitor.isNativePlatform()) {
-      const perm = await Geolocation.checkPermissions();
-      if (perm.location === 'prompt' || perm.location === 'prompt-with-rationale') {
-        const req = await Geolocation.requestPermissions();
-        if (req.location !== 'granted') {
-          throw new Error('Location permission denied on device.');
-        }
-      } else if (perm.location === 'denied') {
-        throw new Error('Location permission is denied. Please open Settings and enable Location for Nexora.');
-      }
-
-      const pos = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 10000
+    if (!markerRef.current) {
+      const pulsingIcon = L.divIcon({
+        className: 'custom-gps-pin',
+        html: `
+          <div style="position: relative; width: 24px; height: 24px;">
+            <div style="position: absolute; inset: -4px; background: rgba(0, 229, 255, 0.4); border-radius: 9999px; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+            <div style="position: absolute; inset: 0; background: #00E5FF; border: 3px solid #FFFFFF; border-radius: 9999px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);"></div>
+          </div>
+        `,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
       });
 
-      if (!pos || !pos.coords) {
-        throw new Error('GPS satellite fix unavailable. Please check that GPS is turned on.');
-      }
+      markerRef.current = L.marker([lat, lng], { icon: pulsingIcon }).addTo(mapRef.current);
+    } else {
+      markerRef.current.setLatLng([lat, lng]);
+    }
 
+    if (accuracy && accuracy <= 100) {
+      if (!accuracyCircleRef.current) {
+        accuracyCircleRef.current = L.circle([lat, lng], {
+          radius: accuracy,
+          color: '#00E5FF',
+          fillColor: '#00E5FF',
+          fillOpacity: 0.12,
+          weight: 1.5,
+        }).addTo(mapRef.current);
+      } else {
+        accuracyCircleRef.current.setLatLng([lat, lng]);
+        accuracyCircleRef.current.setRadius(accuracy);
+      }
+    }
+  };
+
+  const getDevicePosition = async (): Promise<{ latitude: number; longitude: number; accuracy: number; speed: number | null }> => {
+    if (Capacitor.isNativePlatform()) {
+      const perm = await Geolocation.checkPermissions();
+      if (perm.location !== 'granted') {
+        const req = await Geolocation.requestPermissions();
+        if (req.location !== 'granted') {
+          throw new Error('Location permission is denied.');
+        }
+      }
+      const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 15000 });
       return {
         latitude: pos.coords.latitude,
         longitude: pos.coords.longitude,
         accuracy: Math.round(pos.coords.accuracy),
-        speed: pos.coords.speed
+        speed: pos.coords.speed,
       };
     }
 
-    // 2. Web browser (iOS Safari, Chrome, etc.)
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      throw new Error('Geolocation is not supported by your browser.');
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            resolve({
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              accuracy: Math.round(pos.coords.accuracy),
+              speed: pos.coords.speed,
+            });
+          },
+          (err) => reject(err),
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 3000 }
+        );
+      });
     }
 
-    // Fast attempt: High Accuracy GPS (6 second timeout)
-    const tryHighAccuracy = () =>
-      new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 6000,
-          maximumAge: 10000
-        });
-      });
-
-    // Fallback: Standard Accuracy (cellular / Wi-Fi / cached)
-    const tryStandardAccuracy = () =>
-      new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: false,
-          timeout: 9000,
-          maximumAge: 30000
-        });
-      });
-
-    let rawPos: GeolocationPosition;
-    try {
-      rawPos = await tryHighAccuracy();
-    } catch (highErr: any) {
-      // If user clicked "Don't Allow" (code 1), fail immediately with actionable explanation
-      if (highErr && highErr.code === 1) {
-        if (isInsecureContext) {
-          throw new Error('iOS Safari blocks GPS over unencrypted HTTP. Use HTTPS or tap "Start Run with Motion Sensors".');
-        }
-        throw new Error('Location permission was denied. Tap the search bar settings icon in Safari/Chrome to Allow location.');
-      }
-
-      console.warn('High accuracy GPS timed out or unavailable, attempting standard accuracy fallback...', highErr);
-      try {
-        rawPos = await tryStandardAccuracy();
-      } catch (fallbackErr: any) {
-        if (fallbackErr && fallbackErr.code === 1) {
-          throw new Error('Location permission was denied. Please allow location access in your browser settings.');
-        }
-        throw fallbackErr;
-      }
-    }
-
-    return {
-      latitude: rawPos.coords.latitude,
-      longitude: rawPos.coords.longitude,
-      accuracy: Math.round(rawPos.coords.accuracy),
-      speed: rawPos.coords.speed
-    };
+    throw new Error('Geolocation is not supported on this device.');
   };
 
-  // --------------------------------------------------------------------------
-  // 2. CHECK INITIAL LOCATION (Passive)
-  // --------------------------------------------------------------------------
-  const checkInitialGps = async (mapInstance?: L.Map) => {
+  const checkInitialGps = async () => {
     try {
+      setGpsStatus('searching');
       const pos = await getDevicePosition();
-      const { latitude, longitude, accuracy } = pos;
-      setRealCoords({ lat: latitude, lng: longitude, accuracy });
+      setRealCoords({ lat: pos.latitude, lng: pos.longitude, accuracy: pos.accuracy });
       setGpsStatus('active');
-      lastPositionRef.current = { lat: latitude, lng: longitude };
+      lastPositionRef.current = { lat: pos.latitude, lng: pos.longitude };
 
-      const targetMap = mapInstance || mapRef.current;
-      if (targetMap) {
-        targetMap.setView([latitude, longitude], 17);
-        updateMapMarker(latitude, longitude, accuracy);
+      if (mapRef.current) {
+        mapRef.current.setView([pos.latitude, pos.longitude], 17);
+        updateMapMarker(pos.latitude, pos.longitude, pos.accuracy);
       }
-    } catch {
+    } catch (err: any) {
       setGpsStatus('idle');
+      console.warn('Initial GPS check:', err?.message || err);
     }
   };
 
   // --------------------------------------------------------------------------
-  // 3. UPDATE USER MARKER & ACCURACY ON REAL MAP
-  // --------------------------------------------------------------------------
-  const updateMapMarker = (lat: number, lng: number, accuracy: number) => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const customIcon = L.divIcon({
-      className: 'custom-gps-marker',
-      html: `
-        <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
-          <div style="position: absolute; width: 34px; height: 34px; background: rgba(0, 229, 255, 0.35); border-radius: 50%; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-          <div style="width: 18px; height: 18px; background: #00E5FF; border: 3px solid #FFFFFF; border-radius: 50%; box-shadow: 0 0 12px #00E5FF;"></div>
-        </div>
-      `,
-      iconSize: [34, 34],
-      iconAnchor: [17, 17]
-    });
-
-    if (!userMarkerRef.current) {
-      userMarkerRef.current = L.marker([lat, lng], { icon: customIcon }).addTo(map);
-    } else {
-      userMarkerRef.current.setLatLng([lat, lng]);
-    }
-
-    if (!accuracyCircleRef.current) {
-      accuracyCircleRef.current = L.circle([lat, lng], {
-        radius: Math.max(accuracy, 10),
-        color: '#00E5FF',
-        weight: 1,
-        fillColor: '#00E5FF',
-        fillOpacity: 0.12
-      }).addTo(map);
-    } else {
-      accuracyCircleRef.current.setLatLng([lat, lng]);
-      accuracyCircleRef.current.setRadius(Math.max(accuracy, 10));
-    }
-  };
-
-  // --------------------------------------------------------------------------
-  // 4. SCREEN WAKE LOCK (Prevents mobile screen from sleeping during run)
-  // --------------------------------------------------------------------------
-  const requestWakeLock = async () => {
-    try {
-      if ('wakeLock' in navigator && (navigator as any).wakeLock) {
-        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-      }
-    } catch (err) {
-      console.warn('Wake Lock request error:', err);
-    }
-  };
-
-  const releaseWakeLock = () => {
-    try {
-      if (wakeLockRef.current) {
-        wakeLockRef.current.release();
-        wakeLockRef.current = null;
-      }
-    } catch (err) {
-      console.warn('Wake Lock release error:', err);
-    }
-  };
-
-  // --------------------------------------------------------------------------
-  // 5. ACCELEROMETER / DEVICE MOTION STEP COUNTER (Instant real-time steps)
+  // 4. ACCELEROMETER HARDWARE PEDOMETER (Background Steps)
   // --------------------------------------------------------------------------
   useEffect(() => {
     const handleDeviceMotion = (event: DeviceMotionEvent) => {
       if (!isTrackingRef.current || isPausedRef.current) return;
 
       const acc = event.accelerationIncludingGravity || event.acceleration;
-      if (!acc || acc.x === null || acc.y === null || acc.z === null) return;
+      if (!acc) return;
 
-      const magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+      const x = acc.x || 0;
+      const y = acc.y || 0;
+      const z = acc.z || 0;
+      const magnitude = Math.sqrt(x * x + y * y + z * z);
+
+      const delta = magnitude - lastAccelMagnitudeRef.current;
+      lastAccelMagnitudeRef.current = magnitude;
+
       const now = Date.now();
+      const minStepIntervalMs = 280;
 
-      // Peak-to-Valley Biometric Pedometer:
-      // 1. Arm step cycle on forward heel strike peak (> 11.2 m/s²)
-      if (magnitude >= 11.2) {
-        pedometerPeakArmedRef.current = true;
-      }
-
-      // 2. Count step when foot drops/recoils into valley (< 9.0 m/s²) with cadence debounce (>= 330ms)
-      if (
-        pedometerPeakArmedRef.current &&
-        magnitude <= 9.0 &&
-        now - lastStepTimestampRef.current >= 330
-      ) {
+      if (delta > 2.2 && pedometerPeakArmedRef.current && (now - lastStepTimestampRef.current > minStepIntervalMs)) {
         lastStepTimestampRef.current = now;
         pedometerPeakArmedRef.current = false;
         motionStepCountRef.current += 1;
 
-        // Reconcile with total steps
         const totalSteps = Math.max(motionStepCountRef.current, gpsStepCountRef.current);
         setStepCount(totalSteps);
 
-        // Distance from steps (average human stride ~0.74m/step = 0.00074 km)
         const motionDistanceKm = Number((totalSteps * 0.00074).toFixed(3));
+        const runner = activeRunnerRef.current;
+        const currentLimit = runner ? runner.kmLimitPerDay : 6;
+        const rate = runner ? runner.earningRate : 8.4;
+
         if (totalDistanceKmRef.current < motionDistanceKm) {
-          totalDistanceKmRef.current = motionDistanceKm;
-          setDistanceKm(motionDistanceKm);
-          setTokensEarned(Number((motionDistanceKm * earningRateRef.current).toFixed(2)));
+          const cappedDist = Math.min(motionDistanceKm, currentLimit);
+          totalDistanceKmRef.current = cappedDist;
+          setDistanceKm(cappedDist);
+          setTokensEarned(Number((cappedDist * rate).toFixed(2)));
         }
 
-        // Realistic MET Calories: ~62 kcal per km or ~0.04 kcal per step (no double counting)
-        setCaloriesBurned(() => {
-          return Math.max(Math.round(totalDistanceKmRef.current * 62), Math.round(totalSteps * 0.04));
-        });
+        setCaloriesBurned(Math.max(Math.round(totalDistanceKmRef.current * 62), Math.round(totalSteps * 0.04)));
+        saveWorkoutSnapshot();
+      }
+
+      if (delta < -1.2) {
+        pedometerPeakArmedRef.current = true;
       }
     };
 
-    if (window.DeviceMotionEvent) {
+    if (typeof window !== 'undefined' && window.DeviceMotionEvent) {
       window.addEventListener('devicemotion', handleDeviceMotion, { passive: true });
     }
     return () => {
-      if (window.DeviceMotionEvent) {
+      if (typeof window !== 'undefined' && window.DeviceMotionEvent) {
         window.removeEventListener('devicemotion', handleDeviceMotion);
       }
     };
   }, []);
 
   // --------------------------------------------------------------------------
-  // 6. SCREEN LOCK / OFF STATE CATCHUP (VISIBILITY CHANGE LISTENER)
-  // --------------------------------------------------------------------------
-  useEffect(() => {
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === 'visible' && isTrackingRef.current && !isPausedRef.current) {
-        // 1. Immediately re-sync elapsed time
-        const now = Date.now();
-        const elapsed = Math.floor((now - workoutStartTimeRef.current - pausedDurationRef.current) / 1000);
-        setSecondsElapsed(Math.max(0, elapsed));
-
-        // 2. Invalidate leaflet map to redraw smoothly
-        if (mapRef.current) {
-          mapRef.current.invalidateSize();
-        }
-
-        // 3. Immediately query fresh GPS position to catch up distance moved while screen was off
-        try {
-          const pos = await getDevicePosition();
-          handleNewGpsFix(pos.latitude, pos.longitude, pos.accuracy, pos.speed);
-        } catch (e) {
-          console.warn('Screen turn-on GPS refresh error:', e);
-        }
-
-        // 4. Re-acquire screen wake lock if enabled
-        if (keepScreenOn) {
-          requestWakeLock();
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [keepScreenOn]);
-
-  // --------------------------------------------------------------------------
-  // 7. GENUINE GPS MOVEMENT PROCESSOR (Haversine Distance + Steps + Calories)
+  // 5. GPS FIX HANDLER
   // --------------------------------------------------------------------------
   const handleNewGpsFix = (lat: number, lng: number, accuracy: number, speed: number | null) => {
     setRealCoords({ lat, lng, accuracy });
     setGpsStatus('active');
 
-    if (speed !== null && speed > 0) {
+    if (mapRef.current) {
+      updateMapMarker(lat, lng, accuracy);
+    }
+
+    if (speed !== null && speed >= 0) {
       setCurrentSpeedKmh(Number((speed * 3.6).toFixed(1)));
     }
 
-    updateMapMarker(lat, lng, accuracy);
-
-    // Only accumulate distance if workout is actively tracking and not demo mode
-    if (isTrackingRef.current && !isPausedRef.current && !isDemoModeRef.current) {
+    if (isTrackingRef.current && !isPausedRef.current) {
       if (lastPositionRef.current) {
         const delta = calculateHaversineKm(
           lastPositionRef.current.lat,
@@ -519,35 +557,31 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           lng
         );
 
-        // High-precision GPS noise & indoor drift filter:
-        // 1. Must have good satellite accuracy (<= 35m) to filter out indoor multipath bounce
-        // 2. Must move at least 5 meters (0.005 km)
-        // 3. Must have active movement velocity (speed >= 0.4 m/s or delta >= 0.008 km)
         const hasGoodAccuracy = accuracy <= 35;
         const hasMovedSignificantly = delta >= 0.005;
         const isGenuineMovement = speed === null || speed >= 0.4 || delta >= 0.008;
 
         if (hasGoodAccuracy && hasMovedSignificantly && isGenuineMovement) {
-          // Accumulate raw unrounded distance
-          totalDistanceKmRef.current += delta;
-          const currentTotalKm = totalDistanceKmRef.current;
+          const runner = activeRunnerRef.current;
+          const currentLimit = runner ? runner.kmLimitPerDay : 6;
+          const rate = runner ? runner.earningRate : 8.4;
 
-          setDistanceKm(currentTotalKm);
+          const rawTotal = totalDistanceKmRef.current + delta;
+          const cappedDist = Math.min(rawTotal, currentLimit);
+          totalDistanceKmRef.current = cappedDist;
 
-          // Steps based on distance (~1350 steps per km)
-          const stepsFromGps = Math.floor(currentTotalKm * 1350);
+          setDistanceKm(cappedDist);
+
+          const stepsFromGps = Math.floor(cappedDist * 1350);
           gpsStepCountRef.current = stepsFromGps;
           const combinedSteps = Math.max(motionStepCountRef.current, stepsFromGps);
           setStepCount(combinedSteps);
 
-          // Calories burned (~62 kcal per km or ~0.04 kcal per step, no double-counting)
-          const cals = Math.max(Math.round(currentTotalKm * 62), Math.round(combinedSteps * 0.04));
+          const cals = Math.max(Math.round(cappedDist * 62), Math.round(combinedSteps * 0.04));
           setCaloriesBurned(cals);
 
-          // Reward calculation (+₱ per km based on sneaker efficiency)
-          setTokensEarned(Number((currentTotalKm * earningRateRef.current).toFixed(2)));
+          setTokensEarned(Number((cappedDist * rate).toFixed(2)));
 
-          // Append to polyline on map
           routePointsRef.current.push([lat, lng]);
           if (routePolylineRef.current) {
             routePolylineRef.current.setLatLngs(routePointsRef.current);
@@ -558,6 +592,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           if (mapRef.current) {
             mapRef.current.panTo([lat, lng]);
           }
+
+          saveWorkoutSnapshot();
         }
       } else {
         lastPositionRef.current = { lat, lng };
@@ -566,84 +602,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   };
 
   // --------------------------------------------------------------------------
-  // 8. START WORKOUT CLICK (Permissions & GPS verification)
-  // --------------------------------------------------------------------------
-  const handleStartWorkoutClick = async () => {
-    if (isDemoMode) {
-      startWorkoutTracking();
-      return;
-    }
-
-    // iOS 13+ user gesture required to enable accelerometer
-    if (typeof (DeviceMotionEvent as any)?.requestPermission === 'function') {
-      try {
-        await (DeviceMotionEvent as any).requestPermission();
-      } catch (e) {
-        console.warn('DeviceMotion permission request:', e);
-      }
-    }
-
-    setIsRequestingPermission(true);
-    setGpsErrorMessage(null);
-
-    try {
-      setGpsStatus('searching');
-      const pos = await getDevicePosition();
-
-      const { latitude, longitude, accuracy, speed } = pos;
-      setRealCoords({ lat: latitude, lng: longitude, accuracy });
-      setGpsStatus('active');
-      lastPositionRef.current = { lat: latitude, lng: longitude };
-
-      if (mapRef.current) {
-        mapRef.current.setView([latitude, longitude], 17);
-        updateMapMarker(latitude, longitude, accuracy);
-      }
-
-      setShowGpsModal(false);
-      startWorkoutTracking();
-      startContinuousGpsWatch();
-    } catch (err: any) {
-      console.warn('GPS Error on start workout:', err);
-      setGpsStatus('denied');
-      setShowGpsModal(true);
-
-      const msg = err?.message || '';
-      if (msg.includes('HTTP') || msg.includes('secure')) {
-        setGpsErrorMessage(msg);
-      } else if (msg.includes('denied') || msg.includes('permission') || err?.code === 1) {
-        setGpsErrorMessage('Location permission was denied. Tap the address bar settings icon in Safari/Chrome to Allow location access.');
-      } else if (msg.includes('unavailable') || err?.code === 2) {
-        setGpsErrorMessage('Your device GPS / Location is turned OFF. Please turn on Location in your device settings.');
-      } else if (msg.includes('timed out') || err?.code === 3) {
-        setGpsErrorMessage('GPS satellite signal timed out. You can tap "Start Run with Motion Sensors" to begin tracking immediately!');
-      } else {
-        setGpsErrorMessage(msg || 'Could not connect to GPS. Please ensure Location is enabled in Settings.');
-      }
-    } finally {
-      setIsRequestingPermission(false);
-    }
-  };
-
-  const handleStartWorkoutWithMotion = async () => {
-    // Request motion permission if iOS
-    if (typeof (DeviceMotionEvent as any)?.requestPermission === 'function') {
-      try {
-        await (DeviceMotionEvent as any).requestPermission();
-      } catch (e) {
-        console.warn('DeviceMotion permission request:', e);
-      }
-    }
-
-    setShowGpsModal(false);
-    setGpsStatus('searching');
-    startWorkoutTracking();
-    // Continue attempting GPS in background so if permission or satellites become active, map seamlessly updates
-    startContinuousGpsWatch();
-  };
-
-  // --------------------------------------------------------------------------
-  // 9. CONTINUOUS REAL-TIME GPS WATCH (Cross-Platform)
+  // 6. CONTINUOUS GPS WATCH
   // --------------------------------------------------------------------------
   const startContinuousGpsWatch = async () => {
     stopContinuousGpsWatch();
@@ -653,19 +612,13 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         const watchId = await Geolocation.watchPosition(
           { enableHighAccuracy: true },
           (position: Position | null, err) => {
-            if (err) {
-              console.warn('Native GPS watch error:', err);
-              return;
-            }
-
-            if (position && position.coords) {
-              handleNewGpsFix(
-                position.coords.latitude,
-                position.coords.longitude,
-                Math.round(position.coords.accuracy),
-                position.coords.speed
-              );
-            }
+            if (err || !position || !position.coords) return;
+            handleNewGpsFix(
+              position.coords.latitude,
+              position.coords.longitude,
+              Math.round(position.coords.accuracy),
+              position.coords.speed
+            );
           }
         );
         nativeWatchIdRef.current = watchId;
@@ -675,7 +628,6 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       return;
     }
 
-    // Web browser / iOS Safari
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
       try {
         const watchId = navigator.geolocation.watchPosition(
@@ -689,14 +641,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               );
             }
           },
-          (err) => {
-            console.warn('Web watchPosition notice:', err.message);
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 15000,
-            maximumAge: 2000
-          }
+          (err) => console.warn('Web watchPosition:', err.message),
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 2000 }
         );
         webWatchIdRef.current = watchId;
       } catch (e) {
@@ -720,17 +666,90 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     }
   };
 
+  // --------------------------------------------------------------------------
+  // 7. START WORKOUT
+  // --------------------------------------------------------------------------
+  const handleStartWorkoutClick = async () => {
+    if (ownedRunners.length === 0) {
+      if (onNavigateTab) onNavigateTab('market');
+      return;
+    }
+
+    if (activeRunnerCooldown.isCooling) {
+      return;
+    }
+
+    if (typeof (DeviceMotionEvent as any)?.requestPermission === 'function') {
+      try {
+        await (DeviceMotionEvent as any).requestPermission();
+      } catch (e) {}
+    }
+
+    setIsRequestingPermission(true);
+    setGpsErrorMessage(null);
+
+    try {
+      setGpsStatus('searching');
+      const pos = await getDevicePosition();
+
+      const { latitude, longitude, accuracy } = pos;
+      setRealCoords({ lat: latitude, lng: longitude, accuracy });
+      setGpsStatus('active');
+      lastPositionRef.current = { lat: latitude, lng: longitude };
+
+      if (mapRef.current) {
+        mapRef.current.setView([latitude, longitude], 17);
+        updateMapMarker(latitude, longitude, accuracy);
+      }
+
+      setShowGpsModal(false);
+      startWorkoutTracking();
+      startContinuousGpsWatch();
+    } catch (err: any) {
+      console.warn('GPS Error on start workout:', err);
+      setGpsStatus('denied');
+      setShowGpsModal(true);
+
+      const msg = err?.message || '';
+      if (msg.includes('HTTP') || msg.includes('secure')) {
+        setGpsErrorMessage(msg);
+      } else if (msg.includes('denied') || msg.includes('permission') || err?.code === 1) {
+        setGpsErrorMessage('Location permission was denied. Please allow location access in your browser or device settings.');
+      } else if (msg.includes('unavailable') || err?.code === 2) {
+        setGpsErrorMessage('Your device GPS / Location is turned OFF. Please turn on Location in Settings.');
+      } else {
+        setGpsErrorMessage(msg || 'Could not connect to GPS satellites.');
+      }
+    } finally {
+      setIsRequestingPermission(false);
+    }
+  };
+
+  const handleStartWorkoutWithMotion = async () => {
+    if (typeof (DeviceMotionEvent as any)?.requestPermission === 'function') {
+      try {
+        await (DeviceMotionEvent as any).requestPermission();
+      } catch (e) {}
+    }
+
+    setShowGpsModal(false);
+    setGpsStatus('searching');
+    startWorkoutTracking();
+    startContinuousGpsWatch();
+  };
+
   const startWorkoutTracking = () => {
+    sessionRunnerIdRef.current = activeRunnerRef.current?.id || '';
+    setSessionRunnerId(sessionRunnerIdRef.current);
     isTrackingRef.current = true;
     isPausedRef.current = false;
     setIsTracking(true);
     setIsPaused(false);
 
-    // Initialize timestamps for drift-free screen-off timekeeping
     workoutStartTimeRef.current = Date.now();
     pausedDurationRef.current = 0;
+    pauseStartTimeRef.current = 0;
 
-    // Reset distance if starting fresh
     if (totalDistanceKmRef.current === 0) {
       totalDistanceKmRef.current = 0.0;
       motionStepCountRef.current = 0;
@@ -742,25 +761,47 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     if (keepScreenOn) {
       requestWakeLock();
     }
+
+    saveWorkoutSnapshot();
   };
 
+  // --------------------------------------------------------------------------
+  // 8. PAUSE & RESUME WORKOUT (Allows leaving and coming back)
+  // --------------------------------------------------------------------------
   const handlePauseWorkout = () => {
     if (!isPaused) {
+      // Pause
       pauseStartTimeRef.current = Date.now();
       isPausedRef.current = true;
       setIsPaused(true);
       releaseWakeLock();
+      saveWorkoutSnapshot();
     } else {
-      pausedDurationRef.current += (Date.now() - pauseStartTimeRef.current);
+      // Resume
+      if (pauseStartTimeRef.current > 0) {
+        pausedDurationRef.current += (Date.now() - pauseStartTimeRef.current);
+      }
+      pauseStartTimeRef.current = 0;
       isPausedRef.current = false;
       setIsPaused(false);
       if (keepScreenOn) {
         requestWakeLock();
       }
+      saveWorkoutSnapshot();
     }
   };
 
+  // --------------------------------------------------------------------------
+  // 9. END & EARN -> OPEN CELEBRATION MODAL
+  // --------------------------------------------------------------------------
   const handleFinishWorkout = async () => {
+    const summary = {
+      earned: Math.round(tokensEarned * 100) / 100,
+      distance: distanceKm.toFixed(2),
+      time: formatTime(secondsElapsed),
+      calories: caloriesBurned,
+      runnerName: activeRunner ? activeRunner.name : 'Runner',
+    };
     isTrackingRef.current = false;
     isPausedRef.current = false;
     setIsTracking(false);
@@ -769,26 +810,30 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
     await stopContinuousGpsWatch();
 
-    const finalEarned = Math.round(tokensEarned * 100) / 100;
-    const finalDistance = distanceKm.toFixed(2);
-    const finalTime = formatTime(secondsElapsed);
-    const finalCalories = caloriesBurned;
-
-    setLastWorkoutSummary({
-      earned: finalEarned,
-      distance: finalDistance,
-      time: finalTime,
-      calories: finalCalories,
-    });
+    setLastWorkoutSummary(summary);
     setShowFinishModal(true);
-
-    if (onWorkoutFinish) {
-      onWorkoutFinish(finalEarned);
-    }
+    saveWorkoutSnapshot(true, summary);
   };
 
-  const handleDismissFinishModal = () => {
+  // --------------------------------------------------------------------------
+  // 10. COLLECT & CONTINUE (Claims reward, sets 24h cooldown, resets)
+  // --------------------------------------------------------------------------
+  const handleCollectAndContinue = () => {
     setShowFinishModal(false);
+
+    const finalEarned = lastWorkoutSummary.earned;
+    const runnerId = sessionRunnerIdRef.current || sessionRunnerId || activeRunner?.id;
+
+    onWorkoutFinish?.(finalEarned, runnerId);
+
+    // Clear active workout session
+    try {
+      localStorage.removeItem(ACTIVE_WORKOUT_STORAGE_KEY);
+    } catch (e) {}
+    sessionRunnerIdRef.current = '';
+    setSessionRunnerId('');
+
+    // Reset stats for next session
     totalDistanceKmRef.current = 0.0;
     motionStepCountRef.current = 0;
     gpsStepCountRef.current = 0;
@@ -804,25 +849,16 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   };
 
   // --------------------------------------------------------------------------
-  // 10. TIMER LOOP (Timestamp-based: keeps accurate time even when screen was OFF)
+  // 11. TIMER INTERVAL
   // --------------------------------------------------------------------------
   useEffect(() => {
     let interval: any = null;
     if (isTracking && !isPaused) {
       interval = setInterval(() => {
         const now = Date.now();
-        const elapsed = Math.floor((now - workoutStartTimeRef.current - pausedDurationRef.current) / 1000);
-        setSecondsElapsed(Math.max(0, elapsed));
-
-        // In Demo Mode only: simulate movement
-        if (isDemoModeRef.current) {
-          totalDistanceKmRef.current += 0.003;
-          setDistanceKm(totalDistanceKmRef.current);
-          setStepCount(Math.round(totalDistanceKmRef.current * 1350));
-          setCaloriesBurned(Math.round(totalDistanceKmRef.current * 65));
-          setTokensEarned(Number((totalDistanceKmRef.current * earningRateRef.current).toFixed(2)));
-          setCurrentSpeedKmh(7.8);
-        }
+        const elapsed = Math.max(0, Math.floor((now - workoutStartTimeRef.current - pausedDurationRef.current) / 1000));
+        setSecondsElapsed(elapsed);
+        saveWorkoutSnapshot();
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -843,12 +879,13 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     return `${mins.toString().padStart(2, '0')}:${rem.toString().padStart(2, '0')}`;
   };
 
-  // Format distance display (if less than 0.1km, show meters too for immediate feedback)
   const displayDistance = distanceKm.toFixed(2);
   const displayMeters = Math.round(distanceKm * 1000);
+  const currentLimit = activeRunner ? activeRunner.kmLimitPerDay : 6;
+  const isLimitReached = distanceKm >= currentLimit;
 
   return (
-    <div className="w-full flex flex-col space-y-3 animate-fade-in text-white select-none">
+    <div className="w-full flex flex-col space-y-3 animate-fade-in text-white select-none pb-4">
       {/* ---------------------------------------------------- */}
       {/* 1. TOP BAR                                           */}
       {/* ---------------------------------------------------- */}
@@ -874,7 +911,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-white block">
-                {user?.username || 'Nexora Runner'}
+                {user?.username || 'Nexora Member'}
               </span>
               <span className="text-[10px] font-extrabold text-[#D8FD2F] font-mono bg-[#D8FD2F]/10 px-2 py-0.5 rounded-md border border-[#D8FD2F]/20">
                 ₱{(user?.balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -885,7 +922,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
         {/* Center Title */}
         <h2 className="text-base font-extrabold tracking-tight text-white font-['Plus_Jakarta_Sans',sans-serif]">
-          GPS Map
+          GPS Track
         </h2>
 
         {/* Layer / Recenter Controls */}
@@ -915,7 +952,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         </div>
       </div>
 
-      {/* GPS Status & Screen Keep-Awake Bar */}
+      {/* GPS Status & Screen Keep-Awake Bar (DEMO REMOVED) */}
       <div className="flex items-center justify-between px-3.5 py-1.5 bg-[#12161F] border border-[#232936] rounded-xl text-[11px]">
         <div className="flex items-center gap-2">
           <Radio className={`w-3.5 h-3.5 ${gpsStatus === 'active' ? 'text-emerald-400 animate-pulse' : 'text-amber-400'}`} />
@@ -924,37 +961,26 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               ? `GPS Locked: ${realCoords.lat.toFixed(4)}, ${realCoords.lng.toFixed(4)} (±${realCoords.accuracy}m)`
               : gpsStatus === 'searching'
               ? 'Connecting to GPS Satellites...'
-              : 'GPS Standby (Tap Start Workout)'}
+              : 'GPS Standby'}
           </span>
         </div>
 
         {/* Keep Screen On Toggle Button */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              const next = !keepScreenOn;
-              setKeepScreenOn(next);
-              if (next && isTracking && !isPaused) requestWakeLock();
-              else releaseWakeLock();
-            }}
-            title="Keep Screen Awake during workout"
-            className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition-all ${
-              keepScreenOn ? 'bg-cyan-400/20 text-cyan-300 border border-cyan-400/30' : 'bg-white/5 text-slate-500'
-            }`}
-          >
-            <SunMedium className="w-3 h-3" />
-            <span>{keepScreenOn ? 'AWAKE ON' : 'AWAKE OFF'}</span>
-          </button>
-
-          <button
-            onClick={() => setIsDemoMode(!isDemoMode)}
-            className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
-              isDemoMode ? 'bg-amber-400 text-black' : 'bg-white/10 text-slate-400 hover:text-white'
-            }`}
-          >
-            {isDemoMode ? 'DEMO' : 'DEMO'}
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            const next = !keepScreenOn;
+            setKeepScreenOn(next);
+            if (next && isTracking && !isPaused) requestWakeLock();
+            else releaseWakeLock();
+          }}
+          title="Keep Screen Awake during workout"
+          className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider flex items-center gap-1 transition-all ${
+            keepScreenOn ? 'bg-cyan-400/20 text-cyan-300 border border-cyan-400/30' : 'bg-white/5 text-slate-500'
+          }`}
+        >
+          <SunMedium className="w-3 h-3" />
+          <span>{keepScreenOn ? 'AWAKE ON' : 'AWAKE OFF'}</span>
+        </button>
       </div>
 
       {/* ---------------------------------------------------- */}
@@ -969,38 +995,149 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           <span>GOOGLE MAPS • {mapLayer === 'google-road' ? 'ROADMAP' : 'SATELLITE'}</span>
         </div>
 
-        {/* Floating Live Sneaker Equipped Badge */}
-        <div className="absolute bottom-3 left-3 z-20 flex items-center gap-2 bg-[#11141B]/90 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-white/15 shadow-lg">
-          <Zap className="w-3.5 h-3.5 text-[#D8FD2F]" />
-          <span className="text-[10px] font-extrabold text-white">
-            {equippedSneakerName} (+₱{earningRate.toFixed(2)}/km)
-          </span>
-        </div>
+        {/* Floating Live Runner Equipped Badge */}
+        {activeRunner && (
+          <div className="absolute bottom-3 left-3 z-20 flex items-center gap-2 bg-[#11141B]/90 backdrop-blur-md px-3 py-1.5 rounded-2xl border border-white/15 shadow-lg">
+            <Zap className="w-3.5 h-3.5 text-[#D8FD2F]" />
+            <span className="text-[10px] font-extrabold text-white">
+              {activeRunner.name} (+₱{activeRunner.earningRate.toFixed(2)}/km)
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ---------------------------------------------------- */}
       {/* 3. BOTTOM CONTROL SHEET                              */}
       {/* ---------------------------------------------------- */}
       <div className="bg-[#171A21] rounded-[32px] p-4 sm:p-5 border border-[#232731] shadow-2xl space-y-4">
-        {/* Search Bar with Magnifying Glass */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-            placeholder="Search destination or route..."
-            className="w-full bg-[#20242D] border border-[#2B303C] rounded-2xl pl-10 pr-4 py-2.5 text-xs font-semibold text-white placeholder-slate-400/80 focus:outline-none focus:border-[#D8FD2F]/60 transition-colors"
-          />
-        </div>
+        
+        {/* REPLACED SEARCH BAR: CHOOSE AVAILABLE RUNNERS */}
+        {!isTracking ? (
+          <div>
+            {ownedRunners.length === 0 ? (
+              /* LOCKED STATE: NO RUNNERS OWNED */
+              <div className="bg-[#10141D] border border-amber-500/40 rounded-2xl p-4 text-center space-y-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-white">Runners Required to Workout</h4>
+                  <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                    You do not own any Runners yet. Purchase a Runner in the Marketplace to enable Track and start earning rewards!
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTab ? onNavigateTab('market') : null}
+                  className="w-full py-2.5 rounded-xl bg-[#D8FD2F] hover:bg-[#cbf128] text-black font-black text-xs uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                >
+                  <ShoppingBag className="w-4 h-4" />
+                  <span>Go to Marketplace</span>
+                </button>
+              </div>
+            ) : (
+              /* RUNNER SELECTOR */
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs px-1">
+                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                    Choose Your Runner ({ownedRunners.length} Owned)
+                  </span>
+                  {activeRunner && (
+                    <span className="text-cyan-400 font-extrabold text-[10px]">
+                      Limit: {activeRunner.kmLimitPerDay} KM/day
+                    </span>
+                  )}
+                </div>
 
-        {/* Location Target Display */}
-        <div className="flex items-center justify-between text-xs px-1">
-          <span className="text-slate-400 font-medium">To the location</span>
-          <span className="font-extrabold text-white text-right max-w-[200px] truncate">
-            {destination}
-          </span>
-        </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {ownedRunners.map((runner) => {
+                    const isSelected = selectedRunnerId === runner.id;
+                    const cdInfo = getRunnerCooldown(runner.id);
+
+                    return (
+                      <button
+                        key={runner.id}
+                        type="button"
+                        disabled={cdInfo.isCooling}
+                        onClick={() => setSelectedRunnerId(runner.id)}
+                        className={`p-2.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between ${
+                          cdInfo.isCooling
+                            ? 'bg-[#12151D] border-red-500/30 opacity-60 cursor-not-allowed'
+                            : isSelected
+                            ? 'bg-[#1C263A] border-[#D8FD2F] shadow-lg shadow-[#D8FD2F]/10'
+                            : 'bg-[#161A22] border-[#292F3D] hover:border-slate-500'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <img
+                            src={runner.image}
+                            alt={runner.name}
+                            className="w-8 h-8 object-contain rounded-lg bg-[#0E121A] p-0.5"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <h5 className="text-[11px] font-black text-white truncate">
+                              {runner.name}
+                            </h5>
+                            <span className="text-[9px] font-mono text-emerald-400 font-bold block">
+                              +₱{runner.earningRate.toFixed(2)}/km
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[9px] font-bold border-t border-white/5 pt-1">
+                          <span className="text-slate-400">
+                            Max {runner.kmLimitPerDay}KM
+                          </span>
+                          {cdInfo.isCooling ? (
+                            <span className="text-red-400 flex items-center gap-0.5 font-mono">
+                              <Hourglass className="w-2.5 h-2.5" />
+                              {cdInfo.remaining}
+                            </span>
+                          ) : isSelected ? (
+                            <span className="text-[#D8FD2F] font-black uppercase">
+                              SELECTED
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">
+                              READY
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ACTIVE RUNNER DISPLAY WHEN TRACKING */
+          activeRunner && (
+            <div className="bg-[#121620] border border-[#252C3D] rounded-2xl p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <img
+                  src={activeRunner.image}
+                  alt={activeRunner.name}
+                  className="w-10 h-10 object-contain rounded-xl bg-[#090C12] p-1 border border-white/10"
+                />
+                <div>
+                  <h4 className="text-xs font-black text-white">{activeRunner.name}</h4>
+                  <div className="flex items-center gap-2 text-[10px] text-slate-300 font-mono mt-0.5">
+                    <span className="text-emerald-400 font-bold">+₱{activeRunner.earningRate.toFixed(2)}/km</span>
+                    <span>•</span>
+                    <span>Limit: {activeRunner.kmLimitPerDay}KM/day</span>
+                  </div>
+                </div>
+              </div>
+
+              {isLimitReached && (
+                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-1 rounded-lg text-[9px] font-black uppercase">
+                  Daily Limit Reached
+                </span>
+              )}
+            </div>
+          )
+        )}
 
         {/* -------------------------------------------------- */}
         {/* Large Distance Stat + Action Button                */}
@@ -1013,37 +1150,67 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 {displayDistance}
               </span>
               <span className="text-sm font-bold text-slate-300">km</span>
+              {activeRunner && (
+                <span className="text-xs font-mono font-bold text-slate-400 ml-1">
+                  / {activeRunner.kmLimitPerDay} km
+                </span>
+              )}
             </div>
             {distanceKm > 0 && distanceKm < 0.5 && (
               <span className="text-[10px] font-mono font-bold text-[#D8FD2F] block">
                 {displayMeters} meters walked
               </span>
             )}
+            {isLimitReached && (
+              <span className="text-[10px] font-bold text-amber-400 block animate-pulse">
+                Daily KM Limit Achieved! Click End & Earn to claim.
+              </span>
+            )}
           </div>
 
           {/* Action Button */}
           {!isTracking ? (
-            <button
-              onClick={handleStartWorkoutClick}
-              disabled={isRequestingPermission}
-              className="px-5 py-3 rounded-full bg-[#353E2B] hover:bg-[#434F35] text-[#D8FD2F] border border-[#D8FD2F]/40 flex items-center gap-2 font-extrabold text-xs shadow-lg transition-all active:scale-95 group"
-            >
-              <Navigation className="w-4 h-4 group-hover:rotate-45 transition-transform" />
-              <span>{isRequestingPermission ? 'Connecting GPS...' : 'Start Workout'}</span>
-            </button>
+            ownedRunners.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => onNavigateTab ? onNavigateTab('market') : null}
+                className="px-5 py-3 rounded-full bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-2 font-extrabold text-xs shadow-lg transition-all"
+              >
+                <Lock className="w-4 h-4 text-amber-400" />
+                <span>Buy Runner First</span>
+              </button>
+            ) : activeRunnerCooldown.isCooling ? (
+              <button
+                disabled
+                className="px-5 py-3 rounded-full bg-red-950/60 text-red-300 border border-red-500/30 flex items-center gap-1.5 font-extrabold text-xs cursor-not-allowed"
+              >
+                <Hourglass className="w-4 h-4 text-red-400" />
+                <span>In Cooldown ({activeRunnerCooldown.remaining})</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleStartWorkoutClick}
+                disabled={isRequestingPermission}
+                className="px-5 py-3 rounded-full bg-[#353E2B] hover:bg-[#434F35] text-[#D8FD2F] border border-[#D8FD2F]/40 flex items-center gap-2 font-extrabold text-xs shadow-lg transition-all active:scale-95 group"
+              >
+                <Navigation className="w-4 h-4 group-hover:rotate-45 transition-transform" />
+                <span>{isRequestingPermission ? 'Connecting GPS...' : 'Start Workout'}</span>
+              </button>
+            )
           ) : (
             <div className="flex items-center gap-2">
               <button
                 onClick={handlePauseWorkout}
+                title={isPaused ? 'Resume Workout' : 'Pause Workout'}
                 className={`p-3 rounded-full flex items-center justify-center transition-all ${
-                  isPaused ? 'bg-[#D8FD2F] text-black' : 'bg-[#2A303D] text-white hover:bg-[#343B4B]'
+                  isPaused ? 'bg-[#D8FD2F] text-black shadow-lg shadow-[#D8FD2F]/20' : 'bg-[#2A303D] text-white hover:bg-[#343B4B]'
                 }`}
               >
                 {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
               </button>
               <button
                 onClick={handleFinishWorkout}
-                className="px-4 py-3 rounded-full bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs transition-all active:scale-95"
+                className="px-4 py-3 rounded-full bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs transition-all active:scale-95 shadow-lg shadow-red-600/20"
               >
                 End & Earn
               </button>
@@ -1140,7 +1307,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       </div>
 
       {/* ==================================================== */}
-      {/* 5. REQUEST TO TURN ON GPS / LOCATION PERMISSION MODAL */}
+      {/* 5. REQUEST TO TURN ON GPS / LOCATION MODAL           */}
       {/* ==================================================== */}
       {showGpsModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
@@ -1162,11 +1329,11 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 Turn On GPS / Location
               </h3>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                {gpsErrorMessage || 'Nexora Move Tracker requires real device GPS to track your outdoor running, calculate distance, and record your route on Google Maps.'}
+                {gpsErrorMessage || 'Nexora Move Tracker requires real device GPS to track your outdoor workouts and calculate distance on Google Maps.'}
               </p>
             </div>
 
-            {/* Insecure context warning for iOS Safari */}
+            {/* Insecure context warning */}
             {isInsecureContext && (
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 text-[11px] text-amber-200 space-y-1">
                 <div className="font-bold flex items-center gap-1.5 text-amber-300">
@@ -1174,34 +1341,10 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                   <span>iOS Safari Security Notice:</span>
                 </div>
                 <p className="leading-tight">
-                  Apple iOS blocks GPS over plain HTTP. Tap <strong className="text-white">Start Run with Motion Sensors</strong> below to immediately track your steps, calories, pace, and tokens using your iPhone sensors!
+                  Apple iOS blocks GPS over plain HTTP. Tap <strong className="text-white">Start Run with Motion Sensors</strong> below to immediately track your steps, calories, and rewards using device motion sensors!
                 </p>
               </div>
             )}
-
-            {/* Platform Instructions Card */}
-            <div className="bg-[#0E1118] border border-[#232936] rounded-2xl p-3.5 text-[11px] space-y-2 text-slate-300">
-              <div className="font-bold text-amber-300 flex items-center gap-1.5">
-                <Settings className="w-3.5 h-3.5" />
-                <span>How to enable Location:</span>
-              </div>
-              <ul className="space-y-1.5 list-disc pl-4 text-slate-300 leading-normal">
-                <li>
-                  <strong className="text-white">iPhone (iOS Safari):</strong>
-                  <div className="text-[10px] text-slate-300 mt-0.5 space-y-0.5">
-                    <div>• <em>Settings &gt; Privacy &amp; Security &gt; Location Services</em> &gt; Turn <strong>ON</strong>.</div>
-                    <div>• <em>Settings &gt; Safari &gt; Location</em> &gt; Set to <strong>Allow</strong>.</div>
-                    <div>• In Safari, tap the <strong>aA</strong> / Settings icon in the search bar &gt; <em>Website Settings &gt; Location: Allow</em>.</div>
-                  </div>
-                </li>
-                <li>
-                  <strong className="text-white">Android / APK:</strong> Swipe down notification bar &gt; turn ON <span className="text-amber-300 font-bold">Location</span> &gt; Allow app permissions.
-                </li>
-                <li>
-                  <strong className="text-white">Mobile Browser:</strong> Tap the lock or tune icon in the address bar &gt; Allow Location.
-                </li>
-              </ul>
-            </div>
 
             <div className="space-y-2 pt-1">
               <button
@@ -1220,27 +1363,16 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 <Smartphone className="w-4 h-4 text-cyan-400" />
                 <span>Start Run with Motion Sensors</span>
               </button>
-
-              <button
-                onClick={() => {
-                  setShowGpsModal(false);
-                  setIsDemoMode(true);
-                  startWorkoutTracking();
-                }}
-                className="w-full py-2.5 rounded-2xl bg-[#1F2430] hover:bg-[#282F3F] text-slate-400 font-bold text-xs active:scale-95 transition-all border border-white/10"
-              >
-                Test With Indoor Simulator
-              </button>
             </div>
           </div>
         </div>
       )}
 
       {/* ==================================================== */}
-      {/* 6. WORKOUT COMPLETED / REWARD CLAIMED MODAL          */}
+      {/* 6. WORKOUT COMPLETED / 24H COOLDOWN SUMMARY MODAL     */}
       {/* ==================================================== */}
       {showFinishModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-[#151922] border border-[#2C3344] rounded-[32px] p-6 w-full max-w-sm text-white shadow-2xl relative space-y-4 text-center">
             <div className="w-14 h-14 rounded-2xl bg-[#D8FD2F]/20 border border-[#D8FD2F]/40 text-[#D8FD2F] flex items-center justify-center mx-auto shadow-lg shadow-[#D8FD2F]/15">
               <Sparkles className="w-7 h-7 text-[#D8FD2F] animate-pulse" />
@@ -1251,7 +1383,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 Workout Complete!
               </h3>
               <p className="text-xs text-slate-300 mt-1">
-                Your workout has ended and earnings have been credited to your balance.
+                Your workout for <span className="text-[#D8FD2F] font-bold">{lastWorkoutSummary.runnerName}</span> has ended. Upon collecting, your earnings are credited and this runner enters a 24-hour daily cooldown.
               </p>
             </div>
 
@@ -1278,8 +1410,13 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               </div>
             </div>
 
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-[10px] text-amber-200 flex items-center justify-center gap-1.5 font-semibold">
+              <Hourglass className="w-3.5 h-3.5 text-amber-400" />
+              <span>{lastWorkoutSummary.runnerName} will be locked for 24 hours.</span>
+            </div>
+
             <button
-              onClick={handleDismissFinishModal}
+              onClick={handleCollectAndContinue}
               className="w-full py-3.5 rounded-2xl bg-[#D8FD2F] hover:bg-[#c6ec22] text-[#0A0D11] font-black text-xs uppercase tracking-wider shadow-lg shadow-[#D8FD2F]/20 active:scale-95 transition-all"
             >
               Collect & Continue
@@ -1292,4 +1429,3 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 };
 
 export default TrackTab;
-

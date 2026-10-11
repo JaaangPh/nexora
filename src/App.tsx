@@ -52,6 +52,9 @@ export const App: React.FC = () => {
               ...res.user,
               balance: res.user.balance !== undefined ? res.user.balance : (cachedUser.balance ?? 0),
               totalDeposit: res.user.totalDeposit !== undefined ? res.user.totalDeposit : (cachedUser.totalDeposit ?? 0),
+              ownedRunners: res.user.ownedRunners && res.user.ownedRunners.length > 0 ? res.user.ownedRunners : (cachedUser.ownedRunners || []),
+              equippedRunnerId: res.user.equippedRunnerId || cachedUser.equippedRunnerId,
+              runnerCooldowns: res.user.runnerCooldowns || cachedUser.runnerCooldowns || {},
             });
           }
         })

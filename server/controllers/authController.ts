@@ -11,6 +11,7 @@ import {
   updateUserLastLogin,
   updateUserUsername,
   updateUserBalance,
+  updateUserRunners,
   generateUniqueReferralCode,
   generateAutoUsername,
 } from '../database/firebase.js';
@@ -138,6 +139,9 @@ export async function register(req: Request, res: Response): Promise<void> {
         createdAt: newUser.createdAt,
         balance: newUser.balance ?? 0,
         totalDeposit: newUser.totalDeposit ?? 0,
+        ownedRunners: newUser.ownedRunners || [],
+        equippedRunnerId: newUser.equippedRunnerId,
+        runnerCooldowns: newUser.runnerCooldowns || {},
       },
     });
   } catch (error: any) {
@@ -222,6 +226,9 @@ export async function login(req: Request, res: Response): Promise<void> {
         lastLoginAt: new Date().toISOString(),
         balance: user.balance ?? 0,
         totalDeposit: user.totalDeposit ?? 0,
+        ownedRunners: user.ownedRunners || [],
+        equippedRunnerId: user.equippedRunnerId,
+        runnerCooldowns: user.runnerCooldowns || {},
       },
     });
   } catch (error: any) {
@@ -275,6 +282,9 @@ export async function getMe(req: AuthRequest, res: Response): Promise<void> {
         lastLoginAt: user.lastLoginAt,
         balance: user.balance ?? 0,
         totalDeposit: user.totalDeposit ?? 0,
+        ownedRunners: user.ownedRunners || [],
+        equippedRunnerId: user.equippedRunnerId,
+        runnerCooldowns: user.runnerCooldowns || {},
       },
     });
   } catch (error: any) {
@@ -365,6 +375,9 @@ export async function updateBalance(req: AuthRequest, res: Response): Promise<vo
         lastLoginAt: updatedUser!.lastLoginAt,
         balance: updatedUser!.balance ?? cleanBalance,
         totalDeposit: updatedUser!.totalDeposit ?? 0,
+        ownedRunners: updatedUser!.ownedRunners || [],
+        equippedRunnerId: updatedUser!.equippedRunnerId,
+        runnerCooldowns: updatedUser!.runnerCooldowns || {},
       },
     });
   } catch (error: any) {
@@ -372,3 +385,50 @@ export async function updateBalance(req: AuthRequest, res: Response): Promise<vo
     res.status(500).json({ success: false, message: error?.message || 'Failed to update balance.' });
   }
 }
+
+/**
+ * PUT /api/auth/runners
+ */
+export async function updateRunners(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Unauthorized session.' });
+      return;
+    }
+
+    const { ownedRunners, equippedRunnerId, runnerCooldowns, balance } = req.body;
+    const updateData: any = {};
+    if (Array.isArray(ownedRunners)) updateData.ownedRunners = ownedRunners;
+    if (typeof equippedRunnerId === 'string') updateData.equippedRunnerId = equippedRunnerId;
+    if (runnerCooldowns && typeof runnerCooldowns === 'object') updateData.runnerCooldowns = runnerCooldowns;
+    if (typeof balance === 'number' && !isNaN(balance)) updateData.balance = Math.round(balance * 100) / 100;
+
+    await updateUserRunners(req.user.id, updateData);
+    const updatedUser = await findUserById(req.user.id);
+
+    res.json({
+      success: true,
+      message: 'Runners updated successfully!',
+      user: {
+        id: updatedUser!.id,
+        phoneNumber: updatedUser!.phoneNumber,
+        username: updatedUser!.username,
+        role: updatedUser!.role,
+        referralCode: updatedUser!.referralCode || 'NT723906',
+        inviteCodeUsed: updatedUser!.inviteCodeUsed,
+        status: updatedUser!.status,
+        createdAt: updatedUser!.createdAt,
+        lastLoginAt: updatedUser!.lastLoginAt,
+        balance: updatedUser!.balance ?? 0,
+        totalDeposit: updatedUser!.totalDeposit ?? 0,
+        ownedRunners: updatedUser!.ownedRunners || [],
+        equippedRunnerId: updatedUser!.equippedRunnerId,
+        runnerCooldowns: updatedUser!.runnerCooldowns || {},
+      },
+    });
+  } catch (error: any) {
+    console.error('[Update Runners Error]', error);
+    res.status(500).json({ success: false, message: error?.message || 'Failed to update runners.' });
+  }
+}
+

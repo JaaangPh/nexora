@@ -92,6 +92,9 @@ export interface FirestoreUser {
   lastLoginAt?: string;
   balance?: number;
   totalDeposit?: number;
+  ownedRunners?: string[];
+  equippedRunnerId?: string;
+  runnerCooldowns?: Record<string, number>;
 }
 
 /**
@@ -207,4 +210,11 @@ export async function updateUserBalance(id: string, balance: number): Promise<vo
   await firestore.collection('users').doc(id).update({
     balance,
   });
+}
+
+export async function updateUserRunners(
+  id: string,
+  data: { ownedRunners?: string[]; equippedRunnerId?: string; runnerCooldowns?: Record<string, number>; balance?: number }
+): Promise<void> {
+  await firestore.collection('users').doc(id).update(data);
 }

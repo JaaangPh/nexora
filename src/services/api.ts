@@ -163,6 +163,25 @@ export const api = {
     return res;
   },
 
+  async updateRunners(payload: {
+    ownedRunners?: string[];
+    equippedRunnerId?: string;
+    runnerCooldowns?: Record<string, number>;
+    balance?: number;
+  }): Promise<AuthResponse> {
+    const res = await request<AuthResponse>('/api/auth/runners', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+    if (res.user) {
+      const currentStored = getStoredUser();
+      if (currentStored) {
+        setStoredSession(getStoredToken() || '', { ...currentStored, ...res.user });
+      }
+    }
+    return res;
+  },
+
   async checkHealth(): Promise<{ status: string; system: string; database: string }> {
     return request<{ status: string; system: string; database: string }>('/api/health', {
       method: 'GET',
