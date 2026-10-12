@@ -102,13 +102,20 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
 
   return (
     <div id="panel-register" role="tabpanel" aria-labelledby="tab-register" className="w-full">
-      {/* Registration Heading & Subtitle */}
-      <h2 className="text-2xl sm:text-[26px] font-black text-[#17233B] tracking-tight font-['Plus_Jakarta_Sans',sans-serif]">
-        Create Account
-      </h2>
-      <p className="text-xs sm:text-sm text-[#64748B] mt-1 mb-6 font-normal leading-relaxed">
-        Create your Nexora Technologies account using your phone number, password, and invite code.
-      </p>
+      <div className="mb-5">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="inline-block h-[2px] w-6 rounded-full bg-[#2459C4]" />
+          <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#2459C4]">
+            Start your journey
+          </span>
+        </div>
+        <h2 className="font-['Plus_Jakarta_Sans',sans-serif] text-2xl font-black tracking-tight text-[#17233B] sm:text-[26px]">
+          Make every move count.
+        </h2>
+        <p className="mt-1 text-xs font-normal leading-relaxed text-[#64748B] sm:text-sm">
+          Create your account and get ready to move, track, and earn.
+        </p>
+      </div>
 
       {/* Success Notification Alert */}
       {successMessage && (

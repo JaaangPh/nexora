@@ -62,21 +62,20 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
   return (
     <div id="panel-login" role="tabpanel" aria-labelledby="tab-login" className="w-full">
-      {/* Member Access Section Tag */}
-      <div className="flex items-center gap-2 mb-1">
-        <span className="w-6 h-[2px] bg-[#2459C4] rounded-full inline-block" />
-        <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#2459C4]">
-          Member Access
-        </span>
+      <div className="mb-5">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="inline-block h-[2px] w-6 rounded-full bg-[#2459C4]" />
+          <span className="text-[11px] font-extrabold uppercase tracking-widest text-[#2459C4]">
+            Member Access
+          </span>
+        </div>
+        <h2 className="font-['Plus_Jakarta_Sans',sans-serif] text-2xl font-black tracking-tight text-[#17233B] sm:text-[26px]">
+          Welcome back, runner.
+        </h2>
+        <p className="mt-1 text-xs font-normal text-[#64748B] sm:text-sm">
+          Pick up where you left off and get moving.
+        </p>
       </div>
-
-      {/* Main Heading & Subtitle */}
-      <h2 className="text-2xl sm:text-[26px] font-black text-[#17233B] tracking-tight font-['Plus_Jakarta_Sans',sans-serif]">
-        Welcome Back
-      </h2>
-      <p className="text-xs sm:text-sm text-[#64748B] mt-1 mb-6 font-normal">
-        Sign in to access your Nexora Technologies account.
-      </p>
 
       {/* Error Alert Message */}
       {errorMessage && (

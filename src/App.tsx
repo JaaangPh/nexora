@@ -314,7 +314,7 @@ export const App: React.FC = () => {
             /* Unauthenticated Member View */
             <>
               <Header />
-              <section className="relative -mt-9 z-20 px-4 sm:px-6 pb-8 bg-white rounded-t-[32px] flex-1 flex flex-col shadow-card">
+              <section className="relative -mt-9 z-20 min-h-0 px-4 sm:px-6 pb-8 bg-white rounded-t-[32px] flex-1 flex flex-col overflow-y-auto shadow-card">
                 <div className="pt-4 flex-1 flex flex-col">
                   {sessionExpiredNotice && (
                     <p role="alert" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
