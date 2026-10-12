@@ -13,9 +13,92 @@ import {
   updateUserUsername,
   updateUserBalance,
   updateUserRunners,
+  getUserWorkoutSnapshot,
+  updateUserWorkoutSnapshot,
+  deleteUserWorkoutSnapshot,
   generateUniqueReferralCode,
   generateAutoUsername,
 } from '../database/firebase.js';
+
+const MAX_WORKOUT_ROUTE_POINTS = 1000;
+
+function parseWorkoutSnapshot(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const snapshot = value as Record<string, unknown>;
+  const isFiniteNonNegativeNumber = (item: unknown): item is number =>
+    typeof item === 'number' && Number.isFinite(item) && item >= 0;
+  const summary = snapshot.lastWorkoutSummary as Record<string, unknown> | null;
+  const routePoints = snapshot.routePoints;
+
+  if (
+    !Array.isArray(snapshot.runnerIds) ||
+    snapshot.runnerIds.length > 20 ||
+    !snapshot.runnerIds.every((id) => typeof id === 'string' && id.length <= 100) ||
+    typeof snapshot.isTracking !== 'boolean' ||
+    typeof snapshot.pendingFinish !== 'boolean' ||
+    typeof snapshot.pendingWasPaused !== 'boolean' ||
+    typeof snapshot.isPaused !== 'boolean' ||
+    !isFiniteNonNegativeNumber(snapshot.workoutStartTime) ||
+    !isFiniteNonNegativeNumber(snapshot.pauseStartTime) ||
+    !isFiniteNonNegativeNumber(snapshot.pausedDuration) ||
+    !isFiniteNonNegativeNumber(snapshot.elapsedSeconds) ||
+    !isFiniteNonNegativeNumber(snapshot.distanceKm) ||
+    !isFiniteNonNegativeNumber(snapshot.stepCount) ||
+    !isFiniteNonNegativeNumber(snapshot.caloriesBurned) ||
+    !isFiniteNonNegativeNumber(snapshot.tokensEarned) ||
+    !isFiniteNonNegativeNumber(snapshot.lastUpdated) ||
+    !summary ||
+    !isFiniteNonNegativeNumber(summary.earned) ||
+    typeof summary.distance !== 'string' ||
+    typeof summary.time !== 'string' ||
+    !isFiniteNonNegativeNumber(summary.calories) ||
+    typeof summary.runnerName !== 'string' ||
+    !Array.isArray(routePoints)
+  ) {
+    return null;
+  }
+
+  const validRoutePoints = routePoints.slice(-MAX_WORKOUT_ROUTE_POINTS);
+  if (!validRoutePoints.every((point) =>
+    Array.isArray(point) &&
+    point.length === 2 &&
+    typeof point[0] === 'number' &&
+    Number.isFinite(point[0]) &&
+    point[0] >= -90 &&
+    point[0] <= 90 &&
+    typeof point[1] === 'number' &&
+    Number.isFinite(point[1]) &&
+    point[1] >= -180 &&
+    point[1] <= 180
+  )) {
+    return null;
+  }
+
+  return {
+    runnerIds: snapshot.runnerIds,
+    isTracking: snapshot.isTracking,
+    pendingFinish: snapshot.pendingFinish,
+    pendingWasPaused: snapshot.pendingWasPaused,
+    lastWorkoutSummary: {
+      earned: summary.earned,
+      distance: summary.distance,
+      time: summary.time,
+      calories: summary.calories,
+      runnerName: summary.runnerName,
+    },
+    isPaused: snapshot.isPaused,
+    workoutStartTime: snapshot.workoutStartTime,
+    pauseStartTime: snapshot.pauseStartTime,
+    pausedDuration: snapshot.pausedDuration,
+    elapsedSeconds: snapshot.elapsedSeconds,
+    distanceKm: snapshot.distanceKm,
+    stepCount: snapshot.stepCount,
+    caloriesBurned: snapshot.caloriesBurned,
+    tokensEarned: snapshot.tokensEarned,
+    routePoints: validRoutePoints,
+    lastUpdated: snapshot.lastUpdated,
+  };
+}
 
 // Helper: Normalize phone numbers (strips spaces, dashes, parentheses)
 function normalizePhone(phone: string): string {
@@ -299,6 +382,72 @@ export async function getMe(req: AuthRequest, res: Response): Promise<void> {
 }
 
 /**
+ * GET /api/auth/workout
+ */
+export async function getWorkoutSnapshot(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Unauthorized session.' });
+      return;
+    }
+
+    const snapshot = await getUserWorkoutSnapshot(req.user.id);
+    res.json({
+      success: true,
+      workoutSnapshot: snapshot ? { ...snapshot, accountId: req.user.id } : null,
+    });
+  } catch (error: any) {
+    console.error('[Get Workout Snapshot Error]', error);
+    res.status(500).json({ success: false, message: error?.message || 'Failed to retrieve workout progress.' });
+  }
+}
+
+/**
+ * PUT /api/auth/workout
+ */
+export async function saveWorkoutSnapshot(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Unauthorized session.' });
+      return;
+    }
+
+    const snapshot = parseWorkoutSnapshot(req.body);
+    if (!snapshot) {
+      res.status(400).json({ success: false, message: 'Invalid workout progress snapshot.' });
+      return;
+    }
+
+    const savedSnapshot = await updateUserWorkoutSnapshot(req.user.id, snapshot);
+    res.json({
+      success: true,
+      workoutSnapshot: { ...savedSnapshot, accountId: req.user.id },
+    });
+  } catch (error: any) {
+    console.error('[Save Workout Snapshot Error]', error);
+    res.status(500).json({ success: false, message: error?.message || 'Failed to save workout progress.' });
+  }
+}
+
+/**
+ * DELETE /api/auth/workout
+ */
+export async function clearWorkoutSnapshot(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Unauthorized session.' });
+      return;
+    }
+
+    await deleteUserWorkoutSnapshot(req.user.id);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[Clear Workout Snapshot Error]', error);
+    res.status(500).json({ success: false, message: error?.message || 'Failed to clear workout progress.' });
+  }
+}
+
+/**
  * PUT /api/auth/username
  */
 export async function updateUsername(req: AuthRequest, res: Response): Promise<void> {
@@ -437,4 +586,3 @@ export async function updateRunners(req: AuthRequest, res: Response): Promise<vo
     res.status(500).json({ success: false, message: error?.message || 'Failed to update runners.' });
   }
 }
-

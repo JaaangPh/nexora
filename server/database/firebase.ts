@@ -1,5 +1,5 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
@@ -96,6 +96,7 @@ export interface FirestoreUser {
   equippedRunnerId?: string;
   runnerCooldowns?: Record<string, number>;
   activeSessionId?: string | null;
+  workoutSnapshot?: Record<string, unknown>;
 }
 
 /**
@@ -222,4 +223,34 @@ export async function updateUserRunners(
   data: { ownedRunners?: string[]; equippedRunnerId?: string; runnerCooldowns?: Record<string, number>; balance?: number }
 ): Promise<void> {
   await firestore.collection('users').doc(id).update(data);
+}
+
+export async function getUserWorkoutSnapshot(id: string): Promise<Record<string, unknown> | null> {
+  const user = await findUserById(id);
+  return user?.workoutSnapshot || null;
+}
+
+export async function updateUserWorkoutSnapshot(
+  id: string,
+  snapshot: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const userRef = firestore.collection('users').doc(id);
+  return firestore.runTransaction(async (transaction) => {
+    const userDocument = await transaction.get(userRef);
+    const user = userDocument.data() as FirestoreUser | undefined;
+    const currentSnapshot = user?.workoutSnapshot;
+    const currentLastUpdated = Number(currentSnapshot?.lastUpdated || 0);
+    const incomingLastUpdated = Number(snapshot.lastUpdated);
+    if (currentSnapshot && currentLastUpdated > incomingLastUpdated) {
+      return currentSnapshot;
+    }
+    transaction.update(userRef, { workoutSnapshot: snapshot });
+    return snapshot;
+  });
+}
+
+export async function deleteUserWorkoutSnapshot(id: string): Promise<void> {
+  await firestore.collection('users').doc(id).update({
+    workoutSnapshot: FieldValue.delete(),
+  });
 }

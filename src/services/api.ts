@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { AuthResponse, InviteValidationResponse, InviteCodeItem, User } from '../types/auth';
+import { WorkoutSnapshot } from '../types/workout';
 
 // Storage keys
 const TOKEN_KEY = 'nexora_token';
@@ -137,6 +138,25 @@ export const api = {
   async getMe(): Promise<{ success: boolean; user: User }> {
     return request<{ success: boolean; user: User }>('/api/auth/me', {
       method: 'GET',
+    });
+  },
+
+  async getWorkoutSnapshot(): Promise<{ success: boolean; workoutSnapshot: WorkoutSnapshot | null }> {
+    return request<{ success: boolean; workoutSnapshot: WorkoutSnapshot | null }>('/api/auth/workout', {
+      method: 'GET',
+    });
+  },
+
+  async saveWorkoutSnapshot(snapshot: WorkoutSnapshot): Promise<{ success: boolean; workoutSnapshot: WorkoutSnapshot }> {
+    return request<{ success: boolean; workoutSnapshot: WorkoutSnapshot }>('/api/auth/workout', {
+      method: 'PUT',
+      body: JSON.stringify(snapshot),
+    });
+  },
+
+  async clearWorkoutSnapshot(): Promise<{ success: boolean }> {
+    return request<{ success: boolean }>('/api/auth/workout', {
+      method: 'DELETE',
     });
   },
 

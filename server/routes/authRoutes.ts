@@ -7,6 +7,9 @@ import {
   updateUsername,
   updateBalance,
   updateRunners,
+  getWorkoutSnapshot,
+  saveWorkoutSnapshot,
+  clearWorkoutSnapshot,
 } from '../controllers/authController.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { authLimiter } from '../middleware/rateLimiter.js';
@@ -20,6 +23,9 @@ router.post('/logout', authMiddleware, logout);
 
 // Protected endpoints
 router.get('/me', authMiddleware, getMe);
+router.get('/workout', authMiddleware, getWorkoutSnapshot);
+router.put('/workout', authMiddleware, saveWorkoutSnapshot);
+router.delete('/workout', authMiddleware, clearWorkoutSnapshot);
 router.put('/username', authMiddleware, updateUsername);
 router.put('/balance', authMiddleware, updateBalance);
 router.put('/runners', authMiddleware, updateRunners);

@@ -10,6 +10,7 @@ import { AboutWhitepaper } from './components/about';
 import { InviteCodeHelper } from './components/InviteCodeHelper';
 import { User } from './types/auth';
 import { getStoredUser, getStoredToken, setStoredSession, api } from './services/api';
+import { hasWorkoutInProgressInStorage } from './services/workoutStorage';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AuthMode>('login');
@@ -98,19 +99,8 @@ export const App: React.FC = () => {
     if (!Capacitor.isNativePlatform()) return;
 
     let isChecking = false;
-    const workoutStorageKey = 'nexora_active_workout';
-
-    const hasWorkoutInProgress = () => {
-      try {
-        const workout = JSON.parse(localStorage.getItem(workoutStorageKey) || 'null');
-        return !!(workout?.isTracking || workout?.pendingFinish);
-      } catch {
-        return false;
-      }
-    };
-
     const reloadWhenSafe = () => {
-      if (!updateAvailableRef.current || hasWorkoutInProgress()) return;
+      if (!updateAvailableRef.current || hasWorkoutInProgressInStorage()) return;
       updateAvailableRef.current = false;
       sessionStorage.setItem('nexora_update_in_progress', '1');
       setIsUpdatingApp(true);
@@ -260,6 +250,15 @@ export const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
+    let persistWorkout = Promise.resolve();
+    window.dispatchEvent(new CustomEvent('nexora:logout', {
+      detail: {
+        waitUntil: (promise: Promise<void>) => {
+          persistWorkout = promise;
+        },
+      },
+    }));
+    await persistWorkout;
     await api.logout();
     setCurrentUser(null);
     setActiveTab('login');
