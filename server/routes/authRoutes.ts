@@ -7,6 +7,7 @@ import {
   updateUsername,
   updateBalance,
   updateRunners,
+  purchaseRunner,
   getWorkoutSnapshot,
   saveWorkoutSnapshot,
   clearWorkoutSnapshot,
@@ -28,6 +29,7 @@ router.put('/workout', authMiddleware, saveWorkoutSnapshot);
 router.delete('/workout', authMiddleware, clearWorkoutSnapshot);
 router.put('/username', authMiddleware, updateUsername);
 router.put('/balance', authMiddleware, updateBalance);
+router.post('/runners/purchase', authMiddleware, purchaseRunner);
 router.put('/runners', authMiddleware, updateRunners);
 
 export default router;

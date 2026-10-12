@@ -7,7 +7,6 @@ import {
   Shield,
   Heart,
   Sparkles,
-  CheckCircle2,
   X,
   ShoppingBag,
   ChevronRight,
@@ -17,6 +16,7 @@ import {
 } from 'lucide-react';
 import { User } from '../types/auth';
 import { api } from '../services/api';
+import { getOwnedRunnerInstances } from '../services/runnerInventory';
 
 export interface RunnerItem {
   id: string;
@@ -122,7 +122,7 @@ interface MarketTabProps {
   currentBalance?: number;
   onEquipSneaker?: (runner: RunnerItem) => void;
   onUpdateUser?: (user: User) => void;
-  onNavigateTab?: (tab: 'home' | 'market' | 'track' | 'team' | 'me') => void;
+  onNavigateTab?: (tab: 'home' | 'market' | 'track' | 'team' | 'me' | 'myrunners') => void;
   equippedSneakerId?: string;
 }
 
@@ -143,7 +143,7 @@ export const MarketTab: React.FC<MarketTabProps> = ({
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [filterSort, setFilterSort] = useState<'featured' | 'priceAsc' | 'priceDesc'>('featured');
 
-  const ownedRunnerIds = user?.ownedRunners || [];
+  const ownedRunnerInstances = getOwnedRunnerInstances(user?.ownedRunners);
   const equippedId = user?.equippedRunnerId || equippedSneakerId || '';
 
   const filteredRunners = RUNNER_CATALOG.filter((item) => {
@@ -160,76 +160,27 @@ export const MarketTab: React.FC<MarketTabProps> = ({
   });
 
   const handleBuyRunner = async (runner: RunnerItem) => {
-    if (currentBalance < runner.pricePhp) {
-      setPurchaseError(`Insufficient balance. You need ₱${runner.pricePhp.toLocaleString()} but currently have ₱${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}.`);
-      setTimeout(() => setPurchaseError(null), 3000);
-      return;
-    }
-
     setIsPurchasing(true);
     setPurchaseError(null);
 
-    const newBalance = Number((currentBalance - runner.pricePhp).toFixed(2));
-    const nextOwned = Array.from(new Set([...ownedRunnerIds, runner.id]));
-
-    const updatedUser: User = {
-      ...user!,
-      balance: newBalance,
-      ownedRunners: nextOwned,
-      equippedRunnerId: runner.id,
-    };
-
-    if (onUpdateUser) {
-      onUpdateUser(updatedUser);
-    }
-    if (onEquipSneaker) {
-      onEquipSneaker(runner);
-    }
-
     try {
-      await api.updateRunners({
-        balance: newBalance,
-        ownedRunners: nextOwned,
-        equippedRunnerId: runner.id,
-      });
+      const result = await api.purchaseRunner(runner.id);
+      if (!result.user || !result.purchasedRunner) {
+        throw new Error('The purchase response did not include the updated runner inventory.');
+      }
+      onUpdateUser?.({ ...user!, ...result.user });
+      onEquipSneaker?.(runner);
+      setPurchaseSuccess(`Purchased ${runner.name} #${result.purchasedRunner.serial}. Added to My Runners.`);
+      window.setTimeout(() => {
+        setPurchaseSuccess(null);
+        setSelectedRunner(null);
+        onNavigateTab?.('myrunners');
+      }, 1200);
     } catch (err) {
-      console.warn('[Marketplace] Error syncing runner purchase to backend:', err);
+      setPurchaseError(err instanceof Error ? err.message : 'Failed to purchase runner. Please try again.');
+    } finally {
+      setIsPurchasing(false);
     }
-
-    setIsPurchasing(false);
-    setPurchaseSuccess(`🎉 Purchased ${runner.name}! It is now equipped and ready for Track workouts.`);
-    setTimeout(() => {
-      setPurchaseSuccess(null);
-      setSelectedRunner(null);
-    }, 2000);
-  };
-
-  const handleEquipRunner = async (runner: RunnerItem) => {
-    const updatedUser: User = {
-      ...user!,
-      equippedRunnerId: runner.id,
-    };
-
-    if (onUpdateUser) {
-      onUpdateUser(updatedUser);
-    }
-    if (onEquipSneaker) {
-      onEquipSneaker(runner);
-    }
-
-    try {
-      await api.updateRunners({
-        equippedRunnerId: runner.id,
-      });
-    } catch (err) {
-      console.warn('[Marketplace] Error syncing equipped runner to backend:', err);
-    }
-
-    setPurchaseSuccess(`Equipped ${runner.name}! Ready for Track workouts.`);
-    setTimeout(() => {
-      setPurchaseSuccess(null);
-      setSelectedRunner(null);
-    }, 1500);
   };
 
   return (
@@ -315,8 +266,9 @@ export const MarketTab: React.FC<MarketTabProps> = ({
       {/* ---------------------------------------------------- */}
       <div className="grid grid-cols-2 gap-3">
         {filteredRunners.map((runner) => {
-          const isOwned = ownedRunnerIds.includes(runner.id);
-          const isEquipped = equippedId === runner.id;
+          const ownedCount = ownedRunnerInstances.filter((owned) => owned.runnerId === runner.id).length;
+          const isOwned = ownedCount > 0;
+          const isEquipped = ownedRunnerInstances.some((owned) => owned.id === equippedId && owned.runnerId === runner.id);
 
           return (
             <div
@@ -341,7 +293,7 @@ export const MarketTab: React.FC<MarketTabProps> = ({
                   </span>
                 ) : isOwned ? (
                   <span className="bg-cyan-500/30 text-cyan-300 border border-cyan-400/40 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
-                    OWNED
+                    OWNED ×{ownedCount}
                   </span>
                 ) : (
                   <span className="text-[10px] font-bold text-slate-400 font-mono">
@@ -419,7 +371,7 @@ export const MarketTab: React.FC<MarketTabProps> = ({
                 className="w-full h-full object-contain drop-shadow-2xl"
               />
               <span className="absolute bottom-2 right-3 text-[10px] font-mono font-bold text-slate-400">
-                {selectedRunner.serial}
+                {selectedRunner.category} MODEL
               </span>
             </div>
 
@@ -497,46 +449,20 @@ export const MarketTab: React.FC<MarketTabProps> = ({
                 </span>
               </div>
 
-              {ownedRunnerIds.includes(selectedRunner.id) ? (
-                /* ALREADY OWNED */
-                equippedId === selectedRunner.id ? (
-                  <button
-                    disabled
-                    className="px-5 py-3 rounded-2xl bg-emerald-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg opacity-90 cursor-default"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Equipped & Active</span>
-                  </button>
+              <button
+                onClick={() => handleBuyRunner(selectedRunner)}
+                disabled={isPurchasing}
+                className="px-5 py-3 rounded-2xl bg-[#D8FD2F] hover:bg-[#cbf128] text-black font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-[#D8FD2F]/20 transition-all active:scale-95 disabled:opacity-60"
+              >
+                {isPurchasing ? (
+                  <span>Processing...</span>
                 ) : (
-                  <button
-                    onClick={() => handleEquipRunner(selectedRunner)}
-                    className="px-5 py-3 rounded-2xl bg-cyan-400 hover:bg-cyan-300 text-[#08132B] font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-cyan-400/20 active:scale-95 transition-all"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Equip Runner</span>
-                  </button>
-                )
-              ) : (
-                /* NOT OWNED: BUY BUTTON */
-                <button
-                  onClick={() => handleBuyRunner(selectedRunner)}
-                  disabled={isPurchasing}
-                  className={`px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg transition-all active:scale-95 ${
-                    currentBalance < selectedRunner.pricePhp
-                      ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                      : 'bg-[#D8FD2F] hover:bg-[#cbf128] text-black shadow-[#D8FD2F]/20'
-                  }`}
-                >
-                  {isPurchasing ? (
-                    <span>Processing...</span>
-                  ) : (
-                    <>
-                      <ShoppingBag className="w-4 h-4" />
-                      <span>Buy Runner</span>
-                    </>
-                  )}
-                </button>
-              )}
+                  <>
+                    <ShoppingBag className="w-4 h-4" />
+                    <span>Buy Another</span>
+                  </>
+                )}
+              </button>
             </div>
 
             {/* Error Message */}

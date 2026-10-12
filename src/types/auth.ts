@@ -10,9 +10,16 @@ export interface User {
   lastLoginAt?: string;
   balance?: number;
   totalDeposit?: number;
-  ownedRunners?: string[];
+  ownedRunners?: (OwnedRunner | string)[];
   equippedRunnerId?: string;
   runnerCooldowns?: Record<string, number>;
+}
+
+export interface OwnedRunner {
+  id: string;
+  runnerId: string;
+  serial: string;
+  purchasedAt: number;
 }
 
 export interface AuthResponse {

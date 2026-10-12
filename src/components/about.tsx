@@ -257,7 +257,7 @@ export const AboutWhitepaper: React.FC = () => {
                   ['Market', 'Searches and filters the fixed Runner catalog; members can inspect, purchase, and equip items.'],
                   ['Track', 'Selects available owned Runners, captures a session, and displays the calculated reward before collection.'],
                   ['Team', 'Copies a referral code or link and shows direct-team, volume, and commission fields. These figures are placeholders.'],
-                  ['Me', 'Shows account details, allows username editing, copies the Nexora ID, links to the Android APK, and signs out.'],
+                  ['Me', 'Shows the account balance and deposit total, and provides quick actions for Team Marathon, My Runners, Bank Account, Customer Service, My Records, and Download App. Profile details, username editing, Nexora ID copying, and sign-out remain available below.'],
                   ['Support', 'Dashboard shortcuts include email and Telegram links. The Telegram link currently opens the Telegram homepage.'],
                 ].map(([title, description]) => (
                   <div key={title} className="rounded-lg border border-slate-200 p-4">
@@ -288,7 +288,7 @@ export const AboutWhitepaper: React.FC = () => {
                   </div>
                 ))}
               </div>
-              <p className="mt-3 text-xs leading-5 text-slate-500">These are current client-side catalog settings, not market prices. Speed range, comfort, and health/resilience are listed catalog attributes; the reward calculation currently uses the listed rate and kilometer limit.</p>
+              <p className="mt-3 text-xs leading-5 text-slate-500">Each Marketplace purchase creates a separate Runner in My Runners with its own four-digit serial number, even when buying the same model more than once. Track lists the account’s individual Runner copies and applies workout cooldowns to the selected copies. Speed range, comfort, and health/resilience are catalog attributes; the reward calculation uses the listed rate and kilometer limit.</p>
             </section>
 
             <section id="rewards" className="scroll-mt-24 border-b border-slate-200 py-8 sm:py-10">

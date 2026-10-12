@@ -16,11 +16,18 @@ import {
   getUserWorkoutSnapshot,
   updateUserWorkoutSnapshot,
   deleteUserWorkoutSnapshot,
+  purchaseUserRunner,
   generateUniqueReferralCode,
   generateAutoUsername,
 } from '../database/firebase.js';
 
 const MAX_WORKOUT_ROUTE_POINTS = 1000;
+const RUNNER_PRICES: Record<string, number> = {
+  'snk-1': 500,
+  'snk-2': 1000,
+  'snk-3': 2000,
+  'snk-4': 3500,
+};
 
 function parseWorkoutSnapshot(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -551,9 +558,8 @@ export async function updateRunners(req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
-    const { ownedRunners, equippedRunnerId, runnerCooldowns, balance } = req.body;
+    const { equippedRunnerId, runnerCooldowns, balance } = req.body;
     const updateData: any = {};
-    if (Array.isArray(ownedRunners)) updateData.ownedRunners = ownedRunners;
     if (typeof equippedRunnerId === 'string') updateData.equippedRunnerId = equippedRunnerId;
     if (runnerCooldowns && typeof runnerCooldowns === 'object') updateData.runnerCooldowns = runnerCooldowns;
     if (typeof balance === 'number' && !isNaN(balance)) updateData.balance = Math.round(balance * 100) / 100;
@@ -584,5 +590,50 @@ export async function updateRunners(req: AuthRequest, res: Response): Promise<vo
   } catch (error: any) {
     console.error('[Update Runners Error]', error);
     res.status(500).json({ success: false, message: error?.message || 'Failed to update runners.' });
+  }
+}
+
+/**
+ * POST /api/auth/runners/purchase
+ */
+export async function purchaseRunner(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Unauthorized session.' });
+      return;
+    }
+
+    const runnerId = req.body?.runnerId;
+    if (typeof runnerId !== 'string' || !Object.prototype.hasOwnProperty.call(RUNNER_PRICES, runnerId)) {
+      res.status(400).json({ success: false, message: 'Invalid runner selection.' });
+      return;
+    }
+
+    const purchase = await purchaseUserRunner(req.user.id, runnerId, RUNNER_PRICES[runnerId]);
+    res.json({
+      success: true,
+      message: 'Runner purchased successfully.',
+      user: {
+        balance: purchase.balance,
+        ownedRunners: purchase.ownedRunners,
+        equippedRunnerId: purchase.purchasedRunner.id,
+      },
+      purchasedRunner: purchase.purchasedRunner,
+    });
+  } catch (error: any) {
+    if (error?.message === 'INSUFFICIENT_BALANCE') {
+      res.status(400).json({ success: false, message: 'Insufficient balance for this runner.' });
+      return;
+    }
+    if (error?.message === 'ACCOUNT_NOT_FOUND') {
+      res.status(404).json({ success: false, message: 'Account not found.' });
+      return;
+    }
+    if (error?.message === 'RUNNER_SERIALS_EXHAUSTED') {
+      res.status(409).json({ success: false, message: 'No unique runner serials are available for this account.' });
+      return;
+    }
+    console.error('[Runner Purchase Error]', error);
+    res.status(500).json({ success: false, message: error?.message || 'Failed to purchase runner.' });
   }
 }

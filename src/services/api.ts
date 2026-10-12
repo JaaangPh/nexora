@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { AuthResponse, InviteValidationResponse, InviteCodeItem, User } from '../types/auth';
+import { AuthResponse, InviteValidationResponse, InviteCodeItem, OwnedRunner, User } from '../types/auth';
 import { WorkoutSnapshot } from '../types/workout';
 
 // Storage keys
@@ -189,7 +189,6 @@ export const api = {
   },
 
   async updateRunners(payload: {
-    ownedRunners?: string[];
     equippedRunnerId?: string;
     runnerCooldowns?: Record<string, number>;
     balance?: number;
@@ -197,6 +196,30 @@ export const api = {
     const res = await request<AuthResponse>('/api/auth/runners', {
       method: 'PUT',
       body: JSON.stringify(payload),
+    });
+    if (res.user) {
+      const currentStored = getStoredUser();
+      if (currentStored) {
+        setStoredSession(getStoredToken() || '', { ...currentStored, ...res.user });
+      }
+    }
+    return res;
+  },
+
+  async purchaseRunner(runnerId: string): Promise<{
+    success: boolean;
+    message: string;
+    user?: Partial<User>;
+    purchasedRunner?: OwnedRunner;
+  }> {
+    const res = await request<{
+      success: boolean;
+      message: string;
+      user?: Partial<User>;
+      purchasedRunner?: OwnedRunner;
+    }>('/api/auth/runners/purchase', {
+      method: 'POST',
+      body: JSON.stringify({ runnerId }),
     });
     if (res.user) {
       const currentStored = getStoredUser();

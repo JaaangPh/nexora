@@ -31,6 +31,7 @@ import { MarketTab } from './market';
 import { TrackTab } from './track';
 import { TeamTab } from './team';
 import { MeTab } from './me';
+import { MyRunnerTab } from './myrunner';
 import { AppModal } from './app';
 
 interface DashboardProps {
@@ -39,7 +40,7 @@ interface DashboardProps {
   onUpdateUser?: (user: User) => void;
 }
 
-type NavTab = 'home' | 'market' | 'track' | 'team' | 'me';
+type NavTab = 'home' | 'market' | 'track' | 'team' | 'me' | 'myrunners';
 
 function getTabFromUrl(): NavTab {
   if (typeof window === 'undefined') return 'home';
@@ -47,6 +48,7 @@ function getTabFromUrl(): NavTab {
   const hash = window.location.hash.toLowerCase();
 
   if (path.startsWith('/me') || hash.includes('/me') || hash === '#me') return 'me';
+  if (path.startsWith('/myrunners') || hash.includes('/myrunners') || hash === '#myrunners') return 'myrunners';
   if (path.startsWith('/market') || hash.includes('/market') || hash === '#market' || path.startsWith('/graph') || hash.includes('/graph')) return 'market';
   if (path.startsWith('/track') || hash.includes('/track') || hash === '#track' || path.startsWith('/trades') || hash.includes('/trades')) return 'track';
   if (path.startsWith('/team') || hash.includes('/team') || hash === '#team') return 'team';
@@ -396,12 +398,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
           {/* TAB 4: TEAM (from team.tsx) */}
           {activeTab === 'team' && <TeamTab user={user} />}
 
+          {activeTab === 'myrunners' && (
+            <MyRunnerTab
+              user={user}
+              onUpdateUser={onUpdateUser}
+              onNavigateTab={handleTabSelect}
+            />
+          )}
+
           {/* TAB 5: ME (from me.tsx) */}
           {activeTab === 'me' && (
             <MeTab
               user={user}
               onLogout={onLogout}
               onUpdateUser={onUpdateUser}
+              onNavigateTab={handleTabSelect}
+              onOpenBankAccount={() => setShowWithdrawModal(true)}
+              onOpenCustomerService={() => setShowSupportModal(true)}
               onOpenAppModal={() => setShowAppModal(true)}
             />
           )}

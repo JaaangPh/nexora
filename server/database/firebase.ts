@@ -79,6 +79,13 @@ export const firestore = new Proxy({} as FirebaseFirestore.Firestore, {
 });
 
 // User Interfaces
+export interface OwnedRunner {
+  id: string;
+  runnerId: string;
+  serial: string;
+  purchasedAt: number;
+}
+
 export interface FirestoreUser {
   id: string;
   phoneNumber: string;
@@ -92,7 +99,7 @@ export interface FirestoreUser {
   lastLoginAt?: string;
   balance?: number;
   totalDeposit?: number;
-  ownedRunners?: string[];
+  ownedRunners?: (OwnedRunner | string)[];
   equippedRunnerId?: string;
   runnerCooldowns?: Record<string, number>;
   activeSessionId?: string | null;
@@ -220,9 +227,85 @@ export async function updateUserBalance(id: string, balance: number): Promise<vo
 
 export async function updateUserRunners(
   id: string,
-  data: { ownedRunners?: string[]; equippedRunnerId?: string; runnerCooldowns?: Record<string, number>; balance?: number }
+  data: { equippedRunnerId?: string; runnerCooldowns?: Record<string, number>; balance?: number }
 ): Promise<void> {
   await firestore.collection('users').doc(id).update(data);
+}
+
+export async function purchaseUserRunner(
+  id: string,
+  runnerId: string,
+  price: number
+): Promise<{ balance: number; ownedRunners: OwnedRunner[]; purchasedRunner: OwnedRunner }> {
+  const userRef = firestore.collection('users').doc(id);
+
+  return firestore.runTransaction(async (transaction) => {
+    const userDocument = await transaction.get(userRef);
+    const user = userDocument.data() as FirestoreUser | undefined;
+    if (!user) throw new Error('ACCOUNT_NOT_FOUND');
+
+    const balance = Number(user.balance || 0);
+    if (balance < price) throw new Error('INSUFFICIENT_BALANCE');
+
+    const usedSerials = new Set<string>();
+    const ownedRunners: OwnedRunner[] = [];
+    for (const item of Array.isArray(user.ownedRunners) ? user.ownedRunners : []) {
+      if (typeof item === 'string') {
+        ownedRunners.push({
+          id: item,
+          runnerId: item,
+          serial: '',
+          purchasedAt: 0,
+        });
+      } else if (
+        item &&
+        typeof item.id === 'string' &&
+        typeof item.runnerId === 'string' &&
+        typeof item.serial === 'string'
+      ) {
+        ownedRunners.push(item);
+      }
+    }
+
+    const createSerial = (): string => {
+      for (let attempt = 0; attempt < 9000; attempt += 1) {
+        const serial = String(crypto.randomInt(1000, 10000));
+        if (!usedSerials.has(serial)) {
+          usedSerials.add(serial);
+          return serial;
+        }
+      }
+      throw new Error('RUNNER_SERIALS_EXHAUSTED');
+    };
+
+    for (const runner of ownedRunners) {
+      if (/^\d{4}$/.test(runner.serial) && !usedSerials.has(runner.serial)) {
+        usedSerials.add(runner.serial);
+      } else {
+        runner.serial = createSerial();
+      }
+    }
+
+    const purchasedRunner: OwnedRunner = {
+      id: crypto.randomUUID(),
+      runnerId,
+      serial: createSerial(),
+      purchasedAt: Date.now(),
+    };
+    ownedRunners.push(purchasedRunner);
+
+    transaction.update(userRef, {
+      balance: Math.round((balance - price) * 100) / 100,
+      ownedRunners,
+      equippedRunnerId: purchasedRunner.id,
+    });
+
+    return {
+      balance: Math.round((balance - price) * 100) / 100,
+      ownedRunners,
+      purchasedRunner,
+    };
+  });
 }
 
 export async function getUserWorkoutSnapshot(id: string): Promise<Record<string, unknown> | null> {

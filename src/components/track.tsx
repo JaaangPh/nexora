@@ -36,6 +36,7 @@ import { RUNNER_CATALOG, RunnerItem } from './market';
 import { api, getApiBaseUrl } from '../services/api';
 import { getActiveWorkoutStorageKey } from '../services/workoutStorage';
 import { WorkoutSnapshot } from '../types/workout';
+import { getOwnedRunnerInstances } from '../services/runnerInventory';
 
 interface TrackTabProps {
   user?: User;
@@ -78,8 +79,17 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const [selectedMode, setSelectedMode] = useState<WorkoutMode>('running');
 
   // Owned runners detection
-  const ownedRunnerIds = user?.ownedRunners || [];
-  const ownedRunners = RUNNER_CATALOG.filter((r) => ownedRunnerIds.includes(r.id));
+  const runnerInstances = getOwnedRunnerInstances(user?.ownedRunners);
+  const ownedRunners = runnerInstances.flatMap((instance) => {
+    const catalogRunner = RUNNER_CATALOG.find((runner) => runner.id === instance.runnerId);
+    return catalogRunner
+      ? [{ ...catalogRunner, id: instance.id, serial: `#${instance.serial}` }]
+      : [];
+  });
+  const runnerInventoryKey = runnerInstances.map((runner) => `${runner.id}:${runner.serial}`).join(',');
+  const normalizeRunnerIds = (runnerIds: string[]) => runnerIds.map((runnerId) =>
+    runnerInstances.find((runner) => runner.id === runnerId || runner.runnerId === runnerId)?.id || runnerId
+  );
   const eligibleOwnedRunners = ownedRunners.filter((runner) => (user?.runnerCooldowns?.[runner.id] || 0) <= Date.now());
 
   // Determine initial selected runner
@@ -104,10 +114,10 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         : eligibleOwnedRunners[0]?.id;
       return fallbackId ? [fallbackId] : [];
     });
-  }, [user?.equippedRunnerId, user?.runnerCooldowns, ownedRunnerIds.join(','), showFinishModal]);
+  }, [user?.equippedRunnerId, user?.runnerCooldowns, runnerInventoryKey, showFinishModal]);
 
   const selectedRunners = ownedRunners.filter((runner) => selectedRunnerIds.includes(runner.id));
-  const selectedRunnerNames = selectedRunners.map((runner) => runner.name).join(' + ');
+  const selectedRunnerNames = selectedRunners.map((runner) => `${runner.name} ${runner.serial}`).join(' + ');
   const selectedEarningRate = selectedRunners.reduce((total, runner) => total + runner.earningRate, 0);
   const workoutDistanceLimit = selectedRunners.reduce((total, runner) => total + runner.kmLimitPerDay, 0);
   const selectedRunnersRef = useRef<RunnerItem[]>(selectedRunners);
@@ -278,12 +288,13 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   };
 
   const restoreWorkoutSnapshot = (data: WorkoutSnapshot, forcePaused: boolean) => {
+    const restoredRunnerIds = normalizeRunnerIds(data.runnerIds || []);
     if (data.pendingFinish) {
       if (data.lastWorkoutSummary) setLastWorkoutSummary(data.lastWorkoutSummary);
-      sessionRunnerIdsRef.current = data.runnerIds || [];
-      setSessionRunnerIds(data.runnerIds || []);
+      sessionRunnerIdsRef.current = restoredRunnerIds;
+      setSessionRunnerIds(restoredRunnerIds);
       finishWasPausedRef.current = !!data.pendingWasPaused;
-      if (data.runnerIds?.length) setSelectedRunnerIds(data.runnerIds);
+      if (restoredRunnerIds.length) setSelectedRunnerIds(restoredRunnerIds);
       setIsTracking(false);
       isTrackingRef.current = false;
       isPausedRef.current = false;
@@ -316,9 +327,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     motionStepCountRef.current = data.stepCount || 0;
     gpsStepCountRef.current = data.stepCount || 0;
     routePointsRef.current = data.routePoints || [];
-    sessionRunnerIdsRef.current = data.runnerIds || [];
-    setSessionRunnerIds(data.runnerIds || []);
-    if (data.runnerIds?.length) setSelectedRunnerIds(data.runnerIds);
+    sessionRunnerIdsRef.current = restoredRunnerIds;
+    setSessionRunnerIds(restoredRunnerIds);
+    if (restoredRunnerIds.length) setSelectedRunnerIds(restoredRunnerIds);
     setIsTracking(true);
     setIsPaused(shouldPause);
     setDistanceKm(data.distanceKm || 0);
@@ -1347,7 +1358,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                           />
                           <div className="min-w-0 flex-1">
                             <h5 className="text-[11px] font-black text-white truncate">
-                              {runner.name}
+                              {runner.name} {runner.serial}
                             </h5>
                             <span className="text-[9px] font-mono text-emerald-400 font-bold block">
                               +₱{runner.earningRate.toFixed(2)}/km
