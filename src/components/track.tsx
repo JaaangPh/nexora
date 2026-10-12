@@ -33,6 +33,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { User } from '../types/auth';
 import { RUNNER_CATALOG, RunnerItem } from './market';
+import { getApiBaseUrl } from '../services/api';
 
 interface TrackTabProps {
   user?: User;
@@ -47,6 +48,8 @@ type WorkoutMode = 'running' | 'cycling' | 'transit';
 type MapLayerType = 'google-road' | 'google-hybrid' | 'google-sat';
 
 const ACTIVE_WORKOUT_STORAGE_KEY = 'nexora_active_workout';
+const OFFLINE_WORKOUT_GRACE_PERIOD_MS = 10 * 60 * 1000;
+const CONNECTION_CHECK_INTERVAL_MS = 10 * 1000;
 
 // Haversine formula to compute exact distance between two coordinates in kilometers
 function calculateHaversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -119,6 +122,13 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   // Workout state
   const [isTracking, setIsTracking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [isOffline, setIsOffline] = useState(
+    () => typeof navigator !== 'undefined' && !navigator.onLine
+  );
+  const [offlineSecondsRemaining, setOfflineSecondsRemaining] = useState(
+    OFFLINE_WORKOUT_GRACE_PERIOD_MS / 1000
+  );
+  const [offlineAutoFinish, setOfflineAutoFinish] = useState(false);
 
   // Stats
   const [secondsElapsed, setSecondsElapsed] = useState(0);
@@ -127,6 +137,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const [stepCount, setStepCount] = useState(0);
   const [tokensEarned, setTokensEarned] = useState(0);
   const [currentSpeedKmh, setCurrentSpeedKmh] = useState<number>(0);
+  const latestWorkoutStatsRef = useRef({ caloriesBurned, tokensEarned });
+  latestWorkoutStatsRef.current = { caloriesBurned, tokensEarned };
 
   // GPS state
   const [gpsStatus, setGpsStatus] = useState<'idle' | 'searching' | 'active' | 'denied'>('idle');
@@ -168,6 +180,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const pausedDurationRef = useRef<number>(0);
   const sessionRunnerIdsRef = useRef<string[]>([]);
   const finishWasPausedRef = useRef(false);
+  const offlineSinceRef = useRef<number | null>(null);
+  const offlineAutoFinishRef = useRef(false);
 
   // Leaflet map refs
   const rawId = useId();
@@ -216,13 +230,15 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         pendingWasPaused: finishWasPausedRef.current,
         lastWorkoutSummary: summary,
         isPaused: isPausedRef.current,
+        offlineSince: offlineSinceRef.current,
+        pendingOfflineEnd: offlineAutoFinishRef.current,
         workoutStartTime: workoutStartTimeRef.current,
         pauseStartTime: pauseStartTimeRef.current,
         pausedDuration: pausedDurationRef.current,
         distanceKm: totalDistanceKmRef.current,
         stepCount: Math.max(motionStepCountRef.current, gpsStepCountRef.current),
-        caloriesBurned: caloriesBurned,
-        tokensEarned: tokensEarned,
+        caloriesBurned: latestWorkoutStatsRef.current.caloriesBurned,
+        tokensEarned: latestWorkoutStatsRef.current.tokensEarned,
         routePoints: routePointsRef.current,
         lastUpdated: Date.now(),
       };
@@ -244,11 +260,14 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           sessionRunnerIdsRef.current = runnerIds;
           setSessionRunnerIds(runnerIds);
           finishWasPausedRef.current = !!data.pendingWasPaused;
+          offlineAutoFinishRef.current = !!data.pendingOfflineEnd;
+          setOfflineAutoFinish(offlineAutoFinishRef.current);
           if (runnerIds.length > 0) setSelectedRunnerIds(runnerIds);
           setShowFinishModal(true);
         } else if (data.isTracking && data.workoutStartTime) {
           isTrackingRef.current = true;
           isPausedRef.current = !!data.isPaused;
+          offlineSinceRef.current = data.offlineSince || null;
           workoutStartTimeRef.current = data.workoutStartTime;
           pauseStartTimeRef.current = data.pauseStartTime || 0;
           pausedDurationRef.current = data.pausedDuration || 0;
@@ -758,6 +777,10 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const startWorkoutTracking = () => {
     sessionRunnerIdsRef.current = selectedRunnersRef.current.map((runner) => runner.id);
     setSessionRunnerIds(sessionRunnerIdsRef.current);
+    offlineSinceRef.current = null;
+    offlineAutoFinishRef.current = false;
+    setOfflineAutoFinish(false);
+    setOfflineSecondsRemaining(OFFLINE_WORKOUT_GRACE_PERIOD_MS / 1000);
     isTrackingRef.current = true;
     isPausedRef.current = false;
     setIsTracking(true);
@@ -785,39 +808,61 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   // --------------------------------------------------------------------------
   // 8. PAUSE & RESUME WORKOUT (Allows leaving and coming back)
   // --------------------------------------------------------------------------
+  const pauseWorkout = () => {
+    if (!isTrackingRef.current || isPausedRef.current) return;
+    const now = Date.now();
+    setSecondsElapsed(Math.max(
+      0,
+      Math.floor((now - workoutStartTimeRef.current - pausedDurationRef.current) / 1000)
+    ));
+    pauseStartTimeRef.current = now;
+    isPausedRef.current = true;
+    setIsPaused(true);
+    releaseWakeLock();
+    void stopContinuousGpsWatch();
+    saveWorkoutSnapshot();
+  };
+
   const handlePauseWorkout = () => {
-    if (!isPaused) {
-      // Pause
-      pauseStartTimeRef.current = Date.now();
-      isPausedRef.current = true;
-      setIsPaused(true);
-      releaseWakeLock();
-      saveWorkoutSnapshot();
-    } else {
-      // Resume
+    if (isPausedRef.current) {
+      if (isOffline || offlineAutoFinishRef.current) return;
       if (pauseStartTimeRef.current > 0) {
-        pausedDurationRef.current += (Date.now() - pauseStartTimeRef.current);
+        pausedDurationRef.current += Date.now() - pauseStartTimeRef.current;
       }
       pauseStartTimeRef.current = 0;
       isPausedRef.current = false;
       setIsPaused(false);
-      if (keepScreenOn) {
-        requestWakeLock();
-      }
+      if (keepScreenOn) requestWakeLock();
+      void startContinuousGpsWatch();
       saveWorkoutSnapshot();
+      return;
     }
+    pauseWorkout();
   };
 
   // --------------------------------------------------------------------------
   // 9. END & EARN -> OPEN CELEBRATION MODAL
   // --------------------------------------------------------------------------
-  const handleFinishWorkout = async () => {
+  const handleFinishWorkout = async (endedAfterOfflineTimeout = false) => {
+    if (!isTrackingRef.current) return;
+    const now = Date.now();
+    const activePauseDuration = isPausedRef.current && pauseStartTimeRef.current > 0
+      ? now - pauseStartTimeRef.current
+      : 0;
+    const elapsedSeconds = Math.max(
+      0,
+      Math.floor((now - workoutStartTimeRef.current - pausedDurationRef.current - activePauseDuration) / 1000)
+    );
+    setSecondsElapsed(elapsedSeconds);
     finishWasPausedRef.current = isPausedRef.current;
+    offlineAutoFinishRef.current = endedAfterOfflineTimeout;
+    setOfflineAutoFinish(endedAfterOfflineTimeout);
+    if (endedAfterOfflineTimeout) setIsOffline(true);
     const summary = {
-      earned: Math.round(tokensEarned * 100) / 100,
-      distance: distanceKm.toFixed(2),
-      time: formatTime(secondsElapsed),
-      calories: caloriesBurned,
+      earned: Math.round(latestWorkoutStatsRef.current.tokensEarned * 100) / 100,
+      distance: totalDistanceKmRef.current.toFixed(2),
+      time: formatTime(elapsedSeconds),
+      calories: latestWorkoutStatsRef.current.caloriesBurned,
       runnerName: selectedRunnersRef.current.map((runner) => runner.name).join(' + ') || 'Runner',
     };
     isTrackingRef.current = false;
@@ -833,6 +878,104 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     saveWorkoutSnapshot(true, summary);
   };
 
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      pauseWorkout();
+    };
+    window.addEventListener('nexora:session-expired', handleSessionExpired);
+    return () => window.removeEventListener('nexora:session-expired', handleSessionExpired);
+  }, []);
+
+  useEffect(() => {
+    let isCheckingConnection = false;
+    const shouldMonitorConnection = isTracking || (showFinishModal && offlineAutoFinish);
+
+    const markOffline = () => {
+      setIsOffline(true);
+      if (!isTrackingRef.current) return;
+      if (offlineSinceRef.current === null) offlineSinceRef.current = Date.now();
+      pauseWorkout();
+      saveWorkoutSnapshot();
+    };
+
+    const markOnline = () => {
+      if (
+        isTrackingRef.current &&
+        offlineSinceRef.current !== null &&
+        Date.now() - offlineSinceRef.current >= OFFLINE_WORKOUT_GRACE_PERIOD_MS &&
+        !offlineAutoFinishRef.current
+      ) {
+        offlineAutoFinishRef.current = true;
+        void handleFinishWorkout(true);
+      }
+      offlineSinceRef.current = null;
+      setIsOffline(false);
+      setOfflineSecondsRemaining(OFFLINE_WORKOUT_GRACE_PERIOD_MS / 1000);
+      saveWorkoutSnapshot();
+    };
+
+    const checkConnection = async () => {
+      if (isCheckingConnection) return;
+      if (!navigator.onLine) {
+        markOffline();
+        return;
+      }
+
+      isCheckingConnection = true;
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/api/health`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Health check failed with status ${response.status}`);
+        markOnline();
+      } catch {
+        markOffline();
+      } finally {
+        window.clearTimeout(timeoutId);
+        isCheckingConnection = false;
+      }
+    };
+
+    const handleOnline = () => void checkConnection();
+    window.addEventListener('offline', markOffline);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('focus', handleOnline);
+
+    if (!navigator.onLine) markOffline();
+    else if (shouldMonitorConnection) void checkConnection();
+
+    const intervalId = shouldMonitorConnection
+      ? window.setInterval(() => void checkConnection(), CONNECTION_CHECK_INTERVAL_MS)
+      : null;
+    return () => {
+      if (intervalId !== null) window.clearInterval(intervalId);
+      window.removeEventListener('offline', markOffline);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('focus', handleOnline);
+    };
+  }, [isTracking, showFinishModal, offlineAutoFinish]);
+
+  useEffect(() => {
+    if (!isTracking || offlineSinceRef.current === null || offlineAutoFinishRef.current) return;
+
+    const updateOfflineGracePeriod = () => {
+      const elapsed = Date.now() - (offlineSinceRef.current || Date.now());
+      const remaining = Math.max(0, Math.ceil((OFFLINE_WORKOUT_GRACE_PERIOD_MS - elapsed) / 1000));
+      setOfflineSecondsRemaining(remaining);
+      if (remaining === 0 && !offlineAutoFinishRef.current) {
+        offlineAutoFinishRef.current = true;
+        void handleFinishWorkout(true);
+      }
+    };
+
+    updateOfflineGracePeriod();
+    const intervalId = window.setInterval(updateOfflineGracePeriod, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [isTracking, isOffline]);
+
   const handleCancelFinish = () => {
     setShowFinishModal(false);
     isTrackingRef.current = true;
@@ -841,7 +984,11 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     setIsPaused(finishWasPausedRef.current);
 
     if (finishWasPausedRef.current) {
-      pauseStartTimeRef.current = Date.now();
+      const now = Date.now();
+      if (pauseStartTimeRef.current > 0) {
+        pausedDurationRef.current += now - pauseStartTimeRef.current;
+      }
+      pauseStartTimeRef.current = now;
       releaseWakeLock();
     } else {
       pauseStartTimeRef.current = 0;
@@ -856,6 +1003,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   // --------------------------------------------------------------------------
   const handleCollectAndContinue = () => {
     setShowFinishModal(false);
+    offlineSinceRef.current = null;
+    offlineAutoFinishRef.current = false;
+    setOfflineAutoFinish(false);
 
     const finalEarned = lastWorkoutSummary.earned;
     const runnerIds = sessionRunnerIdsRef.current.length > 0
@@ -1263,7 +1413,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
               </button>
               <button
-                onClick={handleFinishWorkout}
+                onClick={() => void handleFinishWorkout()}
                 className="px-4 py-3 rounded-full bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs transition-all active:scale-95 shadow-lg shadow-red-600/20"
               >
                 End & Earn
@@ -1275,6 +1425,29 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         {/* -------------------------------------------------- */}
         {/* LIVE WORKOUT HUD: TIME, STEPS, CALORIES, EARNINGS  */}
         {/* -------------------------------------------------- */}
+        {isTracking && isOffline && (
+          <div
+            role="alert"
+            className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 text-amber-100"
+          >
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-amber-300">
+              <AlertTriangle className="h-4 w-4" />
+              Internet or mobile signal lost — workout paused
+            </div>
+            <p className="mt-1 text-xs leading-5">
+              Your time, steps, calories, and earnings are frozen. Reconnect within{' '}
+              <strong>{formatTime(offlineSecondsRemaining)}</strong> to keep this workout.
+            </p>
+          </div>
+        )}
+        {!isTracking && showFinishModal && isOffline && offlineAutoFinish && (
+          <div
+            role="status"
+            className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100"
+          >
+            Your workout ended after 10 minutes without a connection. Reconnect to view and collect your reward.
+          </div>
+        )}
         {isTracking && (
           <div className="bg-[#12151B] p-3 rounded-2xl border border-[#232936] grid grid-cols-4 gap-2 text-center animate-fade-in">
             <div>
@@ -1425,7 +1598,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       {/* ==================================================== */}
       {/* 6. WORKOUT COMPLETED / 24H COOLDOWN SUMMARY MODAL     */}
       {/* ==================================================== */}
-      {showFinishModal && (
+      {showFinishModal && !isOffline && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-[#151922] border border-[#2C3344] rounded-[32px] p-6 w-full max-w-sm text-white shadow-2xl relative space-y-4 text-center">
             <div className="w-14 h-14 rounded-2xl bg-[#D8FD2F]/20 border border-[#D8FD2F]/40 text-[#D8FD2F] flex items-center justify-center mx-auto shadow-lg shadow-[#D8FD2F]/15">
@@ -1437,7 +1610,10 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 Workout Complete!
               </h3>
               <p className="text-xs text-slate-300 mt-1">
-                Your workout using <span className="text-[#D8FD2F] font-bold">{lastWorkoutSummary.runnerName}</span> has ended. Collect your reward to place each selected Runner on a 24-hour cooldown.
+                {offlineAutoFinish
+                  ? 'Your workout was automatically ended after 10 minutes without a connection. '
+                  : `Your workout using ${lastWorkoutSummary.runnerName} has ended. `}
+                Collect your reward to place each selected Runner on a 24-hour cooldown.
               </p>
             </div>
 
@@ -1469,12 +1645,14 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               <span>Each selected Runner will be locked for 24 hours.</span>
             </div>
 
-            <button
-              onClick={handleCancelFinish}
-              className="w-full py-3 rounded-2xl bg-[#202633] hover:bg-[#2b3445] text-white border border-white/10 font-black text-xs uppercase tracking-wider active:scale-95 transition-all"
-            >
-              Cancel & Continue Workout
-            </button>
+            {!offlineAutoFinish && (
+              <button
+                onClick={handleCancelFinish}
+                className="w-full py-3 rounded-2xl bg-[#202633] hover:bg-[#2b3445] text-white border border-white/10 font-black text-xs uppercase tracking-wider active:scale-95 transition-all"
+              >
+                Cancel & Continue Workout
+              </button>
+            )}
             <button
               onClick={handleCollectAndContinue}
               className="w-full py-3.5 rounded-2xl bg-[#D8FD2F] hover:bg-[#c6ec22] text-[#0A0D11] font-black text-xs uppercase tracking-wider shadow-lg shadow-[#D8FD2F]/20 active:scale-95 transition-all"

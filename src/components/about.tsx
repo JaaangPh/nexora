@@ -326,7 +326,7 @@ export const AboutWhitepaper: React.FC = () => {
                 </div>
                 <div className="rounded-lg border border-slate-200 p-4">
                   <h3 className="text-sm font-semibold text-slate-900">Session handling</h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">The active workout and pending summary are stored in device/browser local storage so the interface can restore them after a reload. Cancel &amp; Continue returns to the workout. Collect &amp; Continue credits the calculated in-app amount, clears the pending workout, and starts a 24-hour cooldown for each selected Runner.</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">The active workout and pending summary are stored in device/browser local storage so the interface can restore them after a reload. Pausing freezes time, steps, calories, and earnings. Losing internet pauses the workout and starts a 10-minute reconnection window; if it expires, the workout ends and its summary appears when the connection returns. A new sign-in on another device invalidates the previous session, which pauses the workout on that device. Cancel &amp; Continue returns to a manually ended workout. Collect &amp; Continue credits the calculated in-app amount, clears the pending workout, and starts a 24-hour cooldown for each selected Runner.</p>
                 </div>
               </div>
               <p className="mt-4 leading-7 text-slate-600">Running, cycling, and transit are selectable in the interface, but the current reward formula does not vary by mode. GPS availability, motion sensors, background operation, permissions, and connection quality depend on the device and browser.</p>
