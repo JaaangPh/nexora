@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Phone, Lock, Eye, EyeOff, LogIn, AlertCircle, Loader2 } from 'lucide-react';
+import { Lock, Eye, EyeOff, LogIn, AlertCircle, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { User } from '../types/auth';
 import { SecurityNotice } from './SecurityNotice';
+import { PhoneNumberInput } from './PhoneNumberInput';
 
 interface LoginFormProps {
   onSuccess: (user: User) => void;
@@ -17,7 +18,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   prefilledPhone = '',
   prefilledPassword = '',
 }) => {
-  const [phoneNumber, setPhoneNumber] = useState(prefilledPhone);
+  const [phoneNumber, setPhoneNumber] = useState(prefilledPhone || '+63');
   const [password, setPassword] = useState(prefilledPassword);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,8 +35,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     setErrorMessage(null);
 
     // Client-side quick checks
-    if (!phoneNumber.trim()) {
-      setErrorMessage('Please enter your phone number.');
+    if (!/^\+\d{7,15}$/.test(phoneNumber)) {
+      setErrorMessage('Please enter a valid international phone number, including the country code.');
       return;
     }
 
@@ -98,27 +99,16 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           >
             Phone Number
           </label>
-          <div className="relative rounded-2xl">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#64748B]">
-              <Phone className="w-4 h-4" />
-            </div>
-            <input
-              id="login-phone"
-              name="phone"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              required
-              disabled={isLoading}
-              value={phoneNumber}
-              onChange={(e) => {
-                setPhoneNumber(e.target.value);
-                if (errorMessage) setErrorMessage(null);
-              }}
-              placeholder="Enter your phone number"
-              className="w-full pl-10 pr-4 py-3 sm:py-3.5 bg-[#F8FAFC] text-[#17233B] text-sm rounded-2xl border border-[#DCE4EF] placeholder:text-[#94A3B8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2459C4]/25 focus:border-[#2459C4] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-            />
-          </div>
+          <PhoneNumberInput
+            id="login-phone"
+            name="phone"
+            value={phoneNumber}
+            disabled={isLoading}
+            onChange={(value) => {
+              setPhoneNumber(value);
+              if (errorMessage) setErrorMessage(null);
+            }}
+          />
         </div>
 
         {/* Account Password Field */}

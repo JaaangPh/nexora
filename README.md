@@ -35,7 +35,7 @@ A modern, responsive, high-security authentication platform for **Nexora Technol
    * Footer branding: `Nexora Technologies • Secure Member Portal`.
 
 2. **Complete Full-Stack Authentication:**
-   * **Phone Number + Password Authentication** with rate limiting and generic error responses to prevent user enumeration.
+   * **International Phone Number + Password Authentication** with searchable country flags and calling codes, rate limiting, and generic error responses to prevent user enumeration.
    * **Real-time Invite Code Verification** via backend API (`POST /api/auth/validate-invite`).
    * Password mismatch validation and format verification.
    * Duplicate phone number detection (HTTP 409 Conflict).
@@ -122,6 +122,7 @@ nexora/
 │   │   ├── InviteCodeHelper.tsx # Testing modal for invite codes & mobile host
 │   │   ├── LoginForm.tsx      # Login form with phone, password, eye toggle
 │   │   ├── RegisterForm.tsx   # Register form with real-time invite check
+│   │   ├── PhoneNumberInput.tsx # Searchable international phone input with country flags
 │   │   └── SecurityNotice.tsx # Shield security advisory card
 │   ├── services/api.ts        # API client for Web and Capacitor Mobile
 │   ├── styles/index.css       # Global styles & Tailwind directives

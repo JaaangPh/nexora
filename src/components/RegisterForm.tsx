@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Phone, Lock, Eye, EyeOff, KeyRound, AlertCircle, CheckCircle2, Loader2, UserPlus } from 'lucide-react';
+import { Lock, Eye, EyeOff, KeyRound, AlertCircle, CheckCircle2, Loader2, UserPlus } from 'lucide-react';
 import { api } from '../services/api';
 import { User } from '../types/auth';
+import { PhoneNumberInput } from './PhoneNumberInput';
 
 interface RegisterFormProps {
   onSuccess: (user: User) => void;
@@ -14,7 +15,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   onNavigateToLogin,
   initialInviteCode = '',
 }) => {
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('+63');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [inviteCode, setInviteCode] = useState(initialInviteCode);
@@ -45,8 +46,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     setSuccessMessage(null);
 
     // 1. Required fields check
-    if (!phoneNumber.trim()) {
-      setErrorMessage('Please enter your phone number.');
+    if (!/^\+\d{7,15}$/.test(phoneNumber)) {
+      setErrorMessage('Please enter a valid international phone number, including the country code.');
       return;
     }
     if (!password) {
@@ -75,12 +76,6 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
     }
 
     // 4. Phone format check
-    const cleanPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
-    if (!/^\+?[0-9]{7,15}$/.test(cleanPhone)) {
-      setErrorMessage('Please enter a valid phone number (7 to 15 digits).');
-      return;
-    }
-
     setIsLoading(true);
 
     try {
@@ -148,27 +143,16 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           >
             Phone Number
           </label>
-          <div className="relative rounded-2xl">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#64748B]">
-              <Phone className="w-4 h-4" />
-            </div>
-            <input
-              id="reg-phone"
-              name="phoneNumber"
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              required
-              disabled={isLoading}
-              value={phoneNumber}
-              onChange={(e) => {
-                setPhoneNumber(e.target.value);
-                if (errorMessage) setErrorMessage(null);
-              }}
-              placeholder="Your phone number"
-              className="w-full pl-10 pr-4 py-3 sm:py-3.5 bg-[#F8FAFC] text-[#17233B] text-sm rounded-2xl border border-[#DCE4EF] placeholder:text-[#94A3B8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2459C4]/25 focus:border-[#2459C4] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-            />
-          </div>
+          <PhoneNumberInput
+            id="reg-phone"
+            name="phoneNumber"
+            value={phoneNumber}
+            disabled={isLoading}
+            onChange={(value) => {
+              setPhoneNumber(value);
+              if (errorMessage) setErrorMessage(null);
+            }}
+          />
         </div>
 
         {/* 2. Account Password */}
