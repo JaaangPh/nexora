@@ -89,6 +89,7 @@ export interface FirestoreUser {
   id: string;
   phoneNumber: string;
   username?: string;
+  profileImage?: string;
   passwordHash: string;
   role: 'member' | 'admin';
   inviteCodeUsed?: string;
@@ -206,6 +207,10 @@ export async function updateUserUsername(id: string, username: string): Promise<
   await firestore.collection('users').doc(id).update({
     username: username.trim(),
   });
+}
+
+export async function updateUserProfileImage(id: string, profileImage: string): Promise<void> {
+  await firestore.collection('users').doc(id).update({ profileImage });
 }
 
 export async function updateUserRunners(

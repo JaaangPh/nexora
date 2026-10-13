@@ -5,6 +5,7 @@ import {
   logout,
   getMe,
   updateUsername,
+  updateProfileImage,
   updateRunners,
   purchaseRunner,
   getWorkoutSnapshot,
@@ -27,6 +28,7 @@ router.get('/workout', authMiddleware, getWorkoutSnapshot);
 router.put('/workout', authMiddleware, saveWorkoutSnapshot);
 router.delete('/workout', authMiddleware, clearWorkoutSnapshot);
 router.put('/username', authMiddleware, updateUsername);
+router.put('/profile-image', authMiddleware, updateProfileImage);
 router.post('/runners/purchase', authMiddleware, purchaseRunner);
 router.put('/runners', authMiddleware, updateRunners);
 

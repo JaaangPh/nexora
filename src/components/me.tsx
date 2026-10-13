@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   User as UserIcon,
   Edit2,
+  Camera,
   Save,
   X,
   Loader2,
@@ -44,7 +45,15 @@ export const MeTab: React.FC<MeTabProps> = ({
   const [isSavingUsername, setIsSavingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [usernameSuccess, setUsernameSuccess] = useState(false);
+  const [profileImage, setProfileImage] = useState(user.profileImage);
+  const [isUploadingProfileImage, setIsUploadingProfileImage] = useState(false);
+  const [profileImageMessage, setProfileImageMessage] = useState<string | null>(null);
+  const profileImageInput = useRef<HTMLInputElement>(null);
   const usernameMigrationAttempted = useRef(false);
+
+  useEffect(() => {
+    setProfileImage(user.profileImage);
+  }, [user.profileImage]);
 
   useEffect(() => {
     if (
@@ -112,18 +121,130 @@ export const MeTab: React.FC<MeTabProps> = ({
     }
   };
 
+  const handleProfileImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setProfileImageMessage(null);
+    if (!file.type.startsWith('image/')) {
+      setProfileImageMessage('Choose an image file.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setProfileImageMessage('Choose an image smaller than 10 MB.');
+      return;
+    }
+
+    setIsUploadingProfileImage(true);
+    try {
+      const bitmap = await createImageBitmap(file);
+      let compressedImage: Blob | null = null;
+      try {
+        const squareSize = Math.min(bitmap.width, bitmap.height);
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Your device could not prepare this photo.');
+
+        for (const size of [320, 256, 192]) {
+          canvas.width = size;
+          canvas.height = size;
+          context.drawImage(
+            bitmap,
+            (bitmap.width - squareSize) / 2,
+            (bitmap.height - squareSize) / 2,
+            squareSize,
+            squareSize,
+            0,
+            0,
+            size,
+            size
+          );
+
+          for (const quality of [0.82, 0.68, 0.54, 0.4]) {
+            compressedImage = await new Promise<Blob | null>((resolve) => {
+              canvas.toBlob(resolve, 'image/jpeg', quality);
+            });
+            if (compressedImage && compressedImage.size <= 60 * 1024) break;
+          }
+          if (compressedImage && compressedImage.size <= 60 * 1024) break;
+        }
+      } finally {
+        bitmap.close();
+      }
+
+      if (!compressedImage || compressedImage.size > 60 * 1024) {
+        throw new Error('This photo could not be compressed small enough. Try another image.');
+      }
+
+      const reader = new FileReader();
+      const imageDataUrl = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          if (typeof reader.result === 'string') resolve(reader.result);
+          else reject(new Error('Could not prepare the selected photo.'));
+        };
+        reader.onerror = () => reject(new Error('Could not read the selected photo.'));
+        reader.readAsDataURL(compressedImage);
+      });
+
+      const response = await api.updateProfileImage(imageDataUrl);
+      if (!response.user) throw new Error('The server did not return the updated profile.');
+      setProfileImage(response.user.profileImage);
+      onUpdateUser?.(response.user);
+      setProfileImageMessage('Profile photo updated.');
+    } catch (error: unknown) {
+      setProfileImageMessage(error instanceof Error ? error.message : 'Failed to update profile photo.');
+    } finally {
+      setIsUploadingProfileImage(false);
+    }
+  };
+
   return (
     <div className="space-y-4 animate-fade-in">
       <section className="relative overflow-hidden rounded-2xl border border-[#232731] bg-[#171A21] p-4 shadow-xl">
         <div className="relative flex items-center gap-3">
-          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-[#D8FD2F] text-[#08132B]">
-            <UserIcon className="h-6 w-6" />
+          <div className="relative h-12 w-12 flex-shrink-0">
+            <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-[#D8FD2F] text-[#08132B]">
+              {profileImage ? (
+                <img src={profileImage} alt="Profile" className="h-full w-full object-cover" />
+              ) : (
+                <UserIcon className="h-6 w-6" />
+              )}
+            </div>
+            <input
+              ref={profileImageInput}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleProfileImageChange}
+              aria-label="Choose a profile photo"
+            />
+            <button
+              type="button"
+              onClick={() => profileImageInput.current?.click()}
+              disabled={isUploadingProfileImage}
+              className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-[#171A21] bg-[#D8FD2F] text-[#08132B] disabled:opacity-60"
+              aria-label={profileImage ? 'Change profile photo' : 'Upload profile photo'}
+              title={profileImage ? 'Change profile photo' : 'Upload profile photo'}
+            >
+              {isUploadingProfileImage
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <Camera className="h-3 w-3" />}
+            </button>
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-extrabold text-white">{user.phoneNumber}</p>
             <p className="text-xs font-medium text-slate-300">Welcome back, {user.username || 'Member'}</p>
           </div>
         </div>
+        {profileImageMessage && (
+          <p
+            role="status"
+            className={`mt-2 text-[11px] font-semibold ${profileImageMessage.includes('updated') ? 'text-emerald-400' : 'text-red-400'}`}
+          >
+            {profileImageMessage}
+          </p>
+        )}
 
         <div className="relative mt-4 grid grid-cols-2 divide-x divide-[#232731] rounded-xl border border-[#232731] bg-[#10141D] px-3 py-2.5">
           <div className="pr-3">

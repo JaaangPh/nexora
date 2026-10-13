@@ -205,6 +205,22 @@ export const api = {
     return res;
   },
 
+  async updateProfileImage(profileImage: string): Promise<AuthResponse> {
+    const res = await request<AuthResponse>('/api/auth/profile-image', {
+      method: 'PUT',
+      body: JSON.stringify({ profileImage }),
+    });
+    if (res.user) {
+      const currentStored = getStoredUser();
+      if (currentStored) {
+        const updatedUser = { ...currentStored, ...res.user };
+        setStoredSession(getStoredToken() || '', updatedUser);
+        res.user = updatedUser;
+      }
+    }
+    return res;
+  },
+
   async createDeposit(amount: number, bankCode: DepositBankCode): Promise<DepositOrder> {
     const res = await request<{ success: boolean; deposit: DepositOrder }>('/api/payments/turbopay/deposits', {
       method: 'POST',

@@ -18,10 +18,12 @@ import {
   purchaseUserRunner,
   generateUniqueReferralCode,
   generateAutoUsername,
+  updateUserProfileImage,
   FirestoreUser,
 } from '../database/firebase.js';
 
 const MAX_WORKOUT_ROUTE_POINTS = 1000;
+const MAX_PROFILE_IMAGE_DATA_URL_LENGTH = 84 * 1024;
 const RUNNER_PRICES: Record<string, number> = {
   'snk-1': 500,
   'snk-2': 1000,
@@ -233,6 +235,7 @@ export async function register(req: Request, res: Response): Promise<void> {
         id: userId,
         phoneNumber: cleanPhone,
         username: newUser.username || generateAutoUsername(),
+        profileImage: newUser.profileImage,
         role: 'member',
         referralCode: myReferralCode,
         inviteCodeUsed: usedCode,
@@ -320,6 +323,7 @@ export async function login(req: Request, res: Response): Promise<void> {
         id: user.id,
         phoneNumber: user.phoneNumber,
         username,
+        profileImage: user.profileImage,
         role: user.role,
         referralCode: user.referralCode || 'NT723906',
         inviteCodeUsed: user.inviteCodeUsed,
@@ -379,6 +383,7 @@ export async function getMe(req: AuthRequest, res: Response): Promise<void> {
         id: user.id,
         phoneNumber: user.phoneNumber,
         username,
+        profileImage: user.profileImage,
         role: user.role,
         referralCode: user.referralCode || 'NT723906',
         inviteCodeUsed: user.inviteCodeUsed,
@@ -495,6 +500,7 @@ export async function updateUsername(req: AuthRequest, res: Response): Promise<v
         id: updatedUser!.id,
         phoneNumber: updatedUser!.phoneNumber,
         username: updatedUser!.username || cleanUsername,
+        profileImage: updatedUser!.profileImage,
         role: updatedUser!.role,
         referralCode: updatedUser!.referralCode || 'NT723906',
         inviteCodeUsed: updatedUser!.inviteCodeUsed,
@@ -511,6 +517,74 @@ export async function updateUsername(req: AuthRequest, res: Response): Promise<v
   } catch (error: any) {
     console.error('[Update Username Error]', error);
     res.status(500).json({ success: false, message: error?.message || 'Failed to update username.' });
+  }
+}
+
+/**
+ * PUT /api/auth/profile-image
+ */
+export async function updateProfileImage(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Unauthorized session.' });
+      return;
+    }
+
+    const profileImage = req.body?.profileImage;
+    const match = typeof profileImage === 'string'
+      ? /^data:image\/jpeg;base64,([A-Za-z0-9+/]+={0,2})$/.exec(profileImage)
+      : null;
+    if (!match || profileImage.length > MAX_PROFILE_IMAGE_DATA_URL_LENGTH) {
+      res.status(400).json({ success: false, message: 'Choose a valid JPEG image no larger than 60 KB after compression.' });
+      return;
+    }
+
+    const imageBytes = Buffer.from(match[1], 'base64');
+    if (
+      imageBytes.length === 0 ||
+      imageBytes.length > 60 * 1024 ||
+      imageBytes.toString('base64') !== match[1] ||
+      imageBytes[0] !== 0xff ||
+      imageBytes[1] !== 0xd8 ||
+      imageBytes[2] !== 0xff ||
+      imageBytes[imageBytes.length - 2] !== 0xff ||
+      imageBytes[imageBytes.length - 1] !== 0xd9
+    ) {
+      res.status(400).json({ success: false, message: 'The uploaded profile image is invalid or too large.' });
+      return;
+    }
+
+    await updateUserProfileImage(req.user.id, profileImage);
+    const updatedUser = await findUserById(req.user.id);
+    if (!updatedUser) {
+      res.status(404).json({ success: false, message: 'User not found.' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'Profile photo updated successfully.',
+      user: {
+        id: updatedUser.id,
+        phoneNumber: updatedUser.phoneNumber,
+        username: updatedUser.username,
+        profileImage: updatedUser.profileImage,
+        role: updatedUser.role,
+        referralCode: updatedUser.referralCode || 'NT723906',
+        inviteCodeUsed: updatedUser.inviteCodeUsed,
+        status: updatedUser.status,
+        createdAt: updatedUser.createdAt,
+        lastLoginAt: updatedUser.lastLoginAt,
+        balance: updatedUser.balance ?? 0,
+        totalDeposit: updatedUser.totalDeposit ?? 0,
+        ownedRunners: updatedUser.ownedRunners || [],
+        equippedRunnerId: updatedUser.equippedRunnerId,
+        runnerCooldowns: updatedUser.runnerCooldowns || {},
+      },
+    });
+  } catch (error: unknown) {
+    console.error('[Update Profile Image Error]', error);
+    res.status(500).json({ success: false, message: 'Failed to update profile photo.' });
   }
 }
 
