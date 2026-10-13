@@ -197,7 +197,9 @@ export const api = {
     if (res.user) {
       const currentStored = getStoredUser();
       if (currentStored) {
-        setStoredSession(getStoredToken() || '', { ...currentStored, ...res.user });
+        const updatedUser = { ...currentStored, ...res.user };
+        setStoredSession(getStoredToken() || '', updatedUser);
+        res.user = updatedUser;
       }
     }
     return res;

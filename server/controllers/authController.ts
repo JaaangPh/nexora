@@ -503,6 +503,9 @@ export async function updateUsername(req: AuthRequest, res: Response): Promise<v
         lastLoginAt: updatedUser!.lastLoginAt,
         balance: updatedUser!.balance ?? 0,
         totalDeposit: updatedUser!.totalDeposit ?? 0,
+        ownedRunners: updatedUser!.ownedRunners || [],
+        equippedRunnerId: updatedUser!.equippedRunnerId,
+        runnerCooldowns: updatedUser!.runnerCooldowns || {},
       },
     });
   } catch (error: any) {
