@@ -90,6 +90,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
 
   const currentBalance = user.balance ?? 0;
   const currentTotalDeposit = user.totalDeposit ?? 0;
+  const getDepositMethodLabel = (method: DepositBankCode) => {
+    switch (method) {
+      case 'gcash': return 'GCash';
+      case 'PMP': return 'Maya';
+      case 'GOT': return 'GoTyme';
+      case 'qrph': return 'QRPh';
+      case 'usdt-trc20': return 'USDT (TRC20)';
+    }
+  };
 
   const handleExecuteDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -492,7 +501,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                       ? 'Payment confirmed. Your account balance has been updated.'
                       : depositOrder.status === 'failed'
                         ? 'This payment was not completed.'
-                        : depositOrder.message || 'Payment request created. Your balance will update after TurboPay confirms payment.'}
+                        : depositOrder.message || 'Payment request created. Your balance will update after payment is confirmed.'}
                   </div>
                 </div>
                 <p className="text-[10px] text-blue-200/70 text-center break-all">
@@ -501,7 +510,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                 {(depositOrder.qrcodeUrl || depositOrder.gcashQrUrl) && (
                   <img
                     src={depositOrder.qrcodeUrl || depositOrder.gcashQrUrl}
-                    alt="TurboPay deposit QR code"
+                    alt={`${getDepositMethodLabel(depositOrder.bankCode)} deposit QR code`}
                     className="mx-auto max-h-52 max-w-full rounded-xl bg-white p-2"
                   />
                 )}
@@ -512,7 +521,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                     rel="noopener noreferrer"
                     className="block w-full py-3 rounded-xl bg-cyan-400 text-center text-[#08132B] font-extrabold text-xs uppercase tracking-wider"
                   >
-                    Open TurboPay payment
+                    Open {getDepositMethodLabel(depositOrder.bankCode)} payment
                   </a>
                 )}
                 <p className="text-[10px] leading-4 text-blue-100/70 text-center">
@@ -592,7 +601,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
 
                 {depositMethod === 'usdt-trc20' && (
                   <p className="text-[10px] leading-4 text-amber-200">
-                    Minimum deposit is ₱800. Send the exact USDT amount shown by TurboPay in one transfer; wallet fees must not reduce the amount received.
+                    Minimum deposit is ₱800. Send the exact USDT amount shown on the payment screen in one transfer; wallet fees must not reduce the amount received.
                   </p>
                 )}
 
