@@ -1,8 +1,6 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import bcrypt from 'bcryptjs';
-import crypto from 'crypto';
 import { config } from '../config/config.js';
 
 // Ensure database directory exists
@@ -73,17 +71,15 @@ export function initDatabase() {
     insertCodeStmt.run(c);
   }
 
-  // Seed initial administrator account if not exists
+  // Disable any administrator account created by the legacy public-default seed.
   const adminPhone = '+18005550199';
-  const existingAdmin = db.prepare('SELECT id FROM users WHERE phone_number = ?').get(adminPhone);
-
-  if (!existingAdmin) {
-    const adminPasswordHash = bcrypt.hashSync('AdminPassword2025!', 10);
-    db.prepare(`
-      INSERT INTO users (id, phone_number, password_hash, role, invite_code_used, status)
-      VALUES (?, ?, ?, 'admin', 'SYSTEM-SEED', 'active')
-    `).run(crypto.randomUUID(), adminPhone, adminPasswordHash);
-    console.log(`[DB] Seeded initial administrator: ${adminPhone} (Password: AdminPassword2025!)`);
+  const disabledSeedAdmins = db.prepare(`
+    UPDATE users
+    SET status = 'suspended'
+    WHERE phone_number = ? AND role = 'admin' AND invite_code_used = 'SYSTEM-SEED' AND status != 'suspended'
+  `).run(adminPhone);
+  if (disabledSeedAdmins.changes > 0) {
+    console.warn(`[DB] Disabled ${disabledSeedAdmins.changes} legacy default administrator account(s).`);
   }
 
   console.log('[DB] Database tables and seed data ready.');

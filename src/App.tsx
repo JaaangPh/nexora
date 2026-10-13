@@ -272,15 +272,6 @@ export const App: React.FC = () => {
     setActiveTab('register');
   };
 
-  const [prefilledPhone, setPrefilledPhone] = useState<string>('');
-  const [prefilledPassword, setPrefilledPassword] = useState<string>('');
-
-  const handleFillAdmin = () => {
-    setActiveTab('login');
-    setPrefilledPhone('+18005550199');
-    setPrefilledPassword('AdminPassword2025!');
-  };
-
   if (window.location.pathname.replace(/\/+$/, '') === '/about') {
     return <AboutWhitepaper />;
   }
@@ -330,9 +321,6 @@ export const App: React.FC = () => {
                   <div className="flex-1">
                     {activeTab === 'login' ? (
                       <LoginForm
-                        key={`${prefilledPhone}-${prefilledPassword}`}
-                        prefilledPhone={prefilledPhone}
-                        prefilledPassword={prefilledPassword}
                         onSuccess={handleLoginSuccess}
                         onNavigateToRegister={() => setActiveTab('register')}
                       />

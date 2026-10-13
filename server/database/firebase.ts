@@ -1,6 +1,5 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 
@@ -125,7 +124,7 @@ export async function generateUniqueReferralCode(): Promise<string> {
 }
 
 /**
- * Initialize Cloud Firestore admin account if absent
+ * Initialize Cloud Firestore and disable legacy administrator accounts created with public defaults.
  */
 export async function initFirebaseDatabase() {
   if (!initFirebase()) {
@@ -134,34 +133,19 @@ export async function initFirebaseDatabase() {
   }
   console.log('[Firebase] Initializing Cloud Firestore database...');
 
-  // Seed Initial Administrator Account if absent
+  // Disable any administrator account created by the legacy public-default seed.
   const adminPhone = '+18005550199';
-  const userQuery = await firestore
+  const legacyAdminQuery = await firestore
     .collection('users')
     .where('phoneNumber', '==', adminPhone)
-    .limit(1)
     .get();
-
-  if (userQuery.empty) {
-    const adminId = crypto.randomUUID();
-    const adminHash = bcrypt.hashSync('AdminPassword2025!', 10);
-    const adminDoc: FirestoreUser = {
-      id: adminId,
-      phoneNumber: adminPhone,
-      username: generateAutoUsername(),
-      passwordHash: adminHash,
-      role: 'admin',
-      inviteCodeUsed: 'SYSTEM-SEED',
-      referralCode: 'NT723906',
-      status: 'active',
-      createdAt: new Date().toISOString(),
-      lastLoginAt: new Date().toISOString(),
-    };
-    await firestore.collection('users').doc(adminId).set(adminDoc);
-    console.log(`[Firebase] Seeded admin account: ${adminPhone} (Referral: NT723906)`);
-  } else if (userQuery.docs[0].data().username === 'NexoraAdmin') {
-    await userQuery.docs[0].ref.update({ username: generateAutoUsername() });
-    console.log('[Firebase] Replaced legacy seeded admin username.');
+  const seededAdminDocs = legacyAdminQuery.docs.filter((document) => {
+    const user = document.data();
+    return user.role === 'admin' && user.inviteCodeUsed === 'SYSTEM-SEED' && user.status !== 'suspended';
+  });
+  if (seededAdminDocs.length > 0) {
+    await Promise.all(seededAdminDocs.map((document) => document.ref.update({ status: 'suspended' })));
+    console.warn(`[Firebase] Disabled ${seededAdminDocs.length} legacy default administrator account(s).`);
   }
 
   console.log('[Firebase] Cloud Firestore ready and connected to "users" collection.');

@@ -65,16 +65,14 @@ A modern, responsive, high-security authentication platform for **Nexora Technol
    * Secure Sign Out action that safely terminates the session.
 
 6. **Testing & QA Helper:**
-   * Built-in floating `Demo Keys & Logins` panel for 1-click test autofills.
    * Built-in `Mobile API Host Settings` dialog for configuring emulator (`10.0.2.2:5000`) or physical device LAN IPs.
 
 ---
 
-## 🔑 Pre-Seeded Credentials & Invite Codes
+## 🔑 Invite Codes
 
 | Type | Details | Purpose |
 | :--- | :--- | :--- |
-| **Admin Account** | Phone: `+18005550199`<br>Password: `AdminPassword2025!` | Pre-seeded Administrator |
 | **Invite Key 1** | `NEXORA-2025` | General Member Onboarding Pass (Unlimited) |
 | **Invite Key 2** | `VIP-ACCESS` | Executive VIP Access Pass (25 uses) |
 | **Invite Key 3** | `SECURITY-PASS` | Nexora Security Protocol Pass (10 uses) |

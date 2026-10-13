@@ -8,26 +8,17 @@ import { PhoneNumberInput } from './PhoneNumberInput';
 interface LoginFormProps {
   onSuccess: (user: User) => void;
   onNavigateToRegister: () => void;
-  prefilledPhone?: string;
-  prefilledPassword?: string;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({
   onSuccess,
   onNavigateToRegister,
-  prefilledPhone = '',
-  prefilledPassword = '',
 }) => {
-  const [phoneNumber, setPhoneNumber] = useState(prefilledPhone || '+63');
-  const [password, setPassword] = useState(prefilledPassword);
+  const [phoneNumber, setPhoneNumber] = useState('+63');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (prefilledPhone) setPhoneNumber(prefilledPhone);
-    if (prefilledPassword) setPassword(prefilledPassword);
-  }, [prefilledPhone, prefilledPassword]);
 
   // Field validation helper
   const handleSubmit = async (e: React.FormEvent) => {
