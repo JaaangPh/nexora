@@ -22,20 +22,30 @@ interface MarathonTabProps {
 
 interface MarathonErrorBoundaryState {
   hasError: boolean;
+  errorMessage: string;
+  componentStack: string;
 }
 
 class MarathonErrorBoundary extends React.Component<
   { children: React.ReactNode },
   MarathonErrorBoundaryState
 > {
-  state: MarathonErrorBoundaryState = { hasError: false };
+  state: MarathonErrorBoundaryState = {
+    hasError: false,
+    errorMessage: '',
+    componentStack: '',
+  };
 
   static getDerivedStateFromError(): MarathonErrorBoundaryState {
-    return { hasError: true };
+    return { hasError: true, errorMessage: '', componentStack: '' };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[Marathon UI Error]', error, info.componentStack);
+    this.setState({
+      errorMessage: error.message || 'Unknown rendering error',
+      componentStack: info.componentStack || '',
+    });
   }
 
   render() {
@@ -45,9 +55,13 @@ class MarathonErrorBoundary extends React.Component<
           <AlertTriangle className="mx-auto h-6 w-6 text-red-200" />
           <h2 className="mt-2 text-sm font-extrabold text-white">Marathon could not be displayed</h2>
           <p className="mt-1 text-xs leading-relaxed text-blue-100/70">A display error occurred. Your team data has not been changed by this error. Try loading the Marathon page again.</p>
+          <details className="mt-3 text-left">
+            <summary className="cursor-pointer text-[11px] font-bold text-cyan-200">Show error details</summary>
+            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[#081735] p-2 text-[10px] text-red-100">{this.state.errorMessage}{this.state.componentStack}</pre>
+          </details>
           <button
             type="button"
-            onClick={() => this.setState({ hasError: false })}
+            onClick={() => this.setState({ hasError: false, errorMessage: '', componentStack: '' })}
             className="mt-4 rounded-xl bg-cyan-300 px-4 py-2 text-xs font-black text-[#07132B]"
           >
             Reload Marathon
