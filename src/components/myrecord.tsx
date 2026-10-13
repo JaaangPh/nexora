@@ -23,6 +23,7 @@ const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
   { id: 'pending', label: 'Pending' },
   { id: 'paid', label: 'Success' },
   { id: 'failed', label: 'Failed' },
+  { id: 'expired', label: 'Expired' },
 ];
 
 const STATUS_STYLES: Record<DepositStatus, { label: string; className: string; Icon: typeof Clock3 }> = {
@@ -40,6 +41,11 @@ const STATUS_STYLES: Record<DepositStatus, { label: string; className: string; I
     label: 'Failed',
     className: 'border-rose-300/20 bg-rose-300/10 text-rose-300',
     Icon: XCircle,
+  },
+  expired: {
+    label: 'Expired',
+    className: 'border-slate-300/20 bg-slate-300/10 text-slate-300',
+    Icon: Clock3,
   },
 };
 
@@ -119,7 +125,7 @@ export const MyRecordTab: React.FC<MyRecordTabProps> = ({ onBack }) => {
       </header>
 
       <div className="rounded-full border border-[#2459C4]/40 bg-[#08132B] p-1">
-        <div className="grid grid-cols-4 gap-1" role="tablist" aria-label="Filter transactions by status">
+        <div className="grid grid-cols-5 gap-1" role="tablist" aria-label="Filter transactions by status">
           {STATUS_FILTERS.map(({ id, label }) => {
             const isActive = filter === id;
             return (
@@ -164,7 +170,9 @@ export const MyRecordTab: React.FC<MyRecordTabProps> = ({ onBack }) => {
           {filteredDeposits.map((deposit) => {
             const status = STATUS_STYLES[deposit.status];
             const StatusIcon = status.Icon;
-            const paymentUrl = deposit.redirectUrl || deposit.qrcodeUrl || deposit.gcashQrUrl;
+            const paymentUrl = deposit.status === 'expired'
+              ? undefined
+              : deposit.redirectUrl || deposit.qrcodeUrl || deposit.gcashQrUrl;
             return (
               <article
                 key={deposit.orderId}
@@ -225,7 +233,7 @@ export const MyRecordTab: React.FC<MyRecordTabProps> = ({ onBack }) => {
           <p className="mt-1 max-w-xs text-xs leading-relaxed text-blue-100/60">
             {filter === 'all'
               ? 'Deposits will appear here once started. Withdrawal requests are not available yet.'
-              : 'No deposits with this status were found.'}
+              : `No ${STATUS_FILTERS.find((item) => item.id === filter)?.label.toLowerCase()} transactions were found.`}
           </p>
         </div>
       )}

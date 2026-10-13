@@ -3,7 +3,7 @@ import { AuthResponse, InviteValidationResponse, InviteCodeItem, OwnedRunner, Us
 import { WorkoutSnapshot } from '../types/workout';
 
 export type DepositBankCode = 'gcash' | 'PMP' | 'GOT' | 'qrph' | 'usdt-trc20';
-export type DepositStatus = 'pending' | 'paid' | 'failed';
+export type DepositStatus = 'pending' | 'paid' | 'failed' | 'expired';
 
 export interface DepositOrder {
   orderId: string;

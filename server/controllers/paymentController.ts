@@ -14,10 +14,39 @@ import {
 } from '../services/turbopay.js';
 
 type DepositBankCode = 'gcash' | 'PMP' | 'GOT' | 'qrph' | 'usdt-trc20';
-type DepositStatus = 'pending' | 'paid' | 'failed';
+type DepositStatus = 'pending' | 'paid' | 'failed' | 'expired';
 
 const DEPOSIT_BANK_CODES = new Set<DepositBankCode>(['gcash', 'PMP', 'GOT', 'qrph', 'usdt-trc20']);
 const DEPOSITS_COLLECTION = 'payment_deposits';
+const DEPOSIT_LINK_EXPIRY_MS = 10 * 60 * 1000;
+
+async function expirePendingDepositIfNeeded(
+  depositRef: FirebaseFirestore.DocumentReference,
+  deposit: FirebaseFirestore.DocumentData
+): Promise<FirebaseFirestore.DocumentData> {
+  const createdAt = typeof deposit.createdAt === 'string' ? Date.parse(deposit.createdAt) : Number.NaN;
+  if (deposit.status !== 'pending' || !Number.isFinite(createdAt) || Date.now() - createdAt < DEPOSIT_LINK_EXPIRY_MS) {
+    return deposit;
+  }
+
+  return firestore.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(depositRef);
+    if (!snapshot.exists) return deposit;
+    const currentDeposit = snapshot.data()!;
+    const currentCreatedAt = typeof currentDeposit.createdAt === 'string'
+      ? Date.parse(currentDeposit.createdAt)
+      : Number.NaN;
+    if (
+      currentDeposit.status === 'pending' &&
+      Number.isFinite(currentCreatedAt) &&
+      Date.now() - currentCreatedAt >= DEPOSIT_LINK_EXPIRY_MS
+    ) {
+      transaction.update(depositRef, { status: 'expired', updatedAt: new Date().toISOString() });
+      return { ...currentDeposit, status: 'expired' satisfies DepositStatus };
+    }
+    return currentDeposit;
+  });
+}
 
 function toCents(value: unknown): number | null {
   if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') return null;
@@ -186,11 +215,13 @@ export async function getDepositStatus(req: AuthRequest, res: Response): Promise
       return;
     }
 
-    const deposit = depositSnapshot.data()!;
-    if (deposit.userId !== userId) {
+    const depositRef = firestore.collection(DEPOSITS_COLLECTION).doc(orderId);
+    const storedDeposit = depositSnapshot.data()!;
+    if (storedDeposit.userId !== userId) {
       res.status(404).json({ success: false, message: 'Deposit was not found.' });
       return;
     }
+    const deposit = await expirePendingDepositIfNeeded(depositRef, storedDeposit);
 
     const userSnapshot = await firestore.collection('users').doc(userId).get();
     const user = userSnapshot.data();
@@ -224,9 +255,8 @@ export async function getDepositHistory(req: AuthRequest, res: Response): Promis
       .collection(DEPOSITS_COLLECTION)
       .where('userId', '==', userId)
       .get();
-    const deposits = depositsSnapshot.docs
-      .map((document) => {
-        const deposit = document.data();
+    const deposits = await Promise.all(depositsSnapshot.docs.map(async (document) => {
+        const deposit = await expirePendingDepositIfNeeded(document.ref, document.data());
         return {
           orderId: String(deposit.orderId || document.id),
           status: deposit.status as DepositStatus,
@@ -237,8 +267,8 @@ export async function getDepositHistory(req: AuthRequest, res: Response): Promis
           qrcodeUrl: readOptionalUrl(deposit.qrcodeUrl),
           gcashQrUrl: readOptionalUrl(deposit.gcashQrUrl),
         };
-      })
-      .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
+    }));
+    deposits.sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
 
     res.json({ success: true, deposits });
   } catch (error) {

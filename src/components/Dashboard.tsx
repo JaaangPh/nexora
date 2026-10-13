@@ -495,6 +495,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                     ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
                     : depositOrder.status === 'failed'
                       ? 'bg-red-500/20 border-red-400/40 text-red-200'
+                      : depositOrder.status === 'expired'
+                        ? 'bg-slate-500/20 border-slate-400/40 text-slate-200'
                       : 'bg-cyan-500/15 border-cyan-400/30 text-cyan-100'
                 }`}>
                   {depositOrder.status === 'paid' ? (
@@ -507,20 +509,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                       ? 'Payment confirmed. Your account balance has been updated.'
                       : depositOrder.status === 'failed'
                         ? 'This payment was not completed.'
+                        : depositOrder.status === 'expired'
+                          ? 'This payment link has expired. Start a new deposit to get a fresh payment link.'
                         : depositOrder.message || 'Payment request created. Your balance will update after payment is confirmed.'}
                   </div>
                 </div>
                 <p className="text-[10px] text-blue-200/70 text-center break-all">
                   Order: {depositOrder.orderId}
                 </p>
-                {(depositOrder.qrcodeUrl || depositOrder.gcashQrUrl) && (
+                {depositOrder.status !== 'expired' && (depositOrder.qrcodeUrl || depositOrder.gcashQrUrl) && (
                   <img
                     src={depositOrder.qrcodeUrl || depositOrder.gcashQrUrl}
                     alt={`${getDepositMethodLabel(depositOrder.bankCode)} deposit QR code`}
                     className="mx-auto max-h-52 max-w-full rounded-xl bg-white p-2"
                   />
                 )}
-                {(depositOrder.redirectUrl || depositOrder.qrcodeUrl || depositOrder.gcashQrUrl) && (
+                {depositOrder.status !== 'expired' && (depositOrder.redirectUrl || depositOrder.qrcodeUrl || depositOrder.gcashQrUrl) && (
                   <a
                     href={depositOrder.redirectUrl || depositOrder.qrcodeUrl || depositOrder.gcashQrUrl}
                     target="_blank"
