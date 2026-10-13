@@ -335,7 +335,7 @@ const MarathonTabContent: React.FC<MarathonTabProps> = ({ user }) => {
               </div>
             )}
             {currentTeam.status === 'Failed' && <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs text-amber-100"><p className="font-extrabold">Marathon failed · no bounty awarded</p><p className="mt-1">Final distance {currentTeam.totalKm.toFixed(2)} / {currentTeam.targetKm} KM · {currentTeam.remainingKm.toFixed(2)} KM short.</p><p className="mt-1">Expired {currentTeam.endedAt ? formatTimestamp(currentTeam.endedAt) : 'time unavailable'} · bounty pool {money(currentTeam.bounty)} · payout status {currentTeam.payoutStatus || 'finalized'}.</p><p className="mt-1">All original member contributions were refunded; no reward transactions were created.</p>{cooldownRemaining > 0 && <p className="mt-1 font-bold">Cooldown remaining {countdown(data?.cooldownUntil || now, now)} · expires {formatTimestamp(data?.cooldownUntil || now)}.</p>}</div>}
-            {currentTeam.status === 'Cancelled' && <p className="mt-3 text-xs text-blue-100/60">This lobby was cancelled. Its history is read-only.</p>}
+            {currentTeam.status === 'Cancelled' && <p className="mt-3 text-xs text-blue-100/60">This lobby was cancelled. No new invitations or memberships are allowed.</p>}
             {currentMember?.leftAt && currentTeam.status === 'Active' && <p className="mt-3 rounded-lg bg-amber-300/10 p-2 text-[11px] text-amber-100">You left the active roster. Your earlier verified KM remain; you cannot rejoin, and cooldown begins when the marathon ends.</p>}
 
             {isLeader && currentTeam.status === 'Lobby' && (
@@ -460,7 +460,7 @@ const MarathonTabContent: React.FC<MarathonTabProps> = ({ user }) => {
             <button type="button" disabled={busy} onClick={() => { if (window.confirm('Leave the active roster? Your verified KM will remain, you cannot rejoin, and your three-day cooldown begins when the marathon ends.')) void runAction(() => api.leaveMarathonTeam(currentTeam.id)); }} className="w-full rounded-xl border border-amber-300/25 bg-amber-300/5 px-4 py-3 text-xs font-bold text-amber-100 disabled:opacity-50">Leave active team</button>
           )}
           {currentTeam.status === 'Lobby' && isLeader && (
-            <button type="button" disabled={busy} onClick={() => { if (window.confirm('Cancel this lobby? Members and invitees will be notified and no cooldown will apply.')) void runAction(() => api.cancelMarathonLobby(currentTeam.id)); }} className="w-full rounded-xl border border-red-300/20 px-4 py-2.5 text-[11px] font-bold text-red-200 disabled:opacity-50">Cancel lobby</button>
+            <button type="button" disabled={busy} onClick={() => { if (window.confirm('Permanently delete this lobby? All members and invitees will be notified, current team memberships will be released, and no cooldown will apply.')) void runAction(() => api.cancelMarathonLobby(currentTeam.id)); }} className="w-full rounded-xl border border-red-300/20 px-4 py-2.5 text-[11px] font-bold text-red-200 disabled:opacity-50">Delete lobby</button>
           )}
         </section>
       )}

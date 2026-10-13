@@ -857,14 +857,10 @@ export async function cancelMarathonLobby(userIdInput: string | undefined, teamI
       Promise.all(team.memberIds.map((id) => transaction.get(memberRef(id)))),
       Promise.all(team.invitationIds.map((id) => transaction.get(invitationRef(id)))),
     ]);
-    transaction.update(teamRef(teamId), {
-      status: 'Cancelled',
-      endedAt: now,
-      invitationIds: [],
-      pendingInviteeIds: [],
-    });
     for (let index = 0; index < team.memberIds.length; index += 1) {
-      if (memberships[index].exists) transaction.delete(memberRef(team.memberIds[index]));
+      if (memberships[index].exists && memberships[index].data()?.teamId === teamId) {
+        transaction.delete(memberRef(team.memberIds[index]));
+      }
       pushNotification(transaction, team.memberIds[index], 'marathon_cancelled', team, 'The Marathon lobby was cancelled by its leader.', now);
     }
     for (const invitation of invitations) {
@@ -873,6 +869,7 @@ export async function cancelMarathonLobby(userIdInput: string | undefined, teamI
       transaction.update(invitation.ref, { status: 'Cancelled', respondedAt: now });
       pushNotification(transaction, inviteeId, 'marathon_invite_cancelled', team, 'The Marathon lobby was cancelled.', now);
     }
+    transaction.delete(teamRef(teamId));
   });
   return { success: true };
 }
