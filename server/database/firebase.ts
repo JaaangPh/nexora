@@ -148,7 +148,7 @@ export async function initFirebaseDatabase() {
     const adminDoc: FirestoreUser = {
       id: adminId,
       phoneNumber: adminPhone,
-      username: 'NexoraAdmin',
+      username: generateAutoUsername(),
       passwordHash: adminHash,
       role: 'admin',
       inviteCodeUsed: 'SYSTEM-SEED',
@@ -159,6 +159,9 @@ export async function initFirebaseDatabase() {
     };
     await firestore.collection('users').doc(adminId).set(adminDoc);
     console.log(`[Firebase] Seeded admin account: ${adminPhone} (Referral: NT723906)`);
+  } else if (userQuery.docs[0].data().username === 'NexoraAdmin') {
+    await userQuery.docs[0].ref.update({ username: generateAutoUsername() });
+    console.log('[Firebase] Replaced legacy seeded admin username.');
   }
 
   console.log('[Firebase] Cloud Firestore ready and connected to "users" collection.');
