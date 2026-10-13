@@ -4,6 +4,7 @@ import { getDb, FirestoreUser } from '../database/firebase.js';
 import {
   allocateEqualCents,
   checkMarathonRunnerEligibility,
+  displayedNexoraId,
   fromCents,
   haversineDistanceMeters,
   isBeforeMarathonDeadline,
@@ -263,7 +264,7 @@ function publicProfile(userId: string, user: FirestoreUser | null) {
   const runners = checkMarathonRunnerEligibility(user.ownedRunners);
   return {
     id: userId,
-    nexoraId: user.referralCode,
+    nexoraId: displayedNexoraId(user.referralCode, userId),
     username: user.username || 'Nexora Member',
     profileImage: user.profileImage || null,
     ownsCobalt: runners.ownsCobalt,
@@ -388,16 +389,25 @@ export async function getMarathonDashboard(userIdInput: string | undefined) {
 
 export async function searchMarathonUser(userIdInput: string | undefined, teamId: string, nexoraIdInput: string) {
   const userId = requireUserId(userIdInput);
-  const nexoraId = typeof nexoraIdInput === 'string' ? nexoraIdInput.trim().toUpperCase() : '';
-  if (!/^NT\d{6}$/.test(nexoraId)) throw new MarathonError(400, 'Enter a valid Nexora ID.');
+  const nexoraId = typeof nexoraIdInput === 'string' ? nexoraIdInput.trim() : '';
+  if (!/^\d{5}$/.test(nexoraId)) throw new MarathonError(400, 'Enter the five-digit Nexora ID shown on the Me page.');
 
   const snapshot = await teamRef(teamId).get();
   const team = readTeam(snapshot);
   assertLeader(team, userId);
   assertLobby(team);
-  const userQuery = await getDb().collection('users').where('referralCode', '==', nexoraId).limit(1).get();
+  const referralCodeCandidates = Array.from({ length: 9 }, (_, index) => `NT${index + 1}${nexoraId}`);
+  const userQuery = await getDb().collection('users').where('referralCode', 'in', referralCodeCandidates).get();
   if (userQuery.empty) throw new MarathonError(404, 'No Nexora user was found with that ID.');
-  const targetSnapshot = userQuery.docs[0];
+  const matches = userQuery.docs.filter((document) => {
+    const candidate = getUserData(document);
+    return candidate && displayedNexoraId(candidate.referralCode, document.id) === nexoraId;
+  });
+  if (matches.length > 1) {
+    throw new MarathonError(409, 'More than one account has this five-digit Nexora ID. Ask the user to contact support before inviting.');
+  }
+  if (matches.length === 0) throw new MarathonError(404, 'No Nexora user was found with that ID.');
+  const targetSnapshot = matches[0];
   const target = getUserData(targetSnapshot);
   if (!target) throw new MarathonError(404, 'No Nexora user was found with that ID.');
 
@@ -422,7 +432,7 @@ export async function searchMarathonUser(userIdInput: string | undefined, teamId
     success: true,
     profile: {
       id: target.id,
-      nexoraId: target.referralCode,
+      nexoraId: displayedNexoraId(target.referralCode, target.id),
       username: target.username || 'Nexora Member',
       profileImage: target.profileImage || null,
       ownsCobalt: runnerEligibility.ownsCobalt,

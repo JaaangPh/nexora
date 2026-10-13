@@ -3,11 +3,17 @@ import test from 'node:test';
 import {
   allocateEqualCents,
   checkMarathonRunnerEligibility,
+  displayedNexoraId,
   haversineDistanceMeters,
   isBeforeMarathonDeadline,
   marathonWorkoutInProgress,
   ownsRequiredMarathonRunners,
 } from './marathonRules.js';
+
+test('displayed Nexora ID matches the five-digit value used on the Me page', () => {
+  assert.equal(displayedNexoraId('NT723906', 'ignored-user-id'), '23906');
+  assert.equal(displayedNexoraId(undefined, 'member-42'), '00042');
+});
 
 test('marathon runner eligibility accepts either required canonical runner', () => {
   assert.deepEqual(checkMarathonRunnerEligibility([{ runnerId: 'snk-3' }]), {

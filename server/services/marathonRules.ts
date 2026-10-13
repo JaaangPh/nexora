@@ -20,6 +20,10 @@ export function ownsRequiredMarathonRunners(eligibility: RunnerEligibility): boo
   return eligibility.ownsCobalt && eligibility.ownsVortex;
 }
 
+export function displayedNexoraId(referralCode: string | undefined, userId: string): string {
+  return (referralCode || userId).replace(/\D/g, '').slice(-5).padStart(5, '0');
+}
+
 export function marathonWorkoutInProgress(workoutSnapshot: unknown): boolean {
   if (!workoutSnapshot || typeof workoutSnapshot !== 'object') return false;
   const workout = workoutSnapshot as Record<string, unknown>;
