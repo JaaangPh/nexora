@@ -106,12 +106,14 @@ export interface FirestoreUser {
   workoutSnapshot?: Record<string, unknown>;
 }
 
-/**
- * Generate an auto-generated username (e.g., NexoraMember_723906)
- */
-export function generateAutoUsername(referralCode?: string): string {
-  const suffix = referralCode ? referralCode.replace(/^NT/, '') : Math.floor(1000 + Math.random() * 9000).toString();
-  return `NexoraMember_${suffix}`;
+const AUTO_USERNAME_NAMES = [
+  'Pablo', 'Juan', 'Miguel', 'Diego', 'Carlos', 'Luis', 'Marco', 'Andres',
+  'Mateo', 'Jose', 'Gabriel', 'Rafael', 'Nico', 'Leo', 'Sofia', 'Maria',
+  'Ana', 'Elena', 'Lucia', 'Carmen', 'Isabel', 'Luna', 'Mia', 'Nina',
+];
+
+export function generateAutoUsername(): string {
+  return AUTO_USERNAME_NAMES[Math.floor(Math.random() * AUTO_USERNAME_NAMES.length)];
 }
 
 /**
@@ -189,7 +191,7 @@ export async function createUser(userData: {
   referralCode: string;
   username?: string;
 }): Promise<FirestoreUser> {
-  const autoUsername = userData.username || generateAutoUsername(userData.referralCode);
+  const autoUsername = userData.username || generateAutoUsername();
   const newUser: FirestoreUser = {
     ...userData,
     username: autoUsername,

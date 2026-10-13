@@ -18,6 +18,7 @@ import {
   purchaseUserRunner,
   generateUniqueReferralCode,
   generateAutoUsername,
+  FirestoreUser,
 } from '../database/firebase.js';
 
 const MAX_WORKOUT_ROUTE_POINTS = 1000;
@@ -27,6 +28,13 @@ const RUNNER_PRICES: Record<string, number> = {
   'snk-3': 2000,
   'snk-4': 3500,
 };
+
+async function getDisplayUsername(user: FirestoreUser): Promise<string> {
+  if (user.username && !/^NexoraMember_\d+$/i.test(user.username)) return user.username;
+  const username = generateAutoUsername();
+  await updateUserUsername(user.id, username);
+  return username;
+}
 
 function parseWorkoutSnapshot(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -224,7 +232,7 @@ export async function register(req: Request, res: Response): Promise<void> {
       user: {
         id: userId,
         phoneNumber: cleanPhone,
-        username: newUser.username || generateAutoUsername(myReferralCode),
+        username: newUser.username || generateAutoUsername(),
         role: 'member',
         referralCode: myReferralCode,
         inviteCodeUsed: usedCode,
@@ -303,6 +311,7 @@ export async function login(req: Request, res: Response): Promise<void> {
 
     const token = await issueSession(userPayload, res);
 
+    const username = await getDisplayUsername(user);
     res.json({
       success: true,
       message: 'Sign in successful! Redirecting to dashboard...',
@@ -310,7 +319,7 @@ export async function login(req: Request, res: Response): Promise<void> {
       user: {
         id: user.id,
         phoneNumber: user.phoneNumber,
-        username: user.username || generateAutoUsername(user.referralCode),
+        username,
         role: user.role,
         referralCode: user.referralCode || 'NT723906',
         inviteCodeUsed: user.inviteCodeUsed,
@@ -363,12 +372,13 @@ export async function getMe(req: AuthRequest, res: Response): Promise<void> {
       return;
     }
 
+    const username = await getDisplayUsername(user);
     res.json({
       success: true,
       user: {
         id: user.id,
         phoneNumber: user.phoneNumber,
-        username: user.username || generateAutoUsername(user.referralCode),
+        username,
         role: user.role,
         referralCode: user.referralCode || 'NT723906',
         inviteCodeUsed: user.inviteCodeUsed,

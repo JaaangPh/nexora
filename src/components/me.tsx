@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   User as UserIcon,
   Edit2,
@@ -44,6 +44,31 @@ export const MeTab: React.FC<MeTabProps> = ({
   const [isSavingUsername, setIsSavingUsername] = useState(false);
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [usernameSuccess, setUsernameSuccess] = useState(false);
+  const usernameMigrationAttempted = useRef(false);
+
+  useEffect(() => {
+    if (
+      usernameMigrationAttempted.current ||
+      !user.username ||
+      !/^NexoraMember_\d+$/i.test(user.username)
+    ) return;
+
+    usernameMigrationAttempted.current = true;
+    let isActive = true;
+    api.getMe()
+      .then(({ user: refreshedUser }) => {
+        if (isActive) onUpdateUser?.(refreshedUser);
+      })
+      .catch((error: unknown) => {
+        if (isActive) {
+          setUsernameError(error instanceof Error ? error.message : 'Could not refresh your account username.');
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [user.id, user.username, onUpdateUser]);
 
   const nexoraId = (user.referralCode || user.id)
     .replace(/\D/g, '')
@@ -163,7 +188,7 @@ export const MeTab: React.FC<MeTabProps> = ({
         ) : (
           <div className="flex items-center justify-between">
             <p className="text-base font-black font-mono text-white">
-              {user.username || 'NexoraMember_723906'}
+              {user.username || 'Pablo'}
             </p>
             {usernameSuccess && (
               <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
