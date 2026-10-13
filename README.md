@@ -102,6 +102,18 @@ Configure these backend-only environment variables in the deployment hosting the
 
 The minimum deposit is ₱100 for GCash, Maya, GoTyme, and QRPh; successful callbacks credit the exact PHP amount in the order (for example, a ₱150 payment credits ₱150). TurboPay's documentation requires a minimum of ₱800 for USDT-TRC20. The QRPh UI choice is sent using `bank_code=gcash` per the merchant's instructions; confirm this with TurboPay because its bank-code directory lists `qrph` separately. The hosting provider must expose the callback route publicly and allow the backend's static outbound IP to be registered with TurboPay if their account requires IP whitelisting. `34.143.182.198` is identified in TurboPay's documentation as TurboPay's API IP; it is not Nexora's outbound IP. Withdrawals are manual and are not submitted to TurboPay; workout reward credits remain paused.
 
+## 🏃 Marathon
+
+The Marathon tab is a Firestore-backed team challenge. Teams have 5–10 accepted members, choose exactly one of **250 KM / ₱1,000** or **500 KM / ₱2,500**, and have exactly seven days from the server start time to reach the target. Users need at least one qualifying runner to participate, and every joined member must own both canonical runners (`snk-3` Cobalt Aero Jogger and `snk-4` Vortex Blaze Sprint) before the leader can start.
+
+The persisted lifecycle is `Lobby` → `Active` → `Completed` or `Failed`; a Lobby may instead be `Cancelled`. Backend transactions enforce transitions and terminal records are read-only. Historical records retain the original leader, roster, contributions, target, bounty, outcome, and timestamps and appear in separate created/participated archive lists.
+
+Starting a race atomically rechecks team membership, ownership of both runners, cooldowns, workout state (including paused and pending End & Earn), and each member's database balance. The start transaction reads and debits each member's user document, the same document updated transactionally by workout snapshot saves; Firestore therefore retries the start if a workout state changes before commit. The pool is debited in equal cent-based shares from member balances. When the target is reached strictly before the deadline, the pool is paid once, equally among members still on the active roster at completion; if the deadline is reached below target, the original contributions are refunded and no bounty is paid. A failed marathon's cooldown begins at the authoritative deadline timestamp; a completed marathon's cooldown begins when its target is finalized. Started-race participants, including members who leave early, receive a three-day cooldown. A Firestore membership claim keyed by user ID is read and written within transactions, preventing concurrent team creation or invitation acceptance from creating multiple current memberships.
+
+Marathon records, membership claims, invitations, notifications, verified workout records, cooldowns, and wallet transactions are stored in Firestore collections (`marathons`, `marathon_memberships`, `marathon_invitations`, `marathon_notifications`, `completed_workouts`, `marathon_cooldowns`, and `wallet_transactions`). Only an End & Earn completion can create a workout record. The backend derives eligible distance from the stored GPS route and checks the member's actual owned runner instances; it does not credit the client-reported summary distance. Marathon reads and workout completion lazily finalize races whose server deadline has passed; deployments requiring a status transition at the exact deadline must also invoke expiration settlement through a durable scheduler.
+
+Run `npm run test:marathon` to verify canonical runner eligibility, deterministic cent allocation, and server-side route-distance calculation.
+
 ---
 
 ## 📦 Project Structure
@@ -128,6 +140,10 @@ nexora/
 │   │   └── rateLimiter.ts     # Brute force rate limiting
 │   ├── routes/authRoutes.ts   # Authentication route definitions
 │   ├── routes/paymentRoutes.ts # TurboPay deposit routes
+│   ├── routes/marathonRoutes.ts # Authenticated Marathon API
+│   ├── controllers/marathonController.ts # Marathon API request handling
+│   ├── services/marathonService.ts # Firestore-backed Marathon lifecycle and rewards
+│   ├── services/marathonRules.ts # Canonical eligibility and payout rules
 │   ├── services/turbopay.ts   # Server-side request signing and TurboPay API client
 │   └── server.ts              # Server startup file (Port 5000)
 ├── src/                       # Frontend Web & Mobile Application

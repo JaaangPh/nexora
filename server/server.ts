@@ -5,6 +5,7 @@ import { config } from './config/config.js';
 import { initFirebaseDatabase } from './database/firebase.js';
 import authRoutes from './routes/authRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
+import marathonRoutes from './routes/marathonRoutes.js';
 
 const app = express();
 
@@ -29,7 +30,7 @@ app.use(
       return callback(null, true);
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   })
 );
@@ -58,6 +59,7 @@ app.get(['/api/health', '/health'], (req, res) => {
 // Auth Routes (support both /api/auth and /auth)
 app.use(['/api/auth', '/auth'], authRoutes);
 app.use('/api/payments/turbopay', paymentRoutes);
+app.use('/api/marathons', marathonRoutes);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

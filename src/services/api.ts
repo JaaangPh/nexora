@@ -31,6 +31,83 @@ export interface DepositHistoryItem {
   gcashQrUrl?: string;
 }
 
+export interface MarathonProfile {
+  id: string;
+  nexoraId?: string;
+  username: string;
+  profileImage: string | null;
+  ownsCobalt?: boolean;
+  ownsVortex?: boolean;
+  eligible?: boolean;
+  stillRunning?: boolean;
+  status?: string;
+  canInvite?: boolean;
+  cooldownUntil?: number;
+  membershipStatus?: 'active' | 'departed' | 'historical';
+  role?: string;
+  joinedAt?: number;
+  leftAt?: number | null;
+  active?: boolean;
+  verifiedKm?: number;
+}
+
+export interface MarathonTeamView {
+  id: string;
+  name: string;
+  leaderId: string;
+  status: 'Lobby' | 'Active' | 'Completed' | 'Failed' | 'Cancelled';
+  memberIds: string[];
+  memberIdsHistory: string[];
+  memberCount: number;
+  pendingInvitationCount: number;
+  membersStillNeeded: number;
+  packageId: '250' | '500' | null;
+  targetKm: number;
+  bounty: number;
+  totalKm: number;
+  remainingKm: number;
+  progressPercentage: number;
+  createdAt: number;
+  startedAt?: number;
+  deadlineAt?: number;
+  endedAt?: number;
+  payoutStatus?: string;
+  members: MarathonProfile[];
+  invitations: Array<{
+    id: string;
+    inviteeId: string;
+    status: string;
+    createdAt: number;
+    bounty: number;
+    invitee: MarathonProfile | null;
+  }>;
+  payouts?: Record<string, number>;
+  payoutTransactionIds?: Array<{ userId: string; transactionId: string }>;
+}
+
+export interface MarathonDashboard {
+  success: boolean;
+  eligibility: { eligible: boolean; ownsCobalt: boolean; ownsVortex: boolean };
+  cooldownUntil: number;
+  currentTeam: MarathonTeamView | null;
+  invitations: Array<{
+    id: string;
+    teamId: string;
+    teamName: string;
+    targetMeters: number;
+    bounty: number;
+    createdAt: number;
+    team: MarathonTeamView;
+    leader: MarathonProfile | null;
+    stillRunning: boolean;
+    eligibility: { eligible: boolean; ownsCobalt: boolean; ownsVortex: boolean };
+    cooldownUntil: number;
+    alreadyInTeam: boolean;
+  }>;
+  history: MarathonTeamView[];
+  notifications: Array<{ id: string; type: string; teamName: string; message: string; createdAt: number }>;
+}
+
 // Storage keys
 const TOKEN_KEY = 'nexora_token';
 const USER_KEY = 'nexora_user';
@@ -187,6 +264,71 @@ export const api = {
     return request<{ success: boolean }>('/api/auth/workout', {
       method: 'DELETE',
     });
+  },
+
+  async getMarathonDashboard(): Promise<MarathonDashboard> {
+    return request<MarathonDashboard>('/api/marathons', { method: 'GET' });
+  },
+
+  async createMarathonTeam(name: string): Promise<{ success: boolean; teamId: string }> {
+    return request<{ success: boolean; teamId: string }>('/api/marathons/teams', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  async searchMarathonUser(teamId: string, nexoraId: string): Promise<{ success: boolean; profile: MarathonProfile }> {
+    return request(`/api/marathons/teams/${encodeURIComponent(teamId)}/search?nexoraId=${encodeURIComponent(nexoraId)}`, {
+      method: 'GET',
+    });
+  },
+
+  async inviteMarathonUser(teamId: string, inviteeId: string): Promise<{ success: boolean }> {
+    return request(`/api/marathons/teams/${encodeURIComponent(teamId)}/invitations`, {
+      method: 'POST',
+      body: JSON.stringify({ inviteeId }),
+    });
+  },
+
+  async respondToMarathonInvitation(invitationId: string, action: 'accept' | 'decline'): Promise<{ success: boolean }> {
+    return request(`/api/marathons/invitations/${encodeURIComponent(invitationId)}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    });
+  },
+
+  async cancelMarathonInvitation(teamId: string, invitationId: string): Promise<{ success: boolean }> {
+    return request(`/api/marathons/teams/${encodeURIComponent(teamId)}/invitations/${encodeURIComponent(invitationId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async updateMarathonTeam(
+    teamId: string,
+    changes: { name?: string; packageId?: '250' | '500' },
+  ): Promise<{ success: boolean }> {
+    return request(`/api/marathons/teams/${encodeURIComponent(teamId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(changes),
+    });
+  },
+
+  async startMarathon(teamId: string): Promise<{ success: boolean }> {
+    return request(`/api/marathons/teams/${encodeURIComponent(teamId)}/start`, { method: 'POST' });
+  },
+
+  async removeMarathonMember(teamId: string, memberId: string): Promise<{ success: boolean }> {
+    return request(`/api/marathons/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(memberId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async leaveMarathonTeam(teamId: string): Promise<{ success: boolean }> {
+    return request(`/api/marathons/teams/${encodeURIComponent(teamId)}/leave`, { method: 'POST' });
+  },
+
+  async cancelMarathonLobby(teamId: string): Promise<{ success: boolean }> {
+    return request(`/api/marathons/teams/${encodeURIComponent(teamId)}/cancel`, { method: 'POST' });
   },
 
   async updateUsername(username: string): Promise<AuthResponse> {

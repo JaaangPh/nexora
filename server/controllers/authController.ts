@@ -14,13 +14,13 @@ import {
   updateUserRunners,
   getUserWorkoutSnapshot,
   updateUserWorkoutSnapshot,
-  deleteUserWorkoutSnapshot,
   purchaseUserRunner,
   generateUniqueReferralCode,
   generateAutoUsername,
   updateUserProfileImage,
   FirestoreUser,
 } from '../database/firebase.js';
+import { completeWorkoutAndClearSnapshot, MarathonError } from '../services/marathonService.js';
 
 const MAX_WORKOUT_ROUTE_POINTS = 1000;
 const MAX_PROFILE_IMAGE_DATA_URL_LENGTH = 84 * 1024;
@@ -460,9 +460,13 @@ export async function clearWorkoutSnapshot(req: AuthRequest, res: Response): Pro
       return;
     }
 
-    await deleteUserWorkoutSnapshot(req.user.id);
-    res.json({ success: true });
+    const result = await completeWorkoutAndClearSnapshot(req.user.id);
+    res.json(result);
   } catch (error: any) {
+    if (error instanceof MarathonError) {
+      res.status(error.statusCode).json({ success: false, message: error.message });
+      return;
+    }
     console.error('[Clear Workout Snapshot Error]', error);
     res.status(500).json({ success: false, message: error?.message || 'Failed to clear workout progress.' });
   }

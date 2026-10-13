@@ -9,6 +9,7 @@
     "client": "vite --port 3000",
     "server": "tsx server/server.ts",
     "build": "vite build",
+    "test:marathon": "tsx --test server/services/marathonRules.test.ts",
     "preview": "vite preview",
     "cap:add": "npx cap add android",
     "cap:sync": "npm run build && node -e \"require('fs').rmSync('dist/downloads/nexora-technologies.apk', {force:true})\" && npx cap sync android",

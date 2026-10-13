@@ -315,8 +315,13 @@ export async function updateUserWorkoutSnapshot(
     if (currentSnapshot && currentLastUpdated > incomingLastUpdated) {
       return currentSnapshot;
     }
-    transaction.update(userRef, { workoutSnapshot: snapshot });
-    return snapshot;
+    const sameWorkout = Number(currentSnapshot?.workoutStartTime) === Number(snapshot.workoutStartTime);
+    const serverStartedAt = sameWorkout
+      ? Number(currentSnapshot?.serverStartedAt || Date.now())
+      : Date.now();
+    const savedSnapshot = { ...snapshot, serverStartedAt };
+    transaction.update(userRef, { workoutSnapshot: savedSnapshot });
+    return savedSnapshot;
   });
 }
 
