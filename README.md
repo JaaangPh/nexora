@@ -49,6 +49,7 @@ A modern, responsive, high-security authentication platform for **Nexora Technol
      * `users`: Member profiles, roles, encrypted password hashes, timestamps.
      * `invite_codes`: Access keys with quota and validation states (`NEXORA-2025`, `VIP-ACCESS`, etc.).
      * `auth_logs`: Real-time audit trails of all registrations and sign-in activities.
+     * `payment_deposits`: Pending/settled TurboPay order records; successful callbacks credit the associated user once.
    * **Local Fallback:** SQLite & PostgreSQL schemas remain available in `server/database/`.
 
 4. **Member Referral Program & Dynamic Invitation Links:**
@@ -88,6 +89,21 @@ A modern, responsive, high-security authentication platform for **Nexora Technol
 * **Database:** SQLite (`better-sqlite3`) & PostgreSQL (`server/database/schema.sql`).
 * **Mobile Packaging:** Capacitor 8 (`@capacitor/core`, `@capacitor/cli`, `@capacitor/android`).
 
+## 💳 TurboPay Deposit Setup
+
+Deposits are created by the Express backend and stored as pending Firestore transactions. The app does not credit balances from the payment-creation response: the callback at `POST /api/payments/turbopay/callback` must pass TurboPay's MD5 signature, merchant, order, status, and exact amount checks before Firestore credits the account. Repeated success callbacks are idempotent.
+
+Configure these backend-only environment variables in the deployment hosting the Express API:
+
+* `TURBOPAY_ENABLED` — keep `false` until TurboPay confirms the key, whitelisting, callback, and testing process; set to `true` only when ready to create live payment requests.
+* `TURBOPAY_API_URL` — official HTTPS API origin (`https://merchant.turbopay.ph`).
+* `TURBOPAY_MERCHANT_ID`
+* `TURBOPAY_MERCHANT_KEY` — use the rotated TurboPay signing key; never use a `VITE_` prefix or commit the value.
+* `TURBOPAY_CALLBACK_URL` — public HTTPS URL ending in `/api/payments/turbopay/callback`.
+* `TURBOPAY_RETURN_URL` — public HTTPS URL for the user redirect after payment.
+
+The minimum deposit is ₱100 for GCash, Maya, GoTyme, and QRPh; successful callbacks credit the exact PHP amount in the order (for example, a ₱150 payment credits ₱150). TurboPay's documentation requires a minimum of ₱800 for USDT-TRC20. The QRPh UI choice is sent using `bank_code=gcash` per the merchant's instructions; confirm this with TurboPay because its bank-code directory lists `qrph` separately. The hosting provider must expose the callback route publicly and allow the backend's static outbound IP to be registered with TurboPay if their account requires IP whitelisting. `34.143.182.198` is identified in TurboPay's documentation as TurboPay's API IP; it is not Nexora's outbound IP. Withdrawals are manual and are not submitted to TurboPay; workout reward credits remain paused.
+
 ---
 
 ## 📦 Project Structure
@@ -104,6 +120,7 @@ nexora/
 ├── server/                    # Backend API
 │   ├── config/config.ts       # Server environment configurations
 │   ├── controllers/authController.ts # Register, Login, Logout, Invite verification
+│   ├── controllers/paymentController.ts # TurboPay deposit creation, status, verified callback
 │   ├── database/
 │   │   ├── db.ts              # SQLite connection & auto-seeding
 │   │   ├── schema.sql         # Database schema for PostgreSQL & SQLite
@@ -111,7 +128,9 @@ nexora/
 │   ├── middleware/
 │   │   ├── auth.ts            # JWT Bearer & cookie verification middleware
 │   │   └── rateLimiter.ts     # Brute force rate limiting
-│   ├── routes/authRoutes.ts   # Express route definitions
+│   ├── routes/authRoutes.ts   # Authentication route definitions
+│   ├── routes/paymentRoutes.ts # TurboPay deposit routes
+│   ├── services/turbopay.ts   # Server-side request signing and TurboPay API client
 │   └── server.ts              # Server startup file (Port 5000)
 ├── src/                       # Frontend Web & Mobile Application
 │   ├── components/

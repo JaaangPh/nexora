@@ -11,7 +11,6 @@ import {
   updateUserLastLogin,
   updateUserActiveSession,
   updateUserUsername,
-  updateUserBalance,
   updateUserRunners,
   getUserWorkoutSnapshot,
   updateUserWorkoutSnapshot,
@@ -503,52 +502,6 @@ export async function updateUsername(req: AuthRequest, res: Response): Promise<v
 }
 
 /**
- * PUT /api/auth/balance
- */
-export async function updateBalance(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.user) {
-      res.status(401).json({ success: false, message: 'Unauthorized session.' });
-      return;
-    }
-
-    const { balance } = req.body;
-    if (typeof balance !== 'number' || isNaN(balance) || balance < 0) {
-      res.status(400).json({ success: false, message: 'Invalid balance amount.' });
-      return;
-    }
-
-    const cleanBalance = Math.round(balance * 100) / 100;
-    await updateUserBalance(req.user.id, cleanBalance);
-    const updatedUser = await findUserById(req.user.id);
-
-    res.json({
-      success: true,
-      message: 'Balance updated successfully!',
-      user: {
-        id: updatedUser!.id,
-        phoneNumber: updatedUser!.phoneNumber,
-        username: updatedUser!.username,
-        role: updatedUser!.role,
-        referralCode: updatedUser!.referralCode || 'NT723906',
-        inviteCodeUsed: updatedUser!.inviteCodeUsed,
-        status: updatedUser!.status,
-        createdAt: updatedUser!.createdAt,
-        lastLoginAt: updatedUser!.lastLoginAt,
-        balance: updatedUser!.balance ?? cleanBalance,
-        totalDeposit: updatedUser!.totalDeposit ?? 0,
-        ownedRunners: updatedUser!.ownedRunners || [],
-        equippedRunnerId: updatedUser!.equippedRunnerId,
-        runnerCooldowns: updatedUser!.runnerCooldowns || {},
-      },
-    });
-  } catch (error: any) {
-    console.error('[Update Balance Error]', error);
-    res.status(500).json({ success: false, message: error?.message || 'Failed to update balance.' });
-  }
-}
-
-/**
  * PUT /api/auth/runners
  */
 export async function updateRunners(req: AuthRequest, res: Response): Promise<void> {
@@ -558,11 +511,17 @@ export async function updateRunners(req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
-    const { equippedRunnerId, runnerCooldowns, balance } = req.body;
-    const updateData: any = {};
+    if (Object.prototype.hasOwnProperty.call(req.body ?? {}, 'balance')) {
+      res.status(400).json({ success: false, message: 'Balance can only be changed by verified server-side transactions.' });
+      return;
+    }
+
+    const { equippedRunnerId, runnerCooldowns } = req.body;
+    const updateData: { equippedRunnerId?: string; runnerCooldowns?: Record<string, number> } = {};
     if (typeof equippedRunnerId === 'string') updateData.equippedRunnerId = equippedRunnerId;
-    if (runnerCooldowns && typeof runnerCooldowns === 'object') updateData.runnerCooldowns = runnerCooldowns;
-    if (typeof balance === 'number' && !isNaN(balance)) updateData.balance = Math.round(balance * 100) / 100;
+    if (runnerCooldowns && typeof runnerCooldowns === 'object' && !Array.isArray(runnerCooldowns)) {
+      updateData.runnerCooldowns = runnerCooldowns;
+    }
 
     await updateUserRunners(req.user.id, updateData);
     const updatedUser = await findUserById(req.user.id);

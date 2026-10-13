@@ -326,7 +326,7 @@ export const AboutWhitepaper: React.FC = () => {
                 </div>
                 <div className="rounded-lg border border-slate-200 p-4">
                   <h3 className="text-sm font-semibold text-slate-900">Session handling</h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">Workout progress is saved locally and synced to the signed-in account, allowing it to be restored on another device. A workout restored on a new device is paused and must be resumed manually. Pausing freezes time, steps, calories, and earnings. Losing internet pauses the workout until the user reconnects and taps Resume. A new sign-in on another device invalidates the previous session, which pauses the workout on that device. Cancel &amp; Continue returns to a manually ended workout. Collect &amp; Continue credits the calculated in-app amount, clears the saved workout, and starts a 24-hour cooldown for each selected Runner.</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">Workout progress is saved locally and synced to the signed-in account, allowing it to be restored on another device. A workout restored on a new device is paused and must be resumed manually. Pausing freezes time, steps, calories, and the displayed reward estimate. Losing internet pauses the workout until the user reconnects and taps Resume. A new sign-in on another device invalidates the previous session, which pauses the workout on that device. Cancel &amp; Continue returns to a manually ended workout. Collect &amp; Continue clears the saved workout and starts a 24-hour cooldown for each selected Runner; reward credits are currently paused.</p>
                 </div>
               </div>
               <p className="mt-4 leading-7 text-slate-600">Running, cycling, and transit are selectable in the interface, but the current reward formula does not vary by mode. GPS availability, motion sensors, background operation, permissions, and connection quality depend on the device and browser.</p>
@@ -334,25 +334,25 @@ export const AboutWhitepaper: React.FC = () => {
                 <li>Purchase and own one or more catalog Runners; select those that are not cooling down.</li>
                 <li>Start a session using GPS or the motion-sensor fallback, then pause or resume as needed.</li>
                 <li>End the session to review the locally calculated distance, elapsed time, estimated calories, and reward.</li>
-                <li>Cancel &amp; Continue resumes the session. Collect &amp; Continue submits the reward and selected Runner cooldowns to the account API.</li>
+                <li>Cancel &amp; Continue resumes the session. Collect &amp; Continue records the selected Runner cooldowns; the displayed reward estimate is not credited.</li>
               </ol>
             </section>
 
             <section id="account" className="scroll-mt-24 border-b border-slate-200 py-8 sm:py-10">
               <div className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-cyan-800" /><h2 className="text-2xl font-bold text-slate-900">Account security</h2></div>
-              <p className="mt-4 leading-7 text-slate-600">Firestore account records include profile fields, password hash, role/status, referral fields, balance, Runner ownership/equipment, and cooldowns. Passwords are hashed with bcrypt. The Express API issues signed session tokens and protected requests check the account’s active session; signing in again replaces the previous session. Login and registration attempts are limited to 30 per IP per 15-minute window.</p>
+              <p className="mt-4 leading-7 text-slate-600">Firestore account records include profile fields, password hash, role/status, referral fields, balance, Runner ownership/equipment, and cooldowns. Passwords are hashed with bcrypt. The Express API issues signed session tokens and protected requests check the account’s active session; signing in again replaces the previous session. Login and registration attempts are limited to 30 per IP per 15-minute window. Balance changes from deposits are applied only by the signed TurboPay callback, and the former client balance-update endpoint is disabled.</p>
               <h3 id="referrals" className="mt-6 scroll-mt-24 text-sm font-semibold text-slate-900">Referral and team screen</h3>
               <p className="mt-2 leading-7 text-slate-600">Each account receives a generated referral code and the Team screen creates a shareable code/link. Registration reads invite values from supported URL formats and saves the submitted value. The current registration handler does not verify codes against the seeded invite-code records. Direct Team, Team Volume, and Commission values are hard-coded zero placeholders; there is no implemented referral tree or commission calculation.</p>
               <h3 className="mt-6 text-sm font-semibold text-slate-900">Application and persistence</h3>
-              <p className="mt-2 leading-7 text-slate-600">The client is a React/TypeScript app built with Vite and packaged for Android using Capacitor. The Express server exposes health and authentication/account routes backed by Firebase Admin and Cloud Firestore. Session/profile data and workout snapshots are stored in browser/device local storage. The current API has no workout-history, payment, payout, or exchange endpoint; collecting a workout syncs its calculated balance and cooldown fields, not an auditable workout ledger.</p>
+              <p className="mt-2 leading-7 text-slate-600">The client is a React/TypeScript app built with Vite and packaged for Android using Capacitor. The Express server exposes authentication/account and TurboPay deposit routes backed by Firebase Admin and Cloud Firestore. Deposit orders are stored in Firestore and credited once after a valid provider signature, matching order, and exact amount are checked. Session/profile data and workout snapshots are stored in browser/device local storage. Withdrawal and workout reward payouts are not currently integrated.</p>
             </section>
 
             <section id="limitations" className="scroll-mt-24 py-8 sm:py-10">
               <h2 className="text-2xl font-bold text-slate-900">Current limitations</h2>
               <ul className="mt-4 list-disc space-y-3 pl-5 text-sm leading-6 text-slate-600 marker:text-cyan-800">
                 <li>GPS and step-derived distance, steps, and calories are device estimates that can be inaccurate. Basic movement filters are not comprehensive fraud prevention; driving, spoofing, repeated routes, and sensor manipulation are not reliably identified.</li>
-                <li>The client calculates displayed rewards and submits balance/Runner updates. The current API does not provide a server-authoritative reward ledger, atomic purchase flow, or independent activity verification.</li>
-                <li>PHP amounts are app values only. The active application has no on-chain token, smart contract, connected wallet, exchange, or live payment/payout integration.</li>
+                <li>Workout rewards are locally estimated and are not credited while server-authoritative reward validation is unavailable. GPS and motion signals are not independently verified.</li>
+                <li>TurboPay deposits require deployment-time merchant credentials and public HTTPS callback/return URLs. Withdrawals, on-chain tokens, smart contracts, connected wallets, and exchange integrations are not implemented.</li>
                 <li>Catalog prices, listed rates, support availability, and future product terms are not guarantees. Consult the live app and applicable official terms.</li>
               </ul>
             </section>

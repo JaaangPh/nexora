@@ -2,6 +2,24 @@ import { Capacitor } from '@capacitor/core';
 import { AuthResponse, InviteValidationResponse, InviteCodeItem, OwnedRunner, User } from '../types/auth';
 import { WorkoutSnapshot } from '../types/workout';
 
+export type DepositBankCode = 'gcash' | 'PMP' | 'GOT' | 'qrph' | 'usdt-trc20';
+export type DepositStatus = 'pending' | 'paid' | 'failed';
+
+export interface DepositOrder {
+  orderId: string;
+  status: DepositStatus;
+  amount: number;
+  bankCode: DepositBankCode;
+  message?: string;
+  redirectUrl?: string;
+  qrcodeUrl?: string;
+  gcashQrUrl?: string;
+}
+
+export interface DepositStatusResponse extends DepositOrder {
+  user?: Partial<User>;
+}
+
 // Storage keys
 const TOKEN_KEY = 'nexora_token';
 const USER_KEY = 'nexora_user';
@@ -174,24 +192,23 @@ export const api = {
     return res;
   },
 
-  async updateBalance(balance: number): Promise<AuthResponse> {
-    const res = await request<AuthResponse>('/api/auth/balance', {
-      method: 'PUT',
-      body: JSON.stringify({ balance }),
+  async createDeposit(amount: number, bankCode: DepositBankCode): Promise<DepositOrder> {
+    const res = await request<{ success: boolean; deposit: DepositOrder }>('/api/payments/turbopay/deposits', {
+      method: 'POST',
+      body: JSON.stringify({ amount, bankCode }),
     });
-    if (res.user) {
-      const currentStored = getStoredUser();
-      if (currentStored) {
-        setStoredSession(getStoredToken() || '', { ...currentStored, ...res.user });
-      }
-    }
-    return res;
+    return res.deposit;
+  },
+
+  async getDepositStatus(orderId: string): Promise<DepositStatusResponse> {
+    return request<DepositStatusResponse>(`/api/payments/turbopay/deposits/${encodeURIComponent(orderId)}`, {
+      method: 'GET',
+    });
   },
 
   async updateRunners(payload: {
     equippedRunnerId?: string;
     runnerCooldowns?: Record<string, number>;
-    balance?: number;
   }): Promise<AuthResponse> {
     const res = await request<AuthResponse>('/api/auth/runners', {
       method: 'PUT',

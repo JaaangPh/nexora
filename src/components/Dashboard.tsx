@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { User } from '../types/auth';
 import { BrandLogo } from './BrandLogo';
-import { api } from '../services/api';
+import { api, DepositBankCode, DepositOrder } from '../services/api';
 
 // Separated Tab Components
 import { MarketTab } from './market';
@@ -81,75 +81,73 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showAppModal, setShowAppModal] = useState(false);
 
-  // Simulated Deposit/Withdraw inputs
-  const [depositAmount, setDepositAmount] = useState<string>('500');
-  const [depositMethod, setDepositMethod] = useState<string>('GCash');
+  // Deposit inputs
+  const [depositAmount, setDepositAmount] = useState<string>('100');
+  const [depositMethod, setDepositMethod] = useState<DepositBankCode>('gcash');
   const [isProcessingDeposit, setIsProcessingDeposit] = useState(false);
-  const [depositSuccessMsg, setDepositSuccessMsg] = useState<string | null>(null);
-
-  const [withdrawAmount, setWithdrawAmount] = useState<string>('');
-  const [withdrawAccount, setWithdrawAccount] = useState<string>('');
-  const [isProcessingWithdraw, setIsProcessingWithdraw] = useState(false);
-  const [withdrawMsg, setWithdrawMsg] = useState<string | null>(null);
+  const [depositErrorMsg, setDepositErrorMsg] = useState<string | null>(null);
+  const [depositOrder, setDepositOrder] = useState<DepositOrder | null>(null);
 
   const currentBalance = user.balance ?? 0;
   const currentTotalDeposit = user.totalDeposit ?? 0;
 
-  const handleExecuteDeposit = (e: React.FormEvent) => {
+  const handleExecuteDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const amt = parseFloat(depositAmount);
-    if (isNaN(amt) || amt <= 0) return;
+    const amt = Number(depositAmount);
+    if (!Number.isFinite(amt) || amt <= 0 || Math.abs(amt * 100 - Math.round(amt * 100)) > 0.000001) {
+      setDepositErrorMsg('Enter a valid amount with no more than two decimal places.');
+      return;
+    }
+    if (amt < 100) {
+      setDepositErrorMsg('The minimum deposit is ₱100.');
+      return;
+    }
+    if (depositMethod === 'usdt-trc20' && amt < 800) {
+      setDepositErrorMsg('USDT-TRC20 deposits must be at least ₱800.');
+      return;
+    }
 
+    setDepositErrorMsg(null);
+    setDepositOrder(null);
     setIsProcessingDeposit(true);
-    setTimeout(() => {
-      const newBal = Number((currentBalance + amt).toFixed(2));
-      const updatedUser: User = {
-        ...user,
-        balance: newBal,
-        totalDeposit: currentTotalDeposit + amt,
-      };
-      if (onUpdateUser) onUpdateUser(updatedUser);
-      api.updateBalance(newBal).catch((err) => console.warn('[Deposit Sync]', err));
+    try {
+      const order = await api.createDeposit(amt, depositMethod);
+      setDepositOrder(order);
+    } catch (error) {
+      setDepositErrorMsg(error instanceof Error ? error.message : 'Could not start the deposit.');
+    } finally {
       setIsProcessingDeposit(false);
-      setDepositSuccessMsg(`Successfully deposited ₱${amt.toLocaleString('en-US', { minimumFractionDigits: 2 })} via ${depositMethod}!`);
-      setTimeout(() => {
-        setDepositSuccessMsg(null);
-        setShowDepositModal(false);
-      }, 2000);
-    }, 1000);
+    }
   };
 
-  const handleExecuteWithdraw = (e: React.FormEvent) => {
-    e.preventDefault();
-    const amt = parseFloat(withdrawAmount);
-    if (isNaN(amt) || amt <= 0) {
-      setWithdrawMsg('Please enter a valid amount.');
-      return;
-    }
-    if (amt > currentBalance) {
-      setWithdrawMsg('Insufficient available balance.');
-      return;
-    }
+  useEffect(() => {
+    if (!depositOrder || depositOrder.status !== 'pending') return;
 
-    setIsProcessingWithdraw(true);
-    setWithdrawMsg(null);
-    setTimeout(() => {
-      const newBal = Math.max(0, Number((currentBalance - amt).toFixed(2)));
-      const updatedUser: User = {
-        ...user,
-        balance: newBal,
-      };
-      if (onUpdateUser) onUpdateUser(updatedUser);
-      api.updateBalance(newBal).catch((err) => console.warn('[Withdraw Sync]', err));
-      setIsProcessingWithdraw(false);
-      setWithdrawMsg(`Withdrawal request of ₱${amt.toLocaleString('en-US', { minimumFractionDigits: 2 })} submitted successfully!`);
-      setTimeout(() => {
-        setWithdrawMsg(null);
-        setShowWithdrawModal(false);
-        setWithdrawAmount('');
-      }, 2000);
-    }, 1000);
-  };
+    let isActive = true;
+    let isChecking = false;
+    const checkDepositStatus = async () => {
+      if (isChecking) return;
+      isChecking = true;
+      try {
+        const status = await api.getDepositStatus(depositOrder.orderId);
+        if (!isActive) return;
+        setDepositOrder((current) => current?.orderId === status.orderId ? { ...current, ...status } : current);
+        if (status.status === 'paid' && status.user) {
+          onUpdateUser?.({ ...user, ...status.user });
+        }
+      } catch (error) {
+        console.warn('[Deposit Status Check]', error);
+      } finally {
+        isChecking = false;
+      }
+    };
+
+    const intervalId = window.setInterval(() => void checkDepositStatus(), 5000);
+    return () => {
+      isActive = false;
+      window.clearInterval(intervalId);
+    };
+  }, [depositOrder?.orderId, depositOrder?.status, onUpdateUser, user]);
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden bg-[#08132B] text-white font-sans select-none">
@@ -375,22 +373,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
               isActiveTab={activeTab === 'track'}
               onNavigateTab={handleTabSelect}
               equippedSneakerName={equippedSneaker}
-              onWorkoutFinish={(earned, runnerIds = []) => {
-                const newBalance = Number((currentBalance + earned).toFixed(2));
+              onWorkoutFinish={(_earned, runnerIds = []) => {
                 const cooldownUntil = Date.now() + 24 * 60 * 60 * 1000;
                 const updatedCooldowns = {
                   ...(user.runnerCooldowns || {}),
                   ...Object.fromEntries(runnerIds.map((runnerId) => [runnerId, cooldownUntil])),
                 };
-                const updatedUser = {
-                  ...user,
-                  balance: newBalance,
-                  runnerCooldowns: updatedCooldowns,
-                };
+                const updatedUser = { ...user, runnerCooldowns: updatedCooldowns };
                 onUpdateUser?.(updatedUser);
-                api.updateRunners({ balance: newBalance, runnerCooldowns: updatedCooldowns }).catch((err) => {
-                  console.warn('[Workout Reward Sync]', err);
-                });
+                api.updateRunners({ runnerCooldowns: updatedCooldowns })
+                  .then((result) => {
+                    if (result.user) onUpdateUser?.({ ...updatedUser, ...result.user });
+                  })
+                  .catch((err) => console.warn('[Workout Cooldown Sync]', err));
               }}
             />
           </div>
@@ -478,12 +473,71 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
               <h3 className="text-base font-extrabold text-white">Deposit Funds</h3>
             </div>
 
-            {depositSuccessMsg ? (
-              <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-bold text-center">
-                <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-400" />
-                {depositSuccessMsg}
+            {depositOrder ? (
+              <div className="space-y-3">
+                <div className={`p-4 rounded-2xl border text-xs font-bold text-center ${
+                  depositOrder.status === 'paid'
+                    ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
+                    : depositOrder.status === 'failed'
+                      ? 'bg-red-500/20 border-red-400/40 text-red-200'
+                      : 'bg-cyan-500/15 border-cyan-400/30 text-cyan-100'
+                }`}>
+                  {depositOrder.status === 'paid' ? (
+                    <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-emerald-400" />
+                  ) : (
+                    <Wallet className="w-7 h-7 mx-auto mb-2" />
+                  )}
+                  <div>
+                    {depositOrder.status === 'paid'
+                      ? 'Payment confirmed. Your account balance has been updated.'
+                      : depositOrder.status === 'failed'
+                        ? 'This payment was not completed.'
+                        : depositOrder.message || 'Payment request created. Your balance will update after TurboPay confirms payment.'}
+                  </div>
+                </div>
+                <p className="text-[10px] text-blue-200/70 text-center break-all">
+                  Order: {depositOrder.orderId}
+                </p>
+                {(depositOrder.qrcodeUrl || depositOrder.gcashQrUrl) && (
+                  <img
+                    src={depositOrder.qrcodeUrl || depositOrder.gcashQrUrl}
+                    alt="TurboPay deposit QR code"
+                    className="mx-auto max-h-52 max-w-full rounded-xl bg-white p-2"
+                  />
+                )}
+                {(depositOrder.redirectUrl || depositOrder.qrcodeUrl || depositOrder.gcashQrUrl) && (
+                  <a
+                    href={depositOrder.redirectUrl || depositOrder.qrcodeUrl || depositOrder.gcashQrUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full py-3 rounded-xl bg-cyan-400 text-center text-[#08132B] font-extrabold text-xs uppercase tracking-wider"
+                  >
+                    Open TurboPay payment
+                  </a>
+                )}
+                <p className="text-[10px] leading-4 text-blue-100/70 text-center">
+                  This screen checks for confirmation automatically. Do not send a second payment for the same order.
+                </p>
+                {depositOrder.status !== 'pending' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDepositOrder(null);
+                      setDepositErrorMsg(null);
+                    }}
+                    className="w-full py-2 rounded-xl bg-[#142B5B] text-white font-bold text-xs"
+                  >
+                    Start another deposit
+                  </button>
+                )}
               </div>
             ) : (
+              <>
+              {depositErrorMsg && (
+                <div role="alert" className="mb-3 rounded-xl border border-red-400/40 bg-red-500/15 p-3 text-xs font-semibold text-red-200">
+                  {depositErrorMsg}
+                </div>
+              )}
               <form onSubmit={handleExecuteDeposit} className="space-y-4">
                 <div>
                   <label className="text-[10px] font-bold text-cyan-300 uppercase block mb-1">
@@ -508,6 +562,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                     value={depositAmount}
                     onChange={(e) => setDepositAmount(e.target.value)}
                     placeholder="Custom Deposit Amount"
+                    min={depositMethod === 'usdt-trc20' ? '800' : '100'}
+                    step="0.01"
                     className="w-full px-3.5 py-2.5 bg-[#08132B] border border-[#1E3A78] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-cyan-400 font-mono"
                     required
                   />
@@ -519,15 +575,26 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                   </label>
                   <select
                     value={depositMethod}
-                    onChange={(e) => setDepositMethod(e.target.value)}
+                    onChange={(e) => {
+                      const method = e.target.value as DepositBankCode;
+                      setDepositMethod(method);
+                      if (method === 'usdt-trc20' && Number(depositAmount) < 800) setDepositAmount('800');
+                    }}
                     className="w-full px-3.5 py-2.5 bg-[#08132B] border border-[#1E3A78] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-cyan-400"
                   >
-                    <option value="GCash">GCash E-Wallet</option>
-                    <option value="PayMaya">PayMaya E-Wallet</option>
-                    <option value="USDT (TRC20)">USDT (TRC20 Crypto)</option>
-                    <option value="Bank Transfer">Local Bank Transfer</option>
+                    <option value="gcash">GCash</option>
+                    <option value="PMP">Maya</option>
+                    <option value="GOT">GoTyme</option>
+                    <option value="qrph">QRPh</option>
+                    <option value="usdt-trc20">USDT (TRC20)</option>
                   </select>
                 </div>
+
+                {depositMethod === 'usdt-trc20' && (
+                  <p className="text-[10px] leading-4 text-amber-200">
+                    Minimum deposit is ₱800. Send the exact USDT amount shown by TurboPay in one transfer; wallet fees must not reduce the amount received.
+                  </p>
+                )}
 
                 <button
                   type="submit"
@@ -538,6 +605,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                   <span>{isProcessingDeposit ? 'Processing...' : 'Confirm Deposit'}</span>
                 </button>
               </form>
+              </>
             )}
           </div>
         </div>
@@ -568,50 +636,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
               </span>
             </div>
 
-            {withdrawMsg ? (
-              <div className="p-3.5 rounded-2xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 text-xs font-bold text-center">
-                {withdrawMsg}
-              </div>
-            ) : (
-              <form onSubmit={handleExecuteWithdraw} className="space-y-3">
-                <div>
-                  <label className="text-[10px] font-bold text-cyan-300 uppercase block mb-1">
-                    Withdrawal Amount (PHP)
-                  </label>
-                  <input
-                    type="number"
-                    value={withdrawAmount}
-                    onChange={(e) => setWithdrawAmount(e.target.value)}
-                    placeholder="Enter amount to withdraw"
-                    className="w-full px-3.5 py-2.5 bg-[#08132B] border border-[#1E3A78] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-cyan-400 font-mono"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-cyan-300 uppercase block mb-1">
-                    Account Details (GCash / Bank Account)
-                  </label>
-                  <input
-                    type="text"
-                    value={withdrawAccount}
-                    onChange={(e) => setWithdrawAccount(e.target.value)}
-                    placeholder="e.g. GCash 0917XXXXXXX"
-                    className="w-full px-3.5 py-2.5 bg-[#08132B] border border-[#1E3A78] rounded-xl text-xs font-bold text-white focus:outline-none focus:border-cyan-400"
-                    required
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isProcessingWithdraw}
-                  className="w-full py-3 rounded-xl bg-red-500 hover:bg-red-400 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95"
-                >
-                  {isProcessingWithdraw ? <Loader2 className="w-4 h-4 animate-spin" /> : <Banknote className="w-4 h-4" />}
-                  <span>{isProcessingWithdraw ? 'Processing...' : 'Submit Withdrawal'}</span>
-                </button>
-              </form>
-            )}
+            <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-400/30 text-amber-100 text-xs font-semibold text-center">
+              Withdrawals are not integrated yet. No withdrawal request was submitted and no funds were moved.
+            </div>
           </div>
         </div>
       )}

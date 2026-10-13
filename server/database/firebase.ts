@@ -219,15 +219,9 @@ export async function updateUserUsername(id: string, username: string): Promise<
   });
 }
 
-export async function updateUserBalance(id: string, balance: number): Promise<void> {
-  await firestore.collection('users').doc(id).update({
-    balance,
-  });
-}
-
 export async function updateUserRunners(
   id: string,
-  data: { equippedRunnerId?: string; runnerCooldowns?: Record<string, number>; balance?: number }
+  data: { equippedRunnerId?: string; runnerCooldowns?: Record<string, number> }
 ): Promise<void> {
   await firestore.collection('users').doc(id).update(data);
 }

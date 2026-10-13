@@ -1698,7 +1698,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
             <div className="bg-[#0E1118] border border-[#232936] rounded-2xl p-4 space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                Total Reward Earned
+                Estimated Reward (Not Credited)
               </span>
               <div className="text-3xl font-black font-mono text-[#D8FD2F]">
                 +₱{lastWorkoutSummary.earned.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1721,7 +1721,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-[10px] text-amber-200 flex items-center justify-center gap-1.5 font-semibold">
               <Hourglass className="w-3.5 h-3.5 text-amber-400" />
-              <span>Each selected Runner will be locked for 24 hours.</span>
+              <span>Workout reward credits are paused; selected Runners will still be locked for 24 hours.</span>
             </div>
 
             {workoutSyncError && (
