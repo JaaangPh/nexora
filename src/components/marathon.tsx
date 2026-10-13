@@ -20,6 +20,46 @@ interface MarathonTabProps {
   user: User;
 }
 
+interface MarathonErrorBoundaryState {
+  hasError: boolean;
+}
+
+class MarathonErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  MarathonErrorBoundaryState
+> {
+  state: MarathonErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(): MarathonErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[Marathon UI Error]', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <section role="alert" className="rounded-2xl border border-red-300/30 bg-[#0D204A] p-5 text-center">
+          <AlertTriangle className="mx-auto h-6 w-6 text-red-200" />
+          <h2 className="mt-2 text-sm font-extrabold text-white">Marathon could not be displayed</h2>
+          <p className="mt-1 text-xs leading-relaxed text-blue-100/70">A display error occurred. Your team data has not been changed by this error. Try loading the Marathon page again.</p>
+          <button
+            type="button"
+            onClick={() => this.setState({ hasError: false })}
+            className="mt-4 rounded-xl bg-cyan-300 px-4 py-2 text-xs font-black text-[#07132B]"
+          >
+            Reload Marathon
+          </button>
+        </section>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 const PACKAGE_OPTIONS = [
   { id: '250' as const, target: 250, bounty: 1000 },
   { id: '500' as const, target: 500, bounty: 2500 },
@@ -58,7 +98,7 @@ function ProfileLine({ profile, subtitle }: { profile: MarathonProfile; subtitle
   );
 }
 
-export const MarathonTab: React.FC<MarathonTabProps> = ({ user }) => {
+const MarathonTabContent: React.FC<MarathonTabProps> = ({ user }) => {
   const [data, setData] = useState<MarathonDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -504,5 +544,11 @@ export const MarathonTab: React.FC<MarathonTabProps> = ({ user }) => {
     </div>
   );
 };
+
+export const MarathonTab: React.FC<MarathonTabProps> = (props) => (
+  <MarathonErrorBoundary>
+    <MarathonTabContent {...props} />
+  </MarathonErrorBoundary>
+);
 
 export default MarathonTab;
