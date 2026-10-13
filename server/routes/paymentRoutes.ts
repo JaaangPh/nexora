@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
-import { createDeposit, getDepositStatus, handleTurboPayCallback } from '../controllers/paymentController.js';
+import { createDeposit, getDepositHistory, getDepositStatus, handleTurboPayCallback } from '../controllers/paymentController.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 const router = Router();
@@ -16,6 +16,7 @@ const depositLimiter = rateLimit({
 
 router.post('/callback', multipartFields, handleTurboPayCallback);
 router.post('/deposits', authMiddleware, depositLimiter, createDeposit);
+router.get('/deposits', authMiddleware, getDepositHistory);
 router.get('/deposits/:orderId', authMiddleware, getDepositStatus);
 
 export default router;

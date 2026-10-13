@@ -20,6 +20,17 @@ export interface DepositStatusResponse extends DepositOrder {
   user?: Partial<User>;
 }
 
+export interface DepositHistoryItem {
+  orderId: string;
+  status: DepositStatus;
+  amount: number;
+  bankCode: DepositBankCode;
+  createdAt: string;
+  redirectUrl?: string;
+  qrcodeUrl?: string;
+  gcashQrUrl?: string;
+}
+
 // Storage keys
 const TOKEN_KEY = 'nexora_token';
 const USER_KEY = 'nexora_user';
@@ -204,6 +215,13 @@ export const api = {
     return request<DepositStatusResponse>(`/api/payments/turbopay/deposits/${encodeURIComponent(orderId)}`, {
       method: 'GET',
     });
+  },
+
+  async getDepositHistory(): Promise<DepositHistoryItem[]> {
+    const res = await request<{ success: boolean; deposits: DepositHistoryItem[] }>('/api/payments/turbopay/deposits', {
+      method: 'GET',
+    });
+    return res.deposits;
   },
 
   async updateRunners(payload: {

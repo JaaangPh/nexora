@@ -32,6 +32,7 @@ import { TrackTab } from './track';
 import { TeamTab } from './team';
 import { MeTab } from './me';
 import { MyRunnerTab } from './myrunner';
+import { MyRecordTab } from './myrecord';
 import { AppModal } from './app';
 
 interface DashboardProps {
@@ -40,7 +41,7 @@ interface DashboardProps {
   onUpdateUser?: (user: User) => void;
 }
 
-type NavTab = 'home' | 'market' | 'track' | 'team' | 'me' | 'myrunners';
+type NavTab = 'home' | 'market' | 'track' | 'team' | 'me' | 'myrunners' | 'myrecord';
 
 function getTabFromUrl(): NavTab {
   if (typeof window === 'undefined') return 'home';
@@ -49,6 +50,7 @@ function getTabFromUrl(): NavTab {
 
   if (path.startsWith('/me') || hash.includes('/me') || hash === '#me') return 'me';
   if (path.startsWith('/myrunners') || hash.includes('/myrunners') || hash === '#myrunners') return 'myrunners';
+  if (path.startsWith('/myrecord') || hash.includes('/myrecord') || hash === '#myrecord') return 'myrecord';
   if (path.startsWith('/market') || hash.includes('/market') || hash === '#market' || path.startsWith('/graph') || hash.includes('/graph')) return 'market';
   if (path.startsWith('/track') || hash.includes('/track') || hash === '#track' || path.startsWith('/trades') || hash.includes('/trades')) return 'track';
   if (path.startsWith('/team') || hash.includes('/team') || hash === '#team') return 'team';
@@ -423,6 +425,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
             />
           )}
 
+          {activeTab === 'myrecord' && (
+            <MyRecordTab onBack={() => handleTabSelect('me')} />
+          )}
+
         </div>
       </div>
 
@@ -440,7 +446,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
           { id: 'team', label: 'TEAM', icon: Users },
           { id: 'me', label: 'ME', icon: UserIcon },
         ].map(({ id, label, icon: Icon }) => {
-          const isActive = activeTab === id;
+          const isActive = activeTab === id || (id === 'me' && activeTab === 'myrecord');
           return (
             <button
               key={id}

@@ -212,6 +212,41 @@ export async function getDepositStatus(req: AuthRequest, res: Response): Promise
   }
 }
 
+export async function getDepositHistory(req: AuthRequest, res: Response): Promise<void> {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ success: false, message: 'Unauthorized session.' });
+    return;
+  }
+
+  try {
+    const depositsSnapshot = await firestore
+      .collection(DEPOSITS_COLLECTION)
+      .where('userId', '==', userId)
+      .get();
+    const deposits = depositsSnapshot.docs
+      .map((document) => {
+        const deposit = document.data();
+        return {
+          orderId: String(deposit.orderId || document.id),
+          status: deposit.status as DepositStatus,
+          amount: Number(deposit.amount),
+          bankCode: deposit.bankCode as DepositBankCode,
+          createdAt: typeof deposit.createdAt === 'string' ? deposit.createdAt : '',
+          redirectUrl: readOptionalUrl(deposit.redirectUrl),
+          qrcodeUrl: readOptionalUrl(deposit.qrcodeUrl),
+          gcashQrUrl: readOptionalUrl(deposit.gcashQrUrl),
+        };
+      })
+      .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
+
+    res.json({ success: true, deposits });
+  } catch (error) {
+    console.error('[TurboPay Deposit History Error]', error);
+    res.status(500).json({ success: false, message: 'Could not retrieve transaction history.' });
+  }
+}
+
 export async function handleTurboPayCallback(req: Request, res: Response): Promise<void> {
   let credentials;
   try {

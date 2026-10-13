@@ -23,7 +23,7 @@ interface MeTabProps {
   user: User;
   onLogout: () => void;
   onUpdateUser?: (user: User) => void;
-  onNavigateTab: (tab: 'market' | 'track' | 'team' | 'myrunners') => void;
+  onNavigateTab: (tab: 'market' | 'track' | 'team' | 'myrunners' | 'myrecord') => void;
   onOpenBankAccount: () => void;
   onOpenCustomerService: () => void;
   onOpenAppModal: () => void;
@@ -54,7 +54,7 @@ export const MeTab: React.FC<MeTabProps> = ({
     { label: 'MY RUNNERS', icon: Footprints, onClick: () => onNavigateTab('myrunners') },
     { label: 'BANK ACCOUNT', icon: CreditCard, onClick: onOpenBankAccount },
     { label: 'CUSTOMER SERVICE', icon: Headphones, onClick: onOpenCustomerService },
-    { label: 'MY RECORDS', icon: ClipboardList, onClick: () => onNavigateTab('track') },
+    { label: 'MY RECORDS', icon: ClipboardList, onClick: () => onNavigateTab('myrecord') },
     { label: 'DOWNLOAD APP', icon: Smartphone, onClick: onOpenAppModal },
   ];
 
