@@ -67,8 +67,8 @@ export const AppModal: React.FC<AppModalProps> = ({ isOpen, onClose }) => {
 
           {/* 3. Primary Download APK Button */}
           <a
-            href="/downloads/nexora-technologies.apk"
-            download="NexoraTechnologies.apk"
+            href="/downloads/stepora-movement.apk"
+            download="stepora-movement.apk"
             className="w-full py-3.5 px-6 rounded-full bg-[#B91C1C] hover:bg-[#991B1B] text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-900/20 active:scale-95 transition-all no-underline cursor-pointer"
           >
             <Download className="w-4 h-4" />
