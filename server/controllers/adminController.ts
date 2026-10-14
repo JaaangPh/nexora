@@ -13,6 +13,7 @@ import {
   generateTotpSecret,
   TOTP_PERIOD_SECONDS,
 } from '../services/totp.js';
+import { displayedNexoraId } from '../services/marathonRules.js';
 
 type AdminRole = 'admin' | 'staff';
 interface AdminAccount extends AdminSecurityRecord {
@@ -509,6 +510,15 @@ function toIsoDate(value: unknown): string {
 export async function reviewWithdrawal(req: AdminRequest, res: Response): Promise<void> {
   const orderId = req.params.orderId;
   const decision = req.body?.decision;
+  const rawReferenceNo = req.body?.referenceNo;
+  if (
+    rawReferenceNo !== undefined &&
+    (typeof rawReferenceNo !== 'string' || rawReferenceNo.trim().length > 100)
+  ) {
+    res.status(400).json({ success: false, message: 'Reference number must be 100 characters or fewer.' });
+    return;
+  }
+  const referenceNo = typeof rawReferenceNo === 'string' ? rawReferenceNo.trim() : '';
   if (typeof orderId !== 'string' || !orderId || !['accept', 'reject'].includes(decision)) {
     res.status(400).json({ success: false, message: 'Choose a valid withdrawal review action.' });
     return;
@@ -541,12 +551,13 @@ export async function reviewWithdrawal(req: AdminRequest, res: Response): Promis
         status,
         reviewedAt,
         reviewedBy: req.adminEmail || 'admin',
+        ...(decision === 'accept' ? { referenceNo: referenceNo || null } : {}),
         updatedAt: reviewedAt,
       });
       if (decision === 'reject') {
         transaction.update(userSnapshot!.ref, { balance: FieldValue.increment(refundAmount) });
       }
-      return { orderId, status, refundAmount };
+      return { orderId, status, refundAmount, referenceNo: decision === 'accept' ? referenceNo : '' };
     });
     res.json({
       success: true,
@@ -598,6 +609,10 @@ export async function getAdminTransactions(req: AdminRequest, res: Response): Pr
       return [snapshot.id, {
         username: typeof user?.username === 'string' ? user.username : 'Member',
         phoneNumber: typeof user?.phoneNumber === 'string' ? user.phoneNumber : '',
+        steporaId: displayedNexoraId(
+          typeof user?.referralCode === 'string' ? user.referralCode : undefined,
+          snapshot.id,
+        ),
       }];
     }));
 
@@ -624,10 +639,12 @@ export async function getAdminTransactions(req: AdminRequest, res: Response): Pr
           : undefined,
         accountHolder: typeof record.accountHolder === 'string' ? record.accountHolder : undefined,
         accountNumber: typeof record.accountNumber === 'string' ? record.accountNumber : undefined,
+        referenceNo: typeof record.referenceNo === 'string' ? record.referenceNo : undefined,
         createdAt: toIsoDate(record.createdAt),
         userId,
         username: user?.username || 'Member',
         phoneNumber: user?.phoneNumber || '',
+        steporaId: user?.steporaId || displayedNexoraId(undefined, userId),
       };
     }).sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
 

@@ -37,11 +37,13 @@ interface AdminTransaction {
   userId: string;
   username: string;
   phoneNumber: string;
+  steporaId: string;
   fee?: number;
   payoutAmount?: number;
   totalDeducted?: number;
   accountHolder?: string;
   accountNumber?: string;
+  referenceNo?: string;
 }
 
 interface AdminTeamMember {
@@ -196,6 +198,7 @@ export const Admin: React.FC = () => {
   const [staffCode, setStaffCode] = useState('');
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [reviewingWithdrawalId, setReviewingWithdrawalId] = useState('');
+  const [withdrawalReferenceNumbers, setWithdrawalReferenceNumbers] = useState<Record<string, string>>({});
 
   const loadTransactions = async (token: string) => {
     const result = await adminRequest<{ transactions: AdminTransaction[]; email: string; role: AdminRole }>('/api/admin/transactions', { method: 'GET' }, token);
@@ -334,7 +337,11 @@ export const Admin: React.FC = () => {
     }
   };
 
-  const handleReviewWithdrawal = async (orderId: string, decision: 'accept' | 'reject') => {
+  const handleReviewWithdrawal = async (
+    orderId: string,
+    decision: 'accept' | 'reject',
+    referenceNo = '',
+  ) => {
     const action = decision === 'accept' ? 'accept' : 'reject and refund';
     if (!sessionToken || !window.confirm(`Are you sure you want to ${action} withdrawal ${orderId}?`)) return;
     setError('');
@@ -343,7 +350,7 @@ export const Admin: React.FC = () => {
     try {
       const result = await adminRequest<{ message: string }>(
         `/api/admin/withdrawals/${encodeURIComponent(orderId)}/review`,
-        { method: 'PUT', body: JSON.stringify({ decision }) },
+        { method: 'PUT', body: JSON.stringify({ decision, referenceNo }) },
         sessionToken,
       );
       setNotice(result.message);
@@ -858,6 +865,10 @@ export const Admin: React.FC = () => {
                 title="Withdrawals"
                 onReviewWithdrawal={handleReviewWithdrawal}
                 reviewingWithdrawalId={reviewingWithdrawalId}
+                withdrawalReferenceNumbers={withdrawalReferenceNumbers}
+                onWithdrawalReferenceNoChange={(orderId, value) => {
+                  setWithdrawalReferenceNumbers((current) => ({ ...current, [orderId]: value }));
+                }}
               />
               {!isLoading && withdrawals.length === 0 && (
                 <p className="-mt-3 text-xs text-[#908984]">
@@ -967,14 +978,20 @@ function TransactionTable({
   onShowDeposits,
   onReviewWithdrawal,
   reviewingWithdrawalId,
+  withdrawalReferenceNumbers,
+  onWithdrawalReferenceNoChange,
 }: {
   transactions: AdminTransaction[];
   isLoading: boolean;
   title: string;
   onShowDeposits?: () => void;
-  onReviewWithdrawal?: (orderId: string, decision: 'accept' | 'reject') => void;
+  onReviewWithdrawal?: (orderId: string, decision: 'accept' | 'reject', referenceNo?: string) => void;
   reviewingWithdrawalId?: string;
+  withdrawalReferenceNumbers?: Record<string, string>;
+  onWithdrawalReferenceNoChange?: (orderId: string, value: string) => void;
 }) {
+  const withdrawalTable = Boolean(onReviewWithdrawal);
+  const columnCount = withdrawalTable ? 8 : 6;
   return (
     <section className="overflow-hidden rounded-xl border border-[#1e3a78] bg-[#081b3d]">
       <div className="flex items-center justify-between border-b border-[#1e3a78] px-4 py-4 sm:px-5">
@@ -990,20 +1007,21 @@ function TransactionTable({
         <table className="w-full min-w-[900px] border-collapse text-left">
           <thead className="bg-[#06132e] text-[10px] uppercase tracking-wider text-[#8f9fba]">
             <tr>
-              <th className="px-5 py-3 font-semibold">Transaction</th>
+              <th className="px-5 py-3 font-semibold">Transaction ID</th>
               <th className="px-5 py-3 font-semibold">User</th>
               <th className="px-5 py-3 font-semibold">Method</th>
               <th className="px-5 py-3 font-semibold">Status</th>
               <th className="px-5 py-3 text-right font-semibold">{onReviewWithdrawal ? 'Payout' : 'Amount'}</th>
               <th className="px-5 py-3 font-semibold">Created</th>
+              {onReviewWithdrawal && <th className="px-5 py-3 font-semibold">Ref. No</th>}
               {onReviewWithdrawal && <th className="px-5 py-3 font-semibold">Review</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-[#1e3a78] text-xs">
             {isLoading ? (
-              <tr><td colSpan={onReviewWithdrawal ? 7 : 6} className="px-5 py-12 text-center text-[#948c87]"><LoaderCircle className="mx-auto mb-2 h-5 w-5 animate-spin text-[#f15408]" />Loading transaction records…</td></tr>
+              <tr><td colSpan={columnCount} className="px-5 py-12 text-center text-[#948c87]"><LoaderCircle className="mx-auto mb-2 h-5 w-5 animate-spin text-[#f15408]" />Loading transaction records…</td></tr>
             ) : transactions.length === 0 ? (
-              <tr><td colSpan={onReviewWithdrawal ? 7 : 6} className="px-5 py-12 text-center text-[#948c87]">No transactions found for this date range.</td></tr>
+              <tr><td colSpan={columnCount} className="px-5 py-12 text-center text-[#948c87]">No transactions found for this date range.</td></tr>
             ) : transactions.map((transaction) => (
               <tr key={`${transaction.type}:${transaction.id}`} className="hover:bg-[#10234a]">
                 <td className="px-5 py-3.5">
@@ -1012,7 +1030,8 @@ function TransactionTable({
                 </td>
                 <td className="px-5 py-3.5">
                   <div className="font-semibold text-[#e3dedb]">{transaction.username}</div>
-                  <div className="mt-1 text-[10px] text-[#817c79]">{transaction.phoneNumber || transaction.userId || '—'}</div>
+                  <div className="mt-1 text-[10px] text-cyan-200">STEPORA ID: {transaction.steporaId}</div>
+                  <div className="mt-1 text-[10px] text-[#817c79]">{transaction.phoneNumber || '—'}</div>
                 </td>
                 <td className="px-5 py-3.5 text-[#c0b8b3]">
                   <div className="capitalize">{transaction.method}</div>
@@ -1038,11 +1057,35 @@ function TransactionTable({
                 {onReviewWithdrawal && (
                   <td className="px-5 py-3.5">
                     {transaction.type === 'withdrawal' && transaction.status === 'pending' ? (
+                      <input
+                        type="text"
+                        maxLength={100}
+                        value={withdrawalReferenceNumbers?.[transaction.id] ?? ''}
+                        onChange={(event) => onWithdrawalReferenceNoChange?.(transaction.id, event.target.value)}
+                        placeholder="Optional"
+                        aria-label={`Reference number for ${transaction.id}`}
+                        disabled={reviewingWithdrawalId === transaction.id}
+                        className="w-32 rounded-lg border border-[#24466f] bg-[#06132e] px-2 py-2 text-[10px] text-white outline-none placeholder:text-[#64748b] focus:border-cyan-300 disabled:opacity-50"
+                      />
+                    ) : transaction.type === 'withdrawal' && transaction.referenceNo ? (
+                      <span className="break-all font-mono text-[10px] text-[#c0b8b3]">{transaction.referenceNo}</span>
+                    ) : transaction.type === 'withdrawal' ? (
+                      <span className="text-[10px] text-[#64748b]">—</span>
+                    ) : null}
+                  </td>
+                )}
+                {onReviewWithdrawal && (
+                  <td className="px-5 py-3.5">
+                    {transaction.type === 'withdrawal' && transaction.status === 'pending' ? (
                       <div className="flex gap-2">
                         <button
                           type="button"
                           disabled={reviewingWithdrawalId === transaction.id}
-                          onClick={() => onReviewWithdrawal(transaction.id, 'accept')}
+                          onClick={() => onReviewWithdrawal(
+                            transaction.id,
+                            'accept',
+                            withdrawalReferenceNumbers?.[transaction.id] ?? '',
+                          )}
                           className="rounded-lg bg-emerald-500/15 px-3 py-2 text-[10px] font-bold text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-50"
                         >
                           {reviewingWithdrawalId === transaction.id ? 'Working…' : 'Accept'}

@@ -23,6 +23,7 @@ export interface WithdrawalRecord {
   payoutAmount: number;
   /** The full amount removed from the member balance, including the fee. */
   totalDeducted?: number;
+  referenceNo?: string;
   bankCode: PayoutProvider;
   accountHolder: string;
   accountNumber: string;

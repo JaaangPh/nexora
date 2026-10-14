@@ -289,6 +289,7 @@ export async function getWithdrawalHistory(req: AuthRequest, res: Response): Pro
         bankCode: typeof record.bankCode === 'string' ? record.bankCode : '',
         accountHolder: typeof record.accountHolder === 'string' ? record.accountHolder : '',
         accountNumber: typeof record.accountNumber === 'string' ? record.accountNumber : '',
+        referenceNo: typeof record.referenceNo === 'string' ? record.referenceNo : undefined,
         createdAt: typeof record.createdAt === 'string' ? record.createdAt : '',
         reviewedAt: typeof record.reviewedAt === 'string' ? record.reviewedAt : undefined,
       };

@@ -252,6 +252,11 @@ export const MyRecordTab: React.FC<MyRecordTabProps> = ({ onBack }) => {
                   <div className="mt-3 rounded-xl border border-[#1E3A78] bg-[#08132B] p-3 text-xs">
                     <p className="font-semibold text-white">Bank account: {getPayoutProviderLabel(withdrawal.bankCode)}</p>
                     <p className="mt-1 text-blue-100/70">{withdrawal.accountHolder} · {withdrawal.accountNumber}</p>
+                    {withdrawal.referenceNo && (
+                      <p className="mt-2 break-all text-[11px] text-blue-100/70">
+                        Ref. No: <span className="font-mono text-white">{withdrawal.referenceNo}</span>
+                      </p>
+                    )}
                     <div className="mt-2 flex justify-between text-[11px] text-blue-100/60">
                       <span>Fee (2%): {money(withdrawal.fee)}</span>
                       <span>Payout: {money(withdrawal.payoutAmount)}</span>
