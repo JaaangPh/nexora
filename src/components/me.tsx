@@ -351,7 +351,7 @@ export const MeTab: React.FC<MeTabProps> = ({
           <span className="font-bold text-white font-mono">{user.inviteCodeUsed || 'NEXORA-2025'}</span>
         </div>
         <div>
-          <span className="text-blue-200/70 font-semibold block mb-1">Nexora ID</span>
+          <span className="text-blue-200/70 font-semibold block mb-1">STEPORA ID</span>
           <div className="flex items-center justify-between bg-[#08132B] p-2 rounded-xl border border-[#1E3A78]">
             <span className="font-mono text-[11px] text-cyan-200 truncate pr-2">{nexoraId}</span>
             <button onClick={handleCopyId} className="text-cyan-400 hover:text-white font-bold flex items-center gap-1 flex-shrink-0">

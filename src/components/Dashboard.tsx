@@ -686,7 +686,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
             </div>
 
             <p className="text-xs text-blue-200/80 mb-4 leading-relaxed">
-              Need assistance with your account, deposits, or trading? Connect directly with our official Nexora customer service representatives.
+              Need assistance with your account, deposits, or trading? Connect directly with our official Stepora customer service representatives.
             </p>
 
             <div className="space-y-2.5">

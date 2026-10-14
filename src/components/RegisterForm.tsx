@@ -59,7 +59,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       return;
     }
     if (!inviteCode.trim()) {
-      setErrorMessage('An invite code is required to create a Nexora account.');
+      setErrorMessage('An invite code is required to create a Stepora account.');
       return;
     }
 

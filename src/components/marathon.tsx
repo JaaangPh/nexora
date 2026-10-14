@@ -214,7 +214,7 @@ const MarathonTabContent: React.FC<MarathonTabProps> = ({ user }) => {
       const result = await api.searchMarathonUser(currentTeam.id, searchId.trim());
       setSearchProfile(result.profile);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Could not search for that Nexora ID.');
+      setError(requestError instanceof Error ? requestError.message : 'Could not search for that Stepora ID.');
     } finally {
       setSearching(false);
     }
@@ -234,7 +234,7 @@ const MarathonTabContent: React.FC<MarathonTabProps> = ({ user }) => {
         <div className="relative flex items-start gap-3">
           <div className="rounded-xl bg-cyan-300/10 p-2.5 text-cyan-300"><Trophy className="h-6 w-6" /></div>
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">Nexora team challenge</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">Stepora team challenge</p>
             <h2 className="mt-1 text-xl font-black text-white">Marathon</h2>
             <p className="mt-1 max-w-sm text-xs leading-relaxed text-blue-100/75">Build a team, contribute verified workout distance, and share the bounty when the collective target is reached within seven days.</p>
           </div>
@@ -364,11 +364,11 @@ const MarathonTabContent: React.FC<MarathonTabProps> = ({ user }) => {
 
           {isLeader && currentTeam.status === 'Lobby' && (
             <section className="rounded-2xl border border-[#1E3A78] bg-[#0D204A] p-4">
-              <h4 className="mb-3 flex items-center gap-2 text-sm font-extrabold text-white"><Search className="h-4 w-4 text-cyan-300" />Invite by Nexora ID</h4>
-              <p className="mb-3 text-[11px] leading-relaxed text-blue-100/65">Enter the five-digit Nexora ID shown on the user’s Me page. This is not their referral code.</p>
+              <h4 className="mb-3 flex items-center gap-2 text-sm font-extrabold text-white"><Search className="h-4 w-4 text-cyan-300" />Invite by Stepora ID</h4>
+              <p className="mb-3 text-[11px] leading-relaxed text-blue-100/65">Enter the five-digit Stepora ID shown on the user’s Me page. This is not their referral code.</p>
               {cooldownRemaining > 0 && <p role="status" className="mb-3 rounded-lg bg-amber-300/10 p-2 text-[11px] text-amber-100">You cannot invite players during cooldown. Expires {formatTimestamp(data!.cooldownUntil)}.</p>}
               <form onSubmit={searchForUser} className="flex gap-2">
-                <input aria-label="Five-digit Nexora ID" inputMode="numeric" pattern="[0-9]{5}" value={searchId} onChange={(event) => { setSearchId(event.target.value.replace(/\D/g, '').slice(0, 5)); setSearchProfile(null); }} placeholder="12345" maxLength={5} disabled={busy || cooldownRemaining > 0 || currentTeam.memberCount + currentTeam.pendingInvitationCount >= 10} className="min-w-0 flex-1 rounded-xl border border-[#27477F] bg-[#081735] px-3 py-2.5 text-sm font-mono text-white placeholder:text-blue-100/35 focus:border-cyan-400 focus:outline-none disabled:opacity-50" />
+                <input aria-label="Five-digit Stepora ID" inputMode="numeric" pattern="[0-9]{5}" value={searchId} onChange={(event) => { setSearchId(event.target.value.replace(/\D/g, '').slice(0, 5)); setSearchProfile(null); }} placeholder="12345" maxLength={5} disabled={busy || cooldownRemaining > 0 || currentTeam.memberCount + currentTeam.pendingInvitationCount >= 10} className="min-w-0 flex-1 rounded-xl border border-[#27477F] bg-[#081735] px-3 py-2.5 text-sm font-mono text-white placeholder:text-blue-100/35 focus:border-cyan-400 focus:outline-none disabled:opacity-50" />
                 <button type="submit" disabled={searching || busy || cooldownRemaining > 0 || !/^\d{5}$/.test(searchId) || currentTeam.memberCount + currentTeam.pendingInvitationCount >= 10} className="rounded-xl bg-[#2459C4] px-4 text-xs font-black text-white disabled:opacity-40">{searching ? 'Searching…' : 'Search'}</button>
               </form>
               {searchProfile && (

@@ -1187,7 +1187,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-white block">
-                {user?.username || 'Nexora Member'}
+                {user?.username || 'Stepora Member'}
               </span>
               <span className="text-[10px] font-extrabold text-[#D8FD2F] font-mono bg-[#D8FD2F]/10 px-2 py-0.5 rounded-md border border-[#D8FD2F]/20">
                 ₱{(user?.balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1637,7 +1637,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 Turn On GPS / Location
               </h3>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                {gpsErrorMessage || 'Nexora Move Tracker requires real device GPS to track your outdoor workouts and calculate distance on Google Maps.'}
+                {gpsErrorMessage || 'Stepora Move Tracker requires real device GPS to track your outdoor workouts and calculate distance on Google Maps.'}
               </p>
             </div>
 
