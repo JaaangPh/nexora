@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Users, Link as LinkIcon, Check, Copy, Share2 } from 'lucide-react';
+import { Users, Link as LinkIcon, Check, Copy, Share2, Flag } from 'lucide-react';
 import { User } from '../types/auth';
 
 interface TeamTabProps {
   user: User;
+  onNavigateMarathon: () => void;
 }
 
-export const TeamTab: React.FC<TeamTabProps> = ({ user }) => {
+export const TeamTab: React.FC<TeamTabProps> = ({ user, onNavigateMarathon }) => {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -31,6 +32,15 @@ export const TeamTab: React.FC<TeamTabProps> = ({ user }) => {
         <Users className="w-5 h-5 text-cyan-400" />
         <h3 className="text-base font-extrabold text-white">Team & Referral Pass</h3>
       </div>
+
+      <button
+        type="button"
+        onClick={onNavigateMarathon}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-3 text-xs font-black tracking-wide text-[#08132B] transition-colors hover:bg-cyan-300 active:scale-[0.99]"
+      >
+        <Flag className="h-4 w-4" />
+        JOIN A MARATHON
+      </button>
 
       {/* Your Personal Referral Pass Card */}
       <div className="bg-gradient-to-br from-[#0F224A] via-[#142B5B] to-[#1E4BA8] border border-[#2459C4]/40 rounded-2xl p-4 sm:p-5 text-white shadow-xl relative overflow-hidden">

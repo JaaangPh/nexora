@@ -21,7 +21,6 @@ import {
   TrendingUp,
   Zap,
   Play,
-  Trophy,
 } from 'lucide-react';
 import { User } from '../types/auth';
 import { BrandLogo } from './BrandLogo';
@@ -405,7 +404,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
           </div>
 
           {/* TAB 4: TEAM (from team.tsx) */}
-          {activeTab === 'team' && <TeamTab user={user} />}
+          {activeTab === 'team' && (
+            <TeamTab user={user} onNavigateMarathon={() => handleTabSelect('marathon')} />
+          )}
           {activeTab === 'marathon' && <MarathonTab user={user} />}
 
           {activeTab === 'myrunners' && (
@@ -448,7 +449,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
           { id: 'market', label: 'MARKET', icon: ShoppingBag },
           { id: 'track', label: 'TRACK', icon: Footprints },
           { id: 'team', label: 'TEAM', icon: Users },
-          { id: 'marathon', label: 'RACE', icon: Trophy },
           { id: 'me', label: 'ME', icon: UserIcon },
         ].map(({ id, label, icon: Icon }) => {
           const isActive = activeTab === id || (id === 'me' && activeTab === 'myrecord');
