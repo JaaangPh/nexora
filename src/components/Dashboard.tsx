@@ -387,7 +387,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
               onNavigateTab={handleTabSelect}
               equippedSneakerName={equippedSneaker}
               onWorkoutFinish={(_earned, runnerIds, settledBalance) => {
-                const cooldownUntil = Date.now() + 24 * 60 * 60 * 1000;
+                const cooldownUntil = Date.now() + 12 * 60 * 60 * 1000;
                 const updatedCooldowns = {
                   ...(user.runnerCooldowns || {}),
                   ...Object.fromEntries(runnerIds.map((runnerId) => [runnerId, cooldownUntil])),

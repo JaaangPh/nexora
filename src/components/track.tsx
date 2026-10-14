@@ -105,6 +105,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   });
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [showEndConfirmation, setShowEndConfirmation] = useState(false);
+  const [endedAtDistanceLimit, setEndedAtDistanceLimit] = useState(false);
   const [isSettlingWorkout, setIsSettlingWorkout] = useState(false);
   const [isWorkoutSettled, setIsWorkoutSettled] = useState(false);
   const [isWorkoutVerified, setIsWorkoutVerified] = useState(false);
@@ -198,6 +199,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const pausedDurationRef = useRef<number>(0);
   const sessionRunnerIdsRef = useRef<string[]>([]);
   const finishWasPausedRef = useRef(false);
+  const finishWorkoutRef = useRef<((automatic?: boolean) => void) | null>(null);
   const remoteWorkoutSyncChainRef = useRef<Promise<void>>(Promise.resolve());
 
   // Leaflet map refs
@@ -657,6 +659,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
         setCaloriesBurned(Math.max(Math.round(totalDistanceKmRef.current * 62), Math.round(totalSteps * 0.04)));
         saveWorkoutSnapshot();
+        if (currentLimit > 0 && totalDistanceKmRef.current >= currentLimit) {
+          finishWorkoutRef.current?.(true);
+        }
       }
 
       if (delta < -1.2) {
@@ -735,6 +740,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
           }
 
           saveWorkoutSnapshot();
+          if (cappedDist >= currentLimit) finishWorkoutRef.current?.(true);
         }
       } else {
         lastPositionRef.current = { lat, lng };
@@ -950,8 +956,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   // --------------------------------------------------------------------------
   // 9. END, VERIFY, AND CREDIT THE WORKOUT
   // --------------------------------------------------------------------------
-  const handleConfirmEndWorkout = async () => {
-    setShowEndConfirmation(false);
+  const handleFinishWorkout = async (automatic = false) => {
+    if (!automatic) setShowEndConfirmation(false);
     if (!isTrackingRef.current || isSettlingWorkout) return;
     const now = Date.now();
     const activePauseDuration = isPausedRef.current && pauseStartTimeRef.current > 0
@@ -972,6 +978,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     };
     isTrackingRef.current = false;
     isPausedRef.current = false;
+    setEndedAtDistanceLimit(automatic);
     setIsTracking(false);
     setIsPaused(false);
     releaseWakeLock();
@@ -985,6 +992,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     setIsSettlingWorkout(true);
     await settleWorkoutReward(workoutStartTimeRef.current, summary);
   };
+  finishWorkoutRef.current = handleFinishWorkout;
+
+  const handleConfirmEndWorkout = () => handleFinishWorkout();
 
   useEffect(() => {
     const handleSessionExpired = () => {
@@ -1756,7 +1766,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                     ? 'Its validated reward was added to your balance.'
                     : 'It could not be verified, so no reward was added to your balance.'
                   : 'Its reward is being verified and credited to your balance.'}{' '}
-                The selected Runners enter a 24-hour cooldown.
+                {endedAtDistanceLimit && 'You reached the selected Runners’ combined distance limit, so the workout ended automatically. '}
+                The selected Runners enter a 12-hour cooldown.
               </p>
             </div>
 
