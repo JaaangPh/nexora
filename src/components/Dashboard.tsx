@@ -170,7 +170,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
       <div className="dashboard-scroll w-full flex-1 overflow-y-auto min-h-0 pb-4">
 
         {/* ---------------------------------------------------- */}
-        {/* TOP HERO BRAND BANNER (Nexora Technologies Header) */}
+        {/* TOP HERO BRAND BANNER (Stepora Movement Header) */}
         {/* ---------------------------------------------------- */}
         <div className="relative w-full bg-gradient-to-b from-[#091738] via-[#0E2352] to-[#08132B] pt-6 pb-6 px-4 border-b border-[#1E3A78]/50 overflow-hidden">
           {/* Subtle Glow Background Shapes */}
@@ -183,7 +183,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
             <BrandLogo size="sm" className="mb-2.5" />
             
             <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white uppercase font-['Plus_Jakarta_Sans',sans-serif]">
-              Nexora Technologies
+              Stepora Movement
             </h1>
             <p className="text-[10px] sm:text-[11px] text-cyan-300 font-extrabold tracking-wider uppercase mt-0.5">
               MOVE WITH PURPOSE. EARN WITH EVERY STEP.

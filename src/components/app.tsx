@@ -33,15 +33,15 @@ export const AppModal: React.FC<AppModalProps> = ({ isOpen, onClose }) => {
           <div className="flex items-center gap-4">
             <img
               src="/logo.png"
-              alt="Nexora Technologies App Icon"
+              alt="Stepora Movement App Icon"
               className="w-16 h-16 rounded-2xl shadow-xl border border-cyan-400/30 flex-shrink-0 object-cover"
             />
             <div>
               <h2 className="text-xl font-black text-[#0B1A3D] leading-tight font-['Plus_Jakarta_Sans',sans-serif]">
-                Nexora Technologies
+                Stepora Movement
               </h2>
               <p className="text-xs font-bold text-[#DC2626] mt-0.5">
-                Nexora Technologies Team
+                Stepora Movement Team
               </p>
             </div>
           </div>
@@ -79,7 +79,7 @@ export const AppModal: React.FC<AppModalProps> = ({ isOpen, onClose }) => {
           <div>
             <h4 className="text-sm font-extrabold text-[#0B1A3D] mb-1.5">About this app</h4>
             <p className="text-xs text-slate-600 leading-relaxed font-medium">
-              Nexora Technologies — Move With Purpose. Earn with every step. Explore the Sneaker Marketplace, track your outdoor workouts with live GPS, and manage your account seamlessly.
+              Stepora Movement — Move With Purpose. Earn with every step. Explore the Sneaker Marketplace, track your outdoor workouts with live GPS, and manage your account seamlessly.
             </p>
           </div>
 
@@ -113,7 +113,7 @@ export const AppModal: React.FC<AppModalProps> = ({ isOpen, onClose }) => {
               </div>
               <div className="flex justify-between p-3 bg-white">
                 <span className="text-slate-400 font-medium">Developer</span>
-                <span className="font-extrabold text-[#0B1A3D]">Nexora Technologies</span>
+                <span className="font-extrabold text-[#0B1A3D]">Stepora Movement</span>
               </div>
             </div>
           </div>

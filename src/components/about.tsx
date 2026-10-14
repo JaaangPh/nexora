@@ -203,7 +203,7 @@ export const AboutWhitepaper: React.FC = () => {
                 <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-cyan-800">
                   <FileText className="h-4 w-4" /> Product whitepaper <span className="text-slate-300">·</span> Reviewed 11 October 2026
                 </div>
-                <h1 className="text-3xl font-bold leading-tight tracking-tight text-slate-950 sm:text-[42px]">Nexora Technologies: Product &amp; System Overview</h1>
+                <h1 className="text-3xl font-bold leading-tight tracking-tight text-slate-950 sm:text-[42px]">Stepora Movement: Product &amp; System Overview</h1>
                 <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
                   A source-based guide to the app’s account flows, Runner catalog, movement tracker, balance controls, referral screens, and current implementation boundaries.
                 </p>
@@ -358,7 +358,7 @@ export const AboutWhitepaper: React.FC = () => {
             </section>
 
             <footer className="border-t border-slate-200 py-6 text-xs text-slate-500">
-              Nexora Technologies · Product whitepaper · Source-based description · Reviewed 11 October 2026
+              Stepora Movement · Product whitepaper · Source-based description · Reviewed 11 October 2026
             </footer>
           </article>
         </main>

@@ -1,12 +1,12 @@
-# Nexora Technologies — Web & Mobile Application
+# Stepora Movement — Web & Mobile Application
 
-A modern, responsive, high-security authentication platform for **Nexora Technologies**, engineered as both a responsive web application and an installable native Android application via Capacitor.
+A modern, responsive, high-security authentication platform for **Stepora Movement**, engineered as both a responsive web application and an installable native Android application via Capacitor.
 
 ---
 
 ## 📸 Design & Brand Identity
 
-* **Brand Name:** Nexora Technologies
+* **Brand Name:** Stepora Movement
 * **Tagline:** Secure Access to Your Account
 * **Design Philosophy:** Inspired by high-security enterprise defense & technology portals.
 * **Palette:**
@@ -27,12 +27,12 @@ A modern, responsive, high-security authentication platform for **Nexora Technol
 
 1. **Pixel-Perfect Authentication UI:**
    * Full-width dark-to-bright blue gradient header with geometric circuits and orbital radar arcs.
-   * Original Nexora Technologies emblem in a rounded white squircle badge.
+   * Original Stepora Movement emblem in a rounded white squircle badge.
    * `SECURE MEMBER ACCESS` pill badge with glassmorphism styling.
    * Overlapping white rounded card with dual-tab switcher: **Login** and **Create Account**.
    * Accessible input fields with left icons, focus rings, and eye toggles for password visibility.
    * Enterprise **Security Notice** card with shield badge.
-   * Footer branding: `Nexora Technologies • Secure Member Portal`.
+   * Footer branding: `Stepora Movement • Secure Member Portal`.
 
 2. **Complete Full-Stack Authentication:**
    * **International Phone Number + Password Authentication** with searchable country flags and calling codes, rate limiting, and generic error responses to prevent user enumeration.
@@ -149,7 +149,7 @@ nexora/
 ├── src/                       # Frontend Web & Mobile Application
 │   ├── components/
 │   │   ├── AuthTabs.tsx       # Tab switch between Login and Create Account
-│   │   ├── BrandLogo.tsx      # Nexora Technologies original emblem
+│   │   ├── BrandLogo.tsx      # Stepora Movement emblem
 │   │   ├── Dashboard.tsx      # Authenticated Member Dashboard
 │   │   ├── Header.tsx         # Gradient banner with geometric grid & badge
 │   │   ├── InviteCodeHelper.tsx # Testing modal for invite codes & mobile host

@@ -192,7 +192,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       {/* Secure Member Portal Footer */}
       <footer className="mt-6 text-center">
         <p className="text-[11px] text-[#94A3B8] font-medium tracking-tight">
-          Nexora Technologies • Secure Member Portal
+          Stepora Movement • Secure Member Portal
         </p>
       </footer>
     </div>

@@ -2,7 +2,7 @@
   "name": "nexora",
   "version": "1.0.0",
   "type": "module",
-  "description": "Nexora Technologies Secure Access Application",
+  "description": "Stepora Movement Secure Access Application",
   "main": "index.js",
   "scripts": {
     "dev": "concurrently -n \"SERVER,CLIENT\" -c \"blue,cyan\" \"npm run server\" \"npm run client\"",

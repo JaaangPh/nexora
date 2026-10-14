@@ -229,7 +229,7 @@ export async function register(req: Request, res: Response): Promise<void> {
 
     res.status(201).json({
       success: true,
-      message: 'Account successfully created! Welcome to Nexora Technologies.',
+      message: 'Account successfully created! Welcome to Stepora Movement.',
       token,
       user: {
         id: userId,

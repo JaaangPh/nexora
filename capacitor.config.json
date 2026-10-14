@@ -1,6 +1,6 @@
 {
   "appId": "com.nexora.technologies",
-  "appName": "Nexora Technologies",
+  "appName": "Stepora Movement",
   "webDir": "dist",
   "server": {
     "url": "https://nexora-rust-nine.vercel.app",

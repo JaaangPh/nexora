@@ -19,7 +19,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({ className = '', size = 'md
     >
       <img
         src="/logo.png"
-        alt="Nexora Technologies Logo"
+        alt="Stepora Movement Logo"
         className="w-full h-full object-cover rounded-[inherit]"
         loading="eager"
       />
@@ -28,4 +28,3 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({ className = '', size = 'md
 };
 
 export default BrandLogo;
-
