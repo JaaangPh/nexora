@@ -104,6 +104,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     return eligibleOwnedRunners[0] ? [eligibleOwnedRunners[0].id] : [];
   });
   const [showFinishModal, setShowFinishModal] = useState(false);
+  const [showEndConfirmation, setShowEndConfirmation] = useState(false);
   const [isSettlingWorkout, setIsSettlingWorkout] = useState(false);
   const [isWorkoutSettled, setIsWorkoutSettled] = useState(false);
   const [isWorkoutVerified, setIsWorkoutVerified] = useState(false);
@@ -949,7 +950,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   // --------------------------------------------------------------------------
   // 9. END, VERIFY, AND CREDIT THE WORKOUT
   // --------------------------------------------------------------------------
-  const handleFinishWorkout = async () => {
+  const handleConfirmEndWorkout = async () => {
+    setShowEndConfirmation(false);
     if (!isTrackingRef.current || isSettlingWorkout) return;
     const now = Date.now();
     const activePauseDuration = isPausedRef.current && pauseStartTimeRef.current > 0
@@ -1508,7 +1510,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
               </button>
               <button
-                onClick={() => void handleFinishWorkout()}
+                onClick={() => setShowEndConfirmation(true)}
                 disabled={!isWorkoutHydrated}
                 className="px-4 py-3 rounded-full bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs transition-all active:scale-95 shadow-lg shadow-red-600/20"
               >
@@ -1677,6 +1679,56 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               >
                 <Smartphone className="w-4 h-4 text-cyan-400" />
                 <span>Start Run with Motion Sensors</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEndConfirmation && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="end-workout-title"
+            className="bg-[#151922] border border-[#2C3344] rounded-[32px] p-6 w-full max-w-sm text-white shadow-2xl relative space-y-4 text-center"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-300 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+            <div>
+              <h3 id="end-workout-title" className="text-xl font-black text-white tracking-tight">
+                End this workout?
+              </h3>
+              <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+                Confirming will stop tracking and submit this workout for reward verification. You can’t resume it after confirming.
+              </p>
+            </div>
+            <div className="bg-[#0E1118] border border-[#232936] rounded-2xl p-4">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                Current reward
+              </span>
+              <span className="text-2xl font-black font-mono text-[#D8FD2F]">
+                +₱{tokensEarned.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              <span className="text-xs font-mono text-slate-300 block mt-1">
+                {distanceKm.toFixed(2)} km
+              </span>
+            </div>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setShowEndConfirmation(false)}
+                className="w-full py-3 rounded-2xl bg-[#202633] hover:bg-[#2b3445] text-white border border-white/10 font-black text-xs uppercase tracking-wider active:scale-95 transition-all"
+              >
+                Cancel — Back to Workout
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmEndWorkout()}
+                className="w-full py-3.5 rounded-2xl bg-red-600 hover:bg-red-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-red-600/20 active:scale-95 transition-all"
+              >
+                Confirm End & Earn
               </button>
             </div>
           </div>
