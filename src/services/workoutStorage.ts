@@ -1,3 +1,5 @@
+import type { WorkoutSnapshot } from '../types/workout';
+
 export const ACTIVE_WORKOUT_STORAGE_PREFIX = 'nexora_active_workout:';
 
 export function getActiveWorkoutStorageKey(userId?: string): string | null {
@@ -14,6 +16,17 @@ export function getPausedWorkoutTiming(
     pauseStartTime: pausedAt,
     pausedDuration: Math.max(0, pausedAt - workoutStartTime - elapsedSeconds * 1000),
   };
+}
+
+export function shouldPreferRemoteWorkoutSnapshot(
+  local: WorkoutSnapshot | null,
+  remote: WorkoutSnapshot
+): boolean {
+  const sameWorkout = local &&
+    Number(local.workoutStartTime) === Number(remote.workoutStartTime);
+  if (!sameWorkout && (remote.isTracking || remote.isPaused || remote.pendingFinish)) return true;
+  if (!local) return true;
+  return remote.lastUpdated > local.lastUpdated;
 }
 
 export function hasWorkoutInProgressInStorage(): boolean {

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mergeWorkoutSnapshotProgress } from './workoutSnapshot.js';
+import {
+  canReplaceWorkoutSnapshot,
+  isWorkoutSnapshotActive,
+  mergeWorkoutSnapshotProgress,
+  shouldPreferRemoteWorkoutSnapshot,
+} from './workoutSnapshot.js';
 
 test('keeps workout progress when a newer device snapshot has reset counters', () => {
   const current = {
@@ -48,4 +53,32 @@ test('does not carry progress into a different workout', () => {
     mergeWorkoutSnapshotProgress({ workoutStartTime: 1_000, stepCount: 3_200 }, incoming),
     incoming
   );
+});
+
+test('does not allow a different device workout to replace an active server workout', () => {
+  const activeServerWorkout = { workoutStartTime: 1_000, isTracking: true, isPaused: true };
+  const differentIncomingWorkout = { workoutStartTime: 2_000 };
+
+  assert.equal(isWorkoutSnapshotActive(activeServerWorkout), true);
+  assert.equal(canReplaceWorkoutSnapshot(activeServerWorkout, differentIncomingWorkout), false);
+  assert.equal(
+    canReplaceWorkoutSnapshot(activeServerWorkout, { workoutStartTime: 1_000 }),
+    true
+  );
+  assert.equal(
+    isWorkoutSnapshotActive({
+      workoutStartTime: 1_000,
+      isTracking: false,
+      isPaused: false,
+      pendingFinish: false,
+    }),
+    false
+  );
+});
+
+test('prefers the active account workout over a newer conflicting local workout', () => {
+  const local = { workoutStartTime: 2_000, lastUpdated: 3_000, isTracking: true };
+  const remote = { workoutStartTime: 1_000, lastUpdated: 2_000, isPaused: true };
+
+  assert.equal(shouldPreferRemoteWorkoutSnapshot(local, remote), true);
 });

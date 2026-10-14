@@ -2,7 +2,7 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
-import { mergeWorkoutSnapshotProgress } from '../services/workoutSnapshot.js';
+import { canReplaceWorkoutSnapshot, mergeWorkoutSnapshotProgress } from '../services/workoutSnapshot.js';
 
 dotenv.config();
 
@@ -321,6 +321,9 @@ export async function updateUserWorkoutSnapshot(
     const currentSnapshot = user?.workoutSnapshot;
     const currentLastUpdated = Number(currentSnapshot?.lastUpdated || 0);
     const incomingLastUpdated = Number(snapshot.lastUpdated);
+    if (!canReplaceWorkoutSnapshot(currentSnapshot, snapshot)) {
+      return currentSnapshot;
+    }
     if (currentSnapshot && currentLastUpdated > incomingLastUpdated) {
       return currentSnapshot;
     }

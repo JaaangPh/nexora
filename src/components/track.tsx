@@ -34,7 +34,11 @@ import 'leaflet/dist/leaflet.css';
 import { User } from '../types/auth';
 import { RUNNER_CATALOG, RunnerItem } from './market';
 import { api, getApiBaseUrl } from '../services/api';
-import { getActiveWorkoutStorageKey, getPausedWorkoutTiming } from '../services/workoutStorage';
+import {
+  getActiveWorkoutStorageKey,
+  getPausedWorkoutTiming,
+  shouldPreferRemoteWorkoutSnapshot,
+} from '../services/workoutStorage';
 import { WorkoutSnapshot } from '../types/workout';
 import { getOwnedRunnerInstances } from '../services/runnerInventory';
 
@@ -379,14 +383,14 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
     api.getWorkoutSnapshot().then(({ workoutSnapshot }) => {
       if (isCancelled || !workoutSnapshot) return;
-      if (!localSnapshot || workoutSnapshot.lastUpdated > localSnapshot.lastUpdated) {
+      if (shouldPreferRemoteWorkoutSnapshot(localSnapshot, workoutSnapshot)) {
         restoreWorkoutSnapshot(workoutSnapshot, true);
         if (workoutSnapshot.pendingFinish) {
           void queueRemoteWorkoutSnapshot(workoutSnapshot);
         } else {
           void saveWorkoutSnapshot(false, workoutSnapshot.lastWorkoutSummary, true);
         }
-      } else {
+      } else if (localSnapshot) {
         void queueRemoteWorkoutSnapshot(localSnapshot);
       }
     }).catch((error) => {
