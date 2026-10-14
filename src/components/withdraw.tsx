@@ -1,5 +1,5 @@
 import React, { FormEvent, useEffect, useState } from 'react';
-import { ArrowLeft, Banknote, CheckCircle2, Loader2, ShieldCheck, X } from 'lucide-react';
+import { ArrowLeft, Banknote, CheckCircle2, Copy, Loader2, ShieldCheck, X } from 'lucide-react';
 import { api, PayoutAccount, PayoutProvider, WithdrawalRecord } from '../services/api';
 
 interface WithdrawTabProps {
@@ -31,6 +31,7 @@ export const WithdrawTab: React.FC<WithdrawTabProps> = ({
   const [isAuthenticatorConfigured, setIsAuthenticatorConfigured] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [manualEntryKey, setManualEntryKey] = useState('');
+  const [manualKeyCopied, setManualKeyCopied] = useState(false);
   const [authenticatorCode, setAuthenticatorCode] = useState('');
   const [setupJustCompleted, setSetupJustCompleted] = useState(false);
   const [amountInput, setAmountInput] = useState('');
@@ -48,12 +49,23 @@ export const WithdrawTab: React.FC<WithdrawTabProps> = ({
 
   const generateSetup = async () => {
     setError('');
+    setManualKeyCopied(false);
     try {
       const setup = await api.beginWithdrawalTotpSetup();
       setQrCodeDataUrl(setup.qrCodeDataUrl);
       setManualEntryKey(setup.manualEntryKey);
     } catch (setupError) {
       setError(setupError instanceof Error ? setupError.message : 'Could not prepare authenticator setup.');
+    }
+  };
+
+  const handleCopyManualEntryKey = async () => {
+    try {
+      await navigator.clipboard.writeText(manualEntryKey);
+      setManualKeyCopied(true);
+    } catch (copyError) {
+      console.error('[Withdrawal Authenticator Key Copy Error]', copyError);
+      setError('Could not copy the setup key. Please select and copy it manually.');
     }
   };
 
@@ -230,10 +242,21 @@ export const WithdrawTab: React.FC<WithdrawTabProps> = ({
               </button>
             )}
             {manualEntryKey && (
-              <div className="rounded-xl border border-[#1E3A78] bg-[#08132B] p-3">
-                <p className="text-[10px] font-semibold text-blue-200/60">Manual setup key</p>
-                <p className="mt-1 break-all font-mono text-xs font-bold tracking-wider text-white">{manualEntryKey}</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => void handleCopyManualEntryKey()}
+                aria-label={manualKeyCopied ? 'Manual setup key copied' : 'Copy manual setup key'}
+                className="w-full rounded-xl border border-[#1E3A78] bg-[#08132B] p-3 text-left transition hover:border-cyan-300/50 focus:outline-none focus:ring-2 focus:ring-cyan-300/60"
+              >
+                <span className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] font-semibold text-blue-200/60">Manual setup key</span>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-cyan-300">
+                    {manualKeyCopied ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    {manualKeyCopied ? 'Copied!' : 'Tap to copy'}
+                  </span>
+                </span>
+                <span className="mt-1 block break-all font-mono text-xs font-bold tracking-wider text-white">{manualEntryKey}</span>
+              </button>
             )}
             <form onSubmit={handleConnectAuthenticator} className="space-y-3">
               <label className="block text-xs font-semibold text-blue-100/80">
