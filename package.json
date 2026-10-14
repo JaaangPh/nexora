@@ -10,6 +10,7 @@
     "server": "tsx server/server.ts",
     "build": "vite build",
     "test:marathon": "tsx --test server/services/marathonRules.test.ts",
+    "test:totp": "tsx --test server/services/totp.test.ts",
     "preview": "vite preview",
     "cap:add": "npx cap add android",
     "cap:sync": "npm run build && node -e \"require('fs').rmSync('dist/downloads/stepora-movement.apk', {force:true})\" && npx cap sync android",

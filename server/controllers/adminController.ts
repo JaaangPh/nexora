@@ -6,6 +6,13 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { toDataURL } from 'qrcode';
 import { AdminSecurityRecord, firestore } from '../database/firebase.js';
 import { AuthRequest } from '../middleware/auth.js';
+import {
+  decryptTotpSecret as decryptSecret,
+  encryptTotpSecret as encryptSecret,
+  findValidTotpCounter,
+  generateTotpSecret,
+  TOTP_PERIOD_SECONDS,
+} from '../services/totp.js';
 
 type AdminRole = 'admin' | 'staff';
 interface AdminAccount extends AdminSecurityRecord {
@@ -25,7 +32,6 @@ const ADMIN_SECURITY_PATH = 'admin_security/main';
 const ADMIN_BOOTSTRAP_PATH = 'admin_security/bootstrap';
 const ADMIN_ACCOUNTS_COLLECTION = 'admin_accounts';
 const ADMIN_ISSUER = 'Stepora';
-const TOTP_PERIOD_SECONDS = 30;
 
 function getAdminAuthSecret(): string {
   const secret = process.env.ADMIN_AUTH_SECRET;
@@ -45,85 +51,6 @@ function getAccountId(email: string): string {
 
 function getAccountRef(email: string) {
   return firestore.collection(ADMIN_ACCOUNTS_COLLECTION).doc(getAccountId(email));
-}
-
-function encodeBase32(bytes: Buffer): string {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let bits = 0;
-  let value = 0;
-  let encoded = '';
-  for (const byte of bytes) {
-    value = (value << 8) | byte;
-    bits += 8;
-    while (bits >= 5) {
-      encoded += alphabet[(value >>> (bits - 5)) & 31];
-      bits -= 5;
-    }
-  }
-  if (bits > 0) encoded += alphabet[(value << (5 - bits)) & 31];
-  return encoded;
-}
-
-function decodeBase32(value: string): Buffer {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let bits = 0;
-  let buffer = 0;
-  const bytes: number[] = [];
-  for (const character of value.replace(/=+$/g, '').toUpperCase()) {
-    const index = alphabet.indexOf(character);
-    if (index < 0) throw new Error('Invalid authenticator secret.');
-    buffer = (buffer << 5) | index;
-    bits += 5;
-    if (bits >= 8) {
-      bytes.push((buffer >>> (bits - 8)) & 255);
-      bits -= 8;
-    }
-  }
-  return Buffer.from(bytes);
-}
-
-function encryptSecret(secret: string): string {
-  const key = crypto.createHash('sha256').update(getAdminAuthSecret()).digest();
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const encrypted = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
-  return Buffer.concat([iv, cipher.getAuthTag(), encrypted]).toString('base64');
-}
-
-function decryptSecret(encrypted: string): string {
-  const payload = Buffer.from(encrypted, 'base64');
-  if (payload.length < 29) throw new Error('Stored authenticator secret is invalid.');
-  const key = crypto.createHash('sha256').update(getAdminAuthSecret()).digest();
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, payload.subarray(0, 12));
-  decipher.setAuthTag(payload.subarray(12, 28));
-  return Buffer.concat([decipher.update(payload.subarray(28)), decipher.final()]).toString('utf8');
-}
-
-function getTotp(secret: string, counter: number): string {
-  const counterBytes = Buffer.alloc(8);
-  counterBytes.writeBigUInt64BE(BigInt(counter));
-  const digest = crypto.createHmac('sha1', decodeBase32(secret)).update(counterBytes).digest();
-  const offset = digest[digest.length - 1] & 15;
-  const value = (
-    ((digest[offset] & 127) << 24) |
-    ((digest[offset + 1] & 255) << 16) |
-    ((digest[offset + 2] & 255) << 8) |
-    (digest[offset + 3] & 255)
-  ) % 1_000_000;
-  return String(value).padStart(6, '0');
-}
-
-function findValidTotpCounter(secret: string, code: unknown, lastUsedCounter = -1): number | null {
-  if (typeof code !== 'string' || !/^\d{6}$/.test(code)) return null;
-  const currentCounter = Math.floor(Date.now() / 1000 / TOTP_PERIOD_SECONDS);
-  for (let drift = -1; drift <= 1; drift += 1) {
-    const counter = currentCounter + drift;
-    if (counter <= lastUsedCounter) continue;
-    const expected = Buffer.from(getTotp(secret, counter));
-    const provided = Buffer.from(code);
-    if (expected.length === provided.length && crypto.timingSafeEqual(expected, provided)) return counter;
-  }
-  return null;
 }
 
 function readBearerToken(req: Request): string | null {
@@ -267,9 +194,9 @@ export async function beginAdminTotpSetup(req: Request, res: Response): Promise<
       return;
     }
 
-    const secret = encodeBase32(crypto.randomBytes(20));
+    const secret = generateTotpSecret();
     await accountRef.set({
-      pendingEncryptedTotpSecret: encryptSecret(secret),
+      pendingEncryptedTotpSecret: encryptSecret(secret, getAdminAuthSecret()),
       pendingTotpExpiresAt: Date.now() + 5 * 60 * 1000,
       updatedAt: new Date().toISOString(),
     }, { merge: true });
@@ -311,7 +238,10 @@ export async function verifyAdminTotp(req: Request, res: Response): Promise<void
         ) {
           throw new Error('TOTP_SETUP_EXPIRED');
         }
-        const counter = findValidTotpCounter(decryptSecret(account.pendingEncryptedTotpSecret), req.body?.code);
+        const counter = findValidTotpCounter(
+          decryptSecret(account.pendingEncryptedTotpSecret, getAdminAuthSecret()),
+          req.body?.code,
+        );
         if (counter === null) throw new Error('TOTP_CODE_INVALID');
 
         const configuredEmail = normalizeEmail(process.env.ADMIN_EMAIL);
@@ -345,7 +275,7 @@ export async function verifyAdminTotp(req: Request, res: Response): Promise<void
       const secretRecord = account.encryptedTotpSecret ? account : legacy;
       if (typeof secretRecord.encryptedTotpSecret !== 'string') throw new Error('TOTP_SETUP_REQUIRED');
       const counter = findValidTotpCounter(
-        decryptSecret(secretRecord.encryptedTotpSecret),
+        decryptSecret(secretRecord.encryptedTotpSecret, getAdminAuthSecret()),
         req.body?.code,
         secretRecord.lastUsedTotpCounter,
       );
@@ -427,7 +357,11 @@ async function verifyActionTotp(
   if (!accountSnapshot.exists || account?.status !== 'active' || typeof account.encryptedTotpSecret !== 'string') {
     throw new Error('ADMIN_TOTP_SETUP_REQUIRED');
   }
-  const counter = findValidTotpCounter(decryptSecret(account.encryptedTotpSecret), code, account.lastUsedTotpCounter);
+  const counter = findValidTotpCounter(
+    decryptSecret(account.encryptedTotpSecret, getAdminAuthSecret()),
+    code,
+    account.lastUsedTotpCounter,
+  );
   if (counter === null) throw new Error('ADMIN_TOTP_CODE_INVALID');
   return counter;
 }
@@ -572,6 +506,78 @@ function toIsoDate(value: unknown): string {
   return '';
 }
 
+export async function reviewWithdrawal(req: AdminRequest, res: Response): Promise<void> {
+  const orderId = req.params.orderId;
+  const decision = req.body?.decision;
+  if (typeof orderId !== 'string' || !orderId || !['accept', 'reject'].includes(decision)) {
+    res.status(400).json({ success: false, message: 'Choose a valid withdrawal review action.' });
+    return;
+  }
+
+  const withdrawalRef = firestore.collection('payment_withdrawals').doc(orderId);
+  try {
+    const reviewedWithdrawal = await firestore.runTransaction(async (transaction) => {
+      const withdrawalSnapshot = await transaction.get(withdrawalRef);
+      if (!withdrawalSnapshot.exists) throw new Error('WITHDRAWAL_NOT_FOUND');
+      const withdrawal = withdrawalSnapshot.data()!;
+      if (withdrawal.status !== 'pending') throw new Error('WITHDRAWAL_ALREADY_REVIEWED');
+
+      const userRef = firestore.collection('users').doc(String(withdrawal.userId || ''));
+      let userSnapshot: FirebaseFirestore.DocumentSnapshot | null = null;
+      let refundAmount = 0;
+      if (decision === 'reject') {
+        userSnapshot = await transaction.get(userRef);
+        if (!userSnapshot.exists) throw new Error('WITHDRAWAL_USER_NOT_FOUND');
+        const amountCents = Number(withdrawal.amountCents);
+        refundAmount = Number.isSafeInteger(amountCents) && amountCents > 0
+          ? amountCents / 100
+          : Number(withdrawal.amount);
+        if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error('WITHDRAWAL_AMOUNT_INVALID');
+      }
+
+      const reviewedAt = new Date().toISOString();
+      const status = decision === 'accept' ? 'accepted' : 'failed';
+      transaction.update(withdrawalRef, {
+        status,
+        reviewedAt,
+        reviewedBy: req.adminEmail || 'admin',
+        updatedAt: reviewedAt,
+      });
+      if (decision === 'reject') {
+        transaction.update(userSnapshot!.ref, { balance: FieldValue.increment(refundAmount) });
+      }
+      return { orderId, status, refundAmount };
+    });
+    res.json({
+      success: true,
+      withdrawal: reviewedWithdrawal,
+      message: decision === 'accept'
+        ? 'Withdrawal accepted.'
+        : `Withdrawal rejected and ${new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(reviewedWithdrawal.refundAmount)} refunded.`,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'WITHDRAWAL_NOT_FOUND') {
+      res.status(404).json({ success: false, message: 'Withdrawal request was not found.' });
+      return;
+    }
+    if (message === 'WITHDRAWAL_ALREADY_REVIEWED') {
+      res.status(409).json({ success: false, message: 'This withdrawal has already been reviewed.' });
+      return;
+    }
+    if (message === 'WITHDRAWAL_USER_NOT_FOUND') {
+      res.status(409).json({ success: false, message: 'The member account was not found; withdrawal was not changed.' });
+      return;
+    }
+    if (message === 'WITHDRAWAL_AMOUNT_INVALID') {
+      res.status(409).json({ success: false, message: 'The stored withdrawal amount is invalid; no refund was issued.' });
+      return;
+    }
+    console.error('[Admin Withdrawal Review Error]', error);
+    res.status(500).json({ success: false, message: 'Could not review this withdrawal.' });
+  }
+}
+
 export async function getAdminTransactions(req: AdminRequest, res: Response): Promise<void> {
   try {
     const [depositSnapshot, withdrawalSnapshot] = await Promise.all([
@@ -605,6 +611,10 @@ export async function getAdminTransactions(req: AdminRequest, res: Response): Pr
         status: typeof record.status === 'string' ? record.status : 'unknown',
         amount: Number.isFinite(Number(record.amount)) ? Number(record.amount) : 0,
         method: typeof record.bankCode === 'string' ? record.bankCode : typeof record.method === 'string' ? record.method : '—',
+        fee: Number.isFinite(Number(record.fee)) ? Number(record.fee) : 0,
+        payoutAmount: Number.isFinite(Number(record.payoutAmount)) ? Number(record.payoutAmount) : undefined,
+        accountHolder: typeof record.accountHolder === 'string' ? record.accountHolder : undefined,
+        accountNumber: typeof record.accountNumber === 'string' ? record.accountNumber : undefined,
         createdAt: toIsoDate(record.createdAt),
         userId,
         username: user?.username || 'Member',

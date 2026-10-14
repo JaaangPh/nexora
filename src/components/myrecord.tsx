@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownLeft,
   ArrowLeft,
+  ArrowUpRight,
   CheckCircle2,
   Clock3,
   ExternalLink,
@@ -10,9 +11,12 @@ import {
   WalletCards,
   XCircle,
 } from 'lucide-react';
-import { api, DepositHistoryItem, DepositStatus } from '../services/api';
+import { api, DepositHistoryItem, DepositStatus, PayoutProvider, WithdrawalRecord, WithdrawalStatus } from '../services/api';
 
-type StatusFilter = 'all' | DepositStatus;
+type StatusFilter = 'all' | DepositStatus | 'accepted';
+type MemberTransaction =
+  | { type: 'deposit'; record: DepositHistoryItem }
+  | { type: 'withdrawal'; record: WithdrawalRecord };
 
 interface MyRecordTabProps {
   onBack: () => void;
@@ -22,11 +26,12 @@ const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'pending', label: 'Pending' },
   { id: 'paid', label: 'Success' },
+  { id: 'accepted', label: 'Accepted' },
   { id: 'failed', label: 'Failed' },
   { id: 'expired', label: 'Expired' },
 ];
 
-const STATUS_STYLES: Record<DepositStatus, { label: string; className: string; Icon: typeof Clock3 }> = {
+const STATUS_STYLES: Record<DepositStatus | WithdrawalStatus, { label: string; className: string; Icon: typeof Clock3 }> = {
   pending: {
     label: 'Pending',
     className: 'border-amber-300/20 bg-amber-300/10 text-amber-200',
@@ -34,6 +39,11 @@ const STATUS_STYLES: Record<DepositStatus, { label: string; className: string; I
   },
   paid: {
     label: 'Success',
+    className: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-300',
+    Icon: CheckCircle2,
+  },
+  accepted: {
+    label: 'Accepted',
     className: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-300',
     Icon: CheckCircle2,
   },
@@ -59,6 +69,15 @@ function getPaymentMethodLabel(bankCode: DepositHistoryItem['bankCode']): string
   }
 }
 
+function getPayoutProviderLabel(provider: PayoutProvider | string): string {
+  switch (provider) {
+    case 'gcash': return 'GCash';
+    case 'maya': return 'Maya';
+    case 'gotyme': return 'GoTyme';
+    default: return provider;
+  }
+}
+
 function formatCreatedAt(value: string): string {
   const date = new Date(value);
   if (!value || Number.isNaN(date.getTime())) return 'Date unavailable';
@@ -68,8 +87,13 @@ function formatCreatedAt(value: string): string {
   }).format(date);
 }
 
+function money(value: number): string {
+  return `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export const MyRecordTab: React.FC<MyRecordTabProps> = ({ onBack }) => {
   const [deposits, setDeposits] = useState<DepositHistoryItem[]>([]);
+  const [withdrawals, setWithdrawals] = useState<WithdrawalRecord[]>([]);
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -79,7 +103,12 @@ export const MyRecordTab: React.FC<MyRecordTabProps> = ({ onBack }) => {
     setIsLoading(true);
     setError('');
     try {
-      setDeposits(await api.getDepositHistory());
+      const [depositHistory, withdrawalHistory] = await Promise.all([
+        api.getDepositHistory(),
+        api.getWithdrawalHistory(),
+      ]);
+      setDeposits(depositHistory);
+      setWithdrawals(withdrawalHistory);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load your transaction history.');
     } finally {
@@ -91,9 +120,16 @@ export const MyRecordTab: React.FC<MyRecordTabProps> = ({ onBack }) => {
     void loadHistory();
   }, [loadHistory, reloadCount]);
 
-  const filteredDeposits = useMemo(
-    () => filter === 'all' ? deposits : deposits.filter((deposit) => deposit.status === filter),
-    [deposits, filter],
+  const filteredTransactions = useMemo(() => {
+    const transactions: MemberTransaction[] = [
+      ...deposits.map((record) => ({ type: 'deposit' as const, record })),
+      ...withdrawals.map((record) => ({ type: 'withdrawal' as const, record })),
+    ];
+    return transactions
+      .filter(({ record }) => filter === 'all' || record.status === filter)
+      .sort((first, second) => Date.parse(second.record.createdAt) - Date.parse(first.record.createdAt));
+  },
+    [deposits, filter, withdrawals],
   );
 
   return (
@@ -125,7 +161,7 @@ export const MyRecordTab: React.FC<MyRecordTabProps> = ({ onBack }) => {
       </header>
 
       <div className="rounded-full border border-[#2459C4]/40 bg-[#08132B] p-1">
-        <div className="grid grid-cols-5 gap-1" role="tablist" aria-label="Filter transactions by status">
+        <div className="grid grid-cols-6 gap-1" role="tablist" aria-label="Filter transactions by status">
           {STATUS_FILTERS.map(({ id, label }) => {
             const isActive = filter === id;
             return (
@@ -165,46 +201,61 @@ export const MyRecordTab: React.FC<MyRecordTabProps> = ({ onBack }) => {
           <Loader2 className="h-7 w-7 animate-spin text-cyan-300" />
           <p className="mt-3 text-xs font-semibold text-blue-100/70">Loading your records…</p>
         </div>
-      ) : filteredDeposits.length > 0 ? (
+      ) : filteredTransactions.length > 0 ? (
         <div className="space-y-3">
-          {filteredDeposits.map((deposit) => {
-            const status = STATUS_STYLES[deposit.status];
+          {filteredTransactions.map(({ type, record }) => {
+            const status = STATUS_STYLES[record.status];
             const StatusIcon = status.Icon;
-            const paymentUrl = deposit.status === 'expired'
+            const deposit = type === 'deposit' ? record : null;
+            const withdrawal = type === 'withdrawal' ? record : null;
+            const paymentUrl = deposit?.status === 'expired'
               ? undefined
-              : deposit.redirectUrl || deposit.qrcodeUrl || deposit.gcashQrUrl;
+              : deposit?.redirectUrl || deposit?.qrcodeUrl || deposit?.gcashQrUrl;
             return (
               <article
-                key={deposit.orderId}
+                key={`${type}:${record.orderId}`}
                 className="rounded-2xl border border-[#1E3A78] bg-[#0D204A] p-4 shadow-lg shadow-[#050B1A]/20"
               >
                 <div className="flex items-start gap-3">
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[#D8FD2F] text-[#0B1A3D]">
-                    <ArrowDownLeft className="h-5 w-5" />
+                    {type === 'deposit' ? <ArrowDownLeft className="h-5 w-5" /> : <ArrowUpRight className="h-5 w-5" />}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h2 className="text-sm font-extrabold text-white">Deposit</h2>
+                      <h2 className="text-sm font-extrabold text-white">{type === 'deposit' ? 'Deposit' : 'Withdrawal'}</h2>
                       <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold ${status.className}`}>
                         <StatusIcon className="h-3 w-3" />
                         {status.label}
                       </span>
                     </div>
                     <p className="mt-1 truncate font-mono text-[10px] text-blue-200/55">
-                      {deposit.orderId}
+                      {record.orderId}
                     </p>
                   </div>
                 </div>
 
                 <div className="mt-4 flex items-end justify-between gap-3 border-t border-[#1E3A78] pt-3">
                   <div>
-                    <p className="text-[10px] font-semibold text-blue-200/60">{getPaymentMethodLabel(deposit.bankCode)}</p>
-                    <p className="mt-1 text-xs font-medium text-blue-100/80">{formatCreatedAt(deposit.createdAt)}</p>
+                    <p className="text-[10px] font-semibold text-blue-200/60">
+                      {deposit ? getPaymentMethodLabel(deposit.bankCode) : getPayoutProviderLabel(withdrawal!.bankCode)}
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-blue-100/80">{formatCreatedAt(record.createdAt)}</p>
                   </div>
                   <p className="whitespace-nowrap text-base font-black text-white">
-                    ₱{deposit.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {money(record.amount)}
                   </p>
                 </div>
+
+                {withdrawal && (
+                  <div className="mt-3 rounded-xl border border-[#1E3A78] bg-[#08132B] p-3 text-xs">
+                    <p className="font-semibold text-white">Bank account: {getPayoutProviderLabel(withdrawal.bankCode)}</p>
+                    <p className="mt-1 text-blue-100/70">{withdrawal.accountHolder} · {withdrawal.accountNumber}</p>
+                    <div className="mt-2 flex justify-between text-[11px] text-blue-100/60">
+                      <span>Fee (2%): {money(withdrawal.fee)}</span>
+                      <span>Net amount: {money(withdrawal.payoutAmount)}</span>
+                    </div>
+                  </div>
+                )}
 
                 {paymentUrl && (
                   <a
@@ -232,7 +283,7 @@ export const MyRecordTab: React.FC<MyRecordTabProps> = ({ onBack }) => {
           </p>
           <p className="mt-1 max-w-xs text-xs leading-relaxed text-blue-100/60">
             {filter === 'all'
-              ? 'Deposits will appear here once started. Withdrawal requests are not available yet.'
+              ? 'Deposits and withdrawal requests will appear here.'
               : `No ${STATUS_FILTERS.find((item) => item.id === filter)?.label.toLowerCase()} transactions were found.`}
           </p>
         </div>

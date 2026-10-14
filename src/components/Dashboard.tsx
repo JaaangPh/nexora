@@ -35,6 +35,7 @@ import { MyRunnerTab } from './myrunner';
 import { MyRecordTab } from './myrecord';
 import { AppModal } from './app';
 import { MarathonTab } from './marathon';
+import { WithdrawTab } from './withdraw';
 
 interface DashboardProps {
   user: User;
@@ -82,6 +83,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
   // Modal States
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [openPayoutAccountsSignal, setOpenPayoutAccountsSignal] = useState(0);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showAppModal, setShowAppModal] = useState(false);
 
@@ -94,6 +96,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
 
   const currentBalance = user.balance ?? 0;
   const currentTotalDeposit = user.totalDeposit ?? 0;
+  const handleOpenPayoutAccounts = () => {
+    setShowWithdrawModal(false);
+    handleTabSelect('me');
+    setOpenPayoutAccountsSignal((signal) => signal + 1);
+  };
   const getDepositMethodLabel = (method: DepositBankCode) => {
     switch (method) {
       case 'gcash': return 'GCash';
@@ -424,6 +431,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
               onLogout={onLogout}
               onUpdateUser={onUpdateUser}
               onNavigateTab={handleTabSelect}
+              openPayoutAccountsSignal={openPayoutAccountsSignal}
               onOpenCustomerService={() => setShowSupportModal(true)}
               onOpenAppModal={() => setShowAppModal(true)}
             />
@@ -634,36 +642,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
         </div>
       )}
 
-      {/* MODAL 2: WITHDRAW MODAL */}
       {showWithdrawModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#091738] border border-[#2459C4]/60 rounded-3xl p-5 w-full max-w-sm text-white shadow-2xl relative animate-scale-up">
-            <button
-              onClick={() => setShowWithdrawModal(false)}
-              className="absolute top-4 right-4 text-blue-200 hover:text-white"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-cyan-400 flex items-center justify-center">
-                <Banknote className="w-4 h-4" />
-              </div>
-              <h3 className="text-base font-extrabold text-white">Withdraw Funds</h3>
-            </div>
-
-            <div className="bg-[#08132B] p-2.5 rounded-xl border border-[#1E3A78] mb-3 flex items-center justify-between text-xs">
-              <span className="text-blue-200/70 font-semibold">Available Balance:</span>
-              <span className="font-bold font-mono text-cyan-300">
-                ₱{currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-              </span>
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-400/30 text-amber-100 text-xs font-semibold text-center">
-              Withdrawals are not integrated yet. No withdrawal request was submitted and no funds were moved.
-            </div>
-          </div>
-        </div>
+        <WithdrawTab
+          balance={currentBalance}
+          onClose={() => setShowWithdrawModal(false)}
+          onUpdateBalance={(balance) => onUpdateUser?.({ ...user, balance })}
+          onGoToPayoutAccounts={handleOpenPayoutAccounts}
+        />
       )}
 
       {/* MODAL 3: SUPPORT MODAL */}

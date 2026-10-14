@@ -29,6 +29,7 @@ interface MeTabProps {
   onNavigateTab: (tab: 'market' | 'track' | 'team' | 'marathon' | 'myrunners' | 'myrecord') => void;
   onOpenCustomerService: () => void;
   onOpenAppModal: () => void;
+  openPayoutAccountsSignal?: number;
 }
 
 export const MeTab: React.FC<MeTabProps> = ({
@@ -38,6 +39,7 @@ export const MeTab: React.FC<MeTabProps> = ({
   onNavigateTab,
   onOpenCustomerService,
   onOpenAppModal,
+  openPayoutAccountsSignal = 0,
 }) => {
   const [copiedId, setCopiedId] = useState(false);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
@@ -87,6 +89,10 @@ export const MeTab: React.FC<MeTabProps> = ({
       isActive = false;
     };
   }, [isManagingPayoutAccounts]);
+
+  useEffect(() => {
+    if (openPayoutAccountsSignal > 0) setIsManagingPayoutAccounts(true);
+  }, [openPayoutAccountsSignal]);
 
   useEffect(() => {
     if (

@@ -37,6 +37,10 @@ interface AdminTransaction {
   userId: string;
   username: string;
   phoneNumber: string;
+  fee?: number;
+  payoutAmount?: number;
+  accountHolder?: string;
+  accountNumber?: string;
 }
 
 interface AdminTeamMember {
@@ -76,7 +80,7 @@ async function adminRequest<T>(
 }
 
 function isSuccessfulStatus(status: string): boolean {
-  return ['paid', 'completed', 'success', 'successful'].includes(status.toLowerCase());
+  return ['paid', 'completed', 'success', 'successful', 'accepted'].includes(status.toLowerCase());
 }
 
 function StatusPill({ status }: { status: string }) {
@@ -190,6 +194,7 @@ export const Admin: React.FC = () => {
   const [confirmStaffPassword, setConfirmStaffPassword] = useState('');
   const [staffCode, setStaffCode] = useState('');
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
+  const [reviewingWithdrawalId, setReviewingWithdrawalId] = useState('');
 
   const loadTransactions = async (token: string) => {
     const result = await adminRequest<{ transactions: AdminTransaction[]; email: string; role: AdminRole }>('/api/admin/transactions', { method: 'GET' }, token);
@@ -325,6 +330,27 @@ export const Admin: React.FC = () => {
       setError(refreshError instanceof Error ? refreshError.message : 'Could not refresh transactions.');
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  const handleReviewWithdrawal = async (orderId: string, decision: 'accept' | 'reject') => {
+    const action = decision === 'accept' ? 'accept' : 'reject and refund';
+    if (!sessionToken || !window.confirm(`Are you sure you want to ${action} withdrawal ${orderId}?`)) return;
+    setError('');
+    setNotice('');
+    setReviewingWithdrawalId(orderId);
+    try {
+      const result = await adminRequest<{ message: string }>(
+        `/api/admin/withdrawals/${encodeURIComponent(orderId)}/review`,
+        { method: 'PUT', body: JSON.stringify({ decision }) },
+        sessionToken,
+      );
+      setNotice(result.message);
+      await loadTransactions(sessionToken);
+    } catch (reviewError) {
+      setError(reviewError instanceof Error ? reviewError.message : 'Could not review this withdrawal.');
+    } finally {
+      setReviewingWithdrawalId('');
     }
   };
 
@@ -804,7 +830,7 @@ export const Admin: React.FC = () => {
                       </div>
                       <div className="col-span-2 flex items-start gap-2 rounded-lg border border-[#24466f] bg-[#06132e] p-3 text-xs leading-5 text-[#aaa3a0]">
                         <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-[#f15408]" />
-                        Withdrawals are not yet recorded by the member app. This list will populate when a withdrawal-request flow is implemented.
+                        Pending withdrawal requests are held for manual review. Rejected requests are automatically refunded.
                       </div>
                     </div>
                   </div>
@@ -825,10 +851,16 @@ export const Admin: React.FC = () => {
           )}
           {activeView === 'withdrawal' && (
             <>
-              <TransactionTable transactions={filteredTransactions} isLoading={isLoading} title="Withdrawals" />
+              <TransactionTable
+                transactions={filteredTransactions}
+                isLoading={isLoading}
+                title="Withdrawals"
+                onReviewWithdrawal={handleReviewWithdrawal}
+                reviewingWithdrawalId={reviewingWithdrawalId}
+              />
               {!isLoading && withdrawals.length === 0 && (
                 <p className="-mt-3 text-xs text-[#908984]">
-                  No withdrawal requests are stored yet. The current member app does not submit withdrawal requests.
+                  No withdrawal requests found for this date range.
                 </p>
               )}
             </>
@@ -932,11 +964,15 @@ function TransactionTable({
   isLoading,
   title,
   onShowDeposits,
+  onReviewWithdrawal,
+  reviewingWithdrawalId,
 }: {
   transactions: AdminTransaction[];
   isLoading: boolean;
   title: string;
   onShowDeposits?: () => void;
+  onReviewWithdrawal?: (orderId: string, decision: 'accept' | 'reject') => void;
+  reviewingWithdrawalId?: string;
 }) {
   return (
     <section className="overflow-hidden rounded-xl border border-[#1e3a78] bg-[#081b3d]">
@@ -950,7 +986,7 @@ function TransactionTable({
         )}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] border-collapse text-left">
+        <table className="w-full min-w-[900px] border-collapse text-left">
           <thead className="bg-[#06132e] text-[10px] uppercase tracking-wider text-[#8f9fba]">
             <tr>
               <th className="px-5 py-3 font-semibold">Transaction</th>
@@ -959,13 +995,14 @@ function TransactionTable({
               <th className="px-5 py-3 font-semibold">Status</th>
               <th className="px-5 py-3 text-right font-semibold">Amount</th>
               <th className="px-5 py-3 font-semibold">Created</th>
+              {onReviewWithdrawal && <th className="px-5 py-3 font-semibold">Review</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-[#1e3a78] text-xs">
             {isLoading ? (
-              <tr><td colSpan={6} className="px-5 py-12 text-center text-[#948c87]"><LoaderCircle className="mx-auto mb-2 h-5 w-5 animate-spin text-[#f15408]" />Loading transaction records…</td></tr>
+              <tr><td colSpan={onReviewWithdrawal ? 7 : 6} className="px-5 py-12 text-center text-[#948c87]"><LoaderCircle className="mx-auto mb-2 h-5 w-5 animate-spin text-[#f15408]" />Loading transaction records…</td></tr>
             ) : transactions.length === 0 ? (
-              <tr><td colSpan={6} className="px-5 py-12 text-center text-[#948c87]">No transactions found for this date range.</td></tr>
+              <tr><td colSpan={onReviewWithdrawal ? 7 : 6} className="px-5 py-12 text-center text-[#948c87]">No transactions found for this date range.</td></tr>
             ) : transactions.map((transaction) => (
               <tr key={`${transaction.type}:${transaction.id}`} className="hover:bg-[#10234a]">
                 <td className="px-5 py-3.5">
@@ -976,12 +1013,53 @@ function TransactionTable({
                   <div className="font-semibold text-[#e3dedb]">{transaction.username}</div>
                   <div className="mt-1 text-[10px] text-[#817c79]">{transaction.phoneNumber || transaction.userId || '—'}</div>
                 </td>
-                <td className="px-5 py-3.5 text-[#c0b8b3]">{transaction.method}</td>
+                <td className="px-5 py-3.5 text-[#c0b8b3]">
+                  <div className="capitalize">{transaction.method}</div>
+                  {transaction.type === 'withdrawal' && transaction.accountHolder && (
+                    <div className="mt-1 text-[10px] leading-4 text-[#8f9fba]">
+                      {transaction.accountHolder}<br />{transaction.accountNumber}
+                    </div>
+                  )}
+                </td>
                 <td className="px-5 py-3.5"><StatusPill status={transaction.status} /></td>
-                <td className="px-5 py-3.5 text-right font-semibold text-white">{currency.format(transaction.amount)}</td>
+                <td className="px-5 py-3.5 text-right font-semibold text-white">
+                  {currency.format(transaction.amount)}
+                  {transaction.type === 'withdrawal' && (
+                    <div className="mt-1 text-[10px] font-normal leading-4 text-[#8f9fba]">
+                      Fee {currency.format(transaction.fee || 0)}<br />
+                      Net {currency.format(transaction.payoutAmount ?? transaction.amount - (transaction.fee || 0))}
+                    </div>
+                  )}
+                </td>
                 <td className="px-5 py-3.5 text-[#a39b96]">
                   {transaction.createdAt ? new Date(transaction.createdAt).toLocaleString() : '—'}
                 </td>
+                {onReviewWithdrawal && (
+                  <td className="px-5 py-3.5">
+                    {transaction.type === 'withdrawal' && transaction.status === 'pending' ? (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={reviewingWithdrawalId === transaction.id}
+                          onClick={() => onReviewWithdrawal(transaction.id, 'accept')}
+                          className="rounded-lg bg-emerald-500/15 px-3 py-2 text-[10px] font-bold text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-50"
+                        >
+                          {reviewingWithdrawalId === transaction.id ? 'Working…' : 'Accept'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={reviewingWithdrawalId === transaction.id}
+                          onClick={() => onReviewWithdrawal(transaction.id, 'reject')}
+                          className="rounded-lg bg-rose-500/15 px-3 py-2 text-[10px] font-bold text-rose-300 hover:bg-rose-500/25 disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    ) : transaction.type === 'withdrawal' ? (
+                      <span className="text-[10px] text-[#8f9fba]">Reviewed</span>
+                    ) : null}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

@@ -12,6 +12,22 @@ export interface PayoutAccount {
   accountHolder: string;
 }
 
+export type WithdrawalStatus = 'pending' | 'accepted' | 'failed';
+
+export interface WithdrawalRecord {
+  orderId: string;
+  status: WithdrawalStatus;
+  amount: number;
+  fee: number;
+  payoutAmount: number;
+  bankCode: PayoutProvider;
+  accountHolder: string;
+  accountNumber: string;
+  createdAt: string;
+  reviewedAt?: string;
+  balance?: number;
+}
+
 export interface DepositOrder {
   orderId: string;
   status: DepositStatus;
@@ -425,6 +441,39 @@ export const api = {
       { method: 'DELETE' },
     );
     return res.accounts;
+  },
+
+  async getWithdrawalTotpStatus(): Promise<{ configured: boolean }> {
+    return request<{ success: boolean; configured: boolean }>('/api/auth/withdrawals/totp', { method: 'GET' });
+  },
+
+  async beginWithdrawalTotpSetup(): Promise<{ qrCodeDataUrl: string; manualEntryKey: string }> {
+    return request<{ success: boolean; qrCodeDataUrl: string; manualEntryKey: string }>(
+      '/api/auth/withdrawals/totp/setup',
+      { method: 'POST' },
+    );
+  },
+
+  async verifyWithdrawalTotpSetup(code: string): Promise<void> {
+    await request<{ success: boolean }>('/api/auth/withdrawals/totp/verify', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  },
+
+  async createWithdrawal(amount: number, provider: PayoutProvider, code: string): Promise<WithdrawalRecord> {
+    const res = await request<{ success: boolean; withdrawal: WithdrawalRecord }>('/api/auth/withdrawals', {
+      method: 'POST',
+      body: JSON.stringify({ amount, provider, code }),
+    });
+    return res.withdrawal;
+  },
+
+  async getWithdrawalHistory(): Promise<WithdrawalRecord[]> {
+    const res = await request<{ success: boolean; withdrawals: WithdrawalRecord[] }>('/api/auth/withdrawals', {
+      method: 'GET',
+    });
+    return res.withdrawals;
   },
 
   async updateRunners(payload: {
