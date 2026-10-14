@@ -4,6 +4,18 @@ export function getActiveWorkoutStorageKey(userId?: string): string | null {
   return userId ? `${ACTIVE_WORKOUT_STORAGE_PREFIX}${encodeURIComponent(userId)}` : null;
 }
 
+export function getPausedWorkoutTiming(
+  workoutStartTime: number,
+  elapsedSeconds: number,
+  pausedAt: number
+): { workoutStartTime: number; pauseStartTime: number; pausedDuration: number } {
+  return {
+    workoutStartTime,
+    pauseStartTime: pausedAt,
+    pausedDuration: Math.max(0, pausedAt - workoutStartTime - elapsedSeconds * 1000),
+  };
+}
+
 export function hasWorkoutInProgressInStorage(): boolean {
   try {
     const keys: string[] = [];

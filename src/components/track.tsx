@@ -34,7 +34,7 @@ import 'leaflet/dist/leaflet.css';
 import { User } from '../types/auth';
 import { RUNNER_CATALOG, RunnerItem } from './market';
 import { api, getApiBaseUrl } from '../services/api';
-import { getActiveWorkoutStorageKey } from '../services/workoutStorage';
+import { getActiveWorkoutStorageKey, getPausedWorkoutTiming } from '../services/workoutStorage';
 import { WorkoutSnapshot } from '../types/workout';
 import { getOwnedRunnerInstances } from '../services/runnerInventory';
 
@@ -315,14 +315,15 @@ export const TrackTab: React.FC<TrackTabProps> = ({
             (data.isPaused && data.pauseStartTime ? now - data.pauseStartTime : 0)) / 1000)
         );
     const shouldPause = forcePaused || data.isPaused;
+    const pausedTiming = shouldPause
+      ? getPausedWorkoutTiming(data.workoutStartTime, savedElapsedSeconds, now)
+      : null;
 
     isTrackingRef.current = true;
     isPausedRef.current = shouldPause;
-    workoutStartTimeRef.current = forcePaused
-      ? now - savedElapsedSeconds * 1000
-      : data.workoutStartTime;
-    pauseStartTimeRef.current = shouldPause ? now : 0;
-    pausedDurationRef.current = forcePaused ? 0 : data.pausedDuration || 0;
+    workoutStartTimeRef.current = data.workoutStartTime;
+    pauseStartTimeRef.current = pausedTiming?.pauseStartTime ?? 0;
+    pausedDurationRef.current = pausedTiming?.pausedDuration ?? data.pausedDuration ?? 0;
     totalDistanceKmRef.current = data.distanceKm || 0;
     motionStepCountRef.current = data.stepCount || 0;
     gpsStepCountRef.current = data.stepCount || 0;
