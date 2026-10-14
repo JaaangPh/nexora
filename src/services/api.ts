@@ -17,9 +17,12 @@ export type WithdrawalStatus = 'pending' | 'accepted' | 'failed';
 export interface WithdrawalRecord {
   orderId: string;
   status: WithdrawalStatus;
+  /** The amount requested for payout before applying the fee. */
   amount: number;
   fee: number;
   payoutAmount: number;
+  /** The full amount removed from the member balance, including the fee. */
+  totalDeducted?: number;
   bankCode: PayoutProvider;
   accountHolder: string;
   accountNumber: string;

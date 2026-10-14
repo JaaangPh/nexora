@@ -11,20 +11,14 @@ import {
   generateTotpSecret,
   TOTP_PERIOD_SECONDS,
 } from '../services/totp.js';
+import {
+  amountToCents,
+  calculateWithdrawalAmounts,
+  MINIMUM_PAYOUT_CENTS,
+} from '../services/withdrawalRules.js';
 
-const MINIMUM_WITHDRAWAL_CENTS = 10_200;
-const WITHDRAWAL_FEE_BASIS_POINTS = 200;
 const TOTP_SETUP_EXPIRY_MS = 10 * 60 * 1000;
 const PAYOUT_PROVIDERS = new Set(['gcash', 'maya', 'gotyme']);
-
-function amountToCents(value: unknown): number | null {
-  if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') return null;
-  const amount = Number(value);
-  if (!Number.isFinite(amount) || amount <= 0) return null;
-  const cents = Math.round(amount * 100);
-  if (!Number.isSafeInteger(cents) || Math.abs(amount * 100 - cents) > 0.000001) return null;
-  return cents;
-}
 
 function getAccountPayout(accounts: unknown, provider: string): {
   provider: string;
@@ -169,23 +163,26 @@ export async function createWithdrawal(req: AuthRequest, res: Response): Promise
     return;
   }
 
-  const amountCents = amountToCents(req.body?.amount);
+  const payoutAmountCents = amountToCents(req.body?.amount);
   const provider = req.body?.provider;
   const code = req.body?.code;
+  const amounts = payoutAmountCents === null
+    ? null
+    : calculateWithdrawalAmounts(payoutAmountCents);
   if (
-    amountCents === null ||
-    amountCents < MINIMUM_WITHDRAWAL_CENTS ||
+    payoutAmountCents === null ||
+    payoutAmountCents < MINIMUM_PAYOUT_CENTS ||
+    !amounts ||
     typeof provider !== 'string' ||
     !PAYOUT_PROVIDERS.has(provider) ||
     typeof code !== 'string' ||
     !/^\d{6}$/.test(code)
   ) {
-    res.status(400).json({ success: false, message: 'Enter an amount of at least ₱102, choose a payout account, and enter a six-digit authenticator code.' });
+    res.status(400).json({ success: false, message: 'Enter a payout amount of at least ₱100, choose a payout account, and enter a six-digit authenticator code.' });
     return;
   }
 
-  const feeCents = Math.round((amountCents * WITHDRAWAL_FEE_BASIS_POINTS) / 10_000);
-  const payoutAmountCents = amountCents - feeCents;
+  const { feeCents, totalDeductedCents } = amounts;
   const orderId = `WD-${crypto.randomUUID()}`;
   const now = new Date().toISOString();
   const userRef = firestore.collection('users').doc(req.user.id);
@@ -210,17 +207,19 @@ export async function createWithdrawal(req: AuthRequest, res: Response): Promise
       if (!Number.isFinite(currentBalance) || !Number.isSafeInteger(balanceCents)) {
         throw new Error('INVALID_BALANCE');
       }
-      if (balanceCents < amountCents) throw new Error('INSUFFICIENT_BALANCE');
+      if (balanceCents < totalDeductedCents) throw new Error('INSUFFICIENT_BALANCE');
 
-      const nextBalance = (balanceCents - amountCents) / 100;
+      const nextBalance = (balanceCents - totalDeductedCents) / 100;
       const record = {
         orderId,
         userId: req.user!.id,
         status: 'pending',
-        amount: amountCents / 100,
-        amountCents,
+        amount: payoutAmountCents / 100,
+        amountCents: payoutAmountCents,
         fee: feeCents / 100,
         feeCents,
+        totalDeducted: totalDeductedCents / 100,
+        totalDeductedCents,
         payoutAmount: payoutAmountCents / 100,
         payoutAmountCents,
         bankCode: payoutAccount.provider,
@@ -283,9 +282,10 @@ export async function getWithdrawalHistory(req: AuthRequest, res: Response): Pro
       return {
         orderId: String(record.orderId || document.id),
         status: typeof record.status === 'string' ? record.status : 'pending',
-        amount: Number(record.amount ?? 0),
+        amount: Number(record.payoutAmount ?? record.amount ?? 0),
         fee: Number(record.fee ?? 0),
-        payoutAmount: Number(record.payoutAmount ?? 0),
+        payoutAmount: Number(record.payoutAmount ?? record.amount ?? 0),
+        totalDeducted: Number(record.totalDeducted ?? record.amount ?? 0),
         bankCode: typeof record.bankCode === 'string' ? record.bankCode : '',
         accountHolder: typeof record.accountHolder === 'string' ? record.accountHolder : '',
         accountNumber: typeof record.accountNumber === 'string' ? record.accountNumber : '',

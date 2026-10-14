@@ -39,6 +39,7 @@ interface AdminTransaction {
   phoneNumber: string;
   fee?: number;
   payoutAmount?: number;
+  totalDeducted?: number;
   accountHolder?: string;
   accountNumber?: string;
 }
@@ -993,7 +994,7 @@ function TransactionTable({
               <th className="px-5 py-3 font-semibold">User</th>
               <th className="px-5 py-3 font-semibold">Method</th>
               <th className="px-5 py-3 font-semibold">Status</th>
-              <th className="px-5 py-3 text-right font-semibold">Amount</th>
+              <th className="px-5 py-3 text-right font-semibold">{onReviewWithdrawal ? 'Payout' : 'Amount'}</th>
               <th className="px-5 py-3 font-semibold">Created</th>
               {onReviewWithdrawal && <th className="px-5 py-3 font-semibold">Review</th>}
             </tr>
@@ -1026,8 +1027,8 @@ function TransactionTable({
                   {currency.format(transaction.amount)}
                   {transaction.type === 'withdrawal' && (
                     <div className="mt-1 text-[10px] font-normal leading-4 text-[#8f9fba]">
-                      Fee {currency.format(transaction.fee || 0)}<br />
-                      Net {currency.format(transaction.payoutAmount ?? transaction.amount - (transaction.fee || 0))}
+                      Payout · Fee {currency.format(transaction.fee || 0)}<br />
+                      Balance debit {currency.format(transaction.totalDeducted ?? transaction.amount + (transaction.fee || 0))}
                     </div>
                   )}
                 </td>

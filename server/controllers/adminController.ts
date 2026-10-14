@@ -528,7 +528,7 @@ export async function reviewWithdrawal(req: AdminRequest, res: Response): Promis
       if (decision === 'reject') {
         userSnapshot = await transaction.get(userRef);
         if (!userSnapshot.exists) throw new Error('WITHDRAWAL_USER_NOT_FOUND');
-        const amountCents = Number(withdrawal.amountCents);
+        const amountCents = Number(withdrawal.totalDeductedCents ?? withdrawal.amountCents);
         refundAmount = Number.isSafeInteger(amountCents) && amountCents > 0
           ? amountCents / 100
           : Number(withdrawal.amount);
@@ -609,10 +609,19 @@ export async function getAdminTransactions(req: AdminRequest, res: Response): Pr
         id: String(record.orderId || record.id || document.id),
         type,
         status: typeof record.status === 'string' ? record.status : 'unknown',
-        amount: Number.isFinite(Number(record.amount)) ? Number(record.amount) : 0,
+        amount: type === 'withdrawal'
+          ? Number.isFinite(Number(record.payoutAmount))
+            ? Number(record.payoutAmount)
+            : Number.isFinite(Number(record.amount)) ? Number(record.amount) : 0
+          : Number.isFinite(Number(record.amount)) ? Number(record.amount) : 0,
         method: typeof record.bankCode === 'string' ? record.bankCode : typeof record.method === 'string' ? record.method : '—',
         fee: Number.isFinite(Number(record.fee)) ? Number(record.fee) : 0,
         payoutAmount: Number.isFinite(Number(record.payoutAmount)) ? Number(record.payoutAmount) : undefined,
+        totalDeducted: type === 'withdrawal'
+          ? Number.isFinite(Number(record.totalDeducted))
+            ? Number(record.totalDeducted)
+            : Number.isFinite(Number(record.amount)) ? Number(record.amount) : 0
+          : undefined,
         accountHolder: typeof record.accountHolder === 'string' ? record.accountHolder : undefined,
         accountNumber: typeof record.accountNumber === 'string' ? record.accountNumber : undefined,
         createdAt: toIsoDate(record.createdAt),

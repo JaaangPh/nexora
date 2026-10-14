@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useMemo, useState } from 'react';
+import React, { FormEvent, useEffect, useState } from 'react';
 import { ArrowLeft, Banknote, CheckCircle2, Loader2, ShieldCheck, X } from 'lucide-react';
 import { api, PayoutAccount, PayoutProvider, WithdrawalRecord } from '../services/api';
 
@@ -41,12 +41,9 @@ export const WithdrawTab: React.FC<WithdrawTabProps> = ({
 
   const amount = Number(amountInput);
   const amountCents = Math.round(amount * 100);
-  const fee = useMemo(() => (
-    Number.isFinite(amount) && amountCents > 0
-      ? Math.round(amountCents * 0.02) / 100
-      : 0
-  ), [amount, amountCents]);
-  const payoutAmount = amountCents > 0 ? Math.max(0, (amountCents - Math.round(amountCents * 0.02)) / 100) : 0;
+  const feeCents = amountCents > 0 ? Math.round(amountCents * 0.02) : 0;
+  const totalDeductedCents = amountCents + feeCents;
+  const fee = feeCents / 100;
   const selectedAccount = accounts.find((account) => account.provider === selectedProvider);
 
   const generateSetup = async () => {
@@ -105,12 +102,12 @@ export const WithdrawTab: React.FC<WithdrawTabProps> = ({
   const handleSubmitWithdrawal = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
-    if (!Number.isFinite(amount) || Math.abs(amount * 100 - amountCents) > 0.000001 || amountCents < 10_200) {
-      setError('Enter a withdrawal amount of at least ₱102 with no more than two decimal places.');
+    if (    !Number.isFinite(amount) || Math.abs(amount * 100 - amountCents) > 0.000001 || amountCents < 10_000) {
+    setError('Enter an amount to receive of at least ₱100 with no more than two decimal places.');
       return;
     }
-    if (amountCents > Math.round(balance * 100)) {
-      setError('Your available balance is not enough for this withdrawal amount.');
+    if (totalDeductedCents > Math.round(balance * 100)) {
+    setError('Your available balance is not enough to cover the payout amount and 2% fee.');
       return;
     }
     if (!selectedProvider || !selectedAccount) {
@@ -123,7 +120,7 @@ export const WithdrawTab: React.FC<WithdrawTabProps> = ({
       const withdrawal = await api.createWithdrawal(amount, selectedProvider, authenticatorCode);
       setSuccess(withdrawal);
       setAuthenticatorCode('');
-      onUpdateBalance(withdrawal.balance ?? balance - withdrawal.amount);
+      onUpdateBalance(withdrawal.balance ?? balance - (withdrawal.totalDeducted ?? withdrawal.amount + withdrawal.fee));
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Could not submit withdrawal request.');
     } finally {
@@ -176,6 +173,9 @@ export const WithdrawTab: React.FC<WithdrawTabProps> = ({
             <p className="break-all font-mono text-[11px] text-emerald-100/70">{success.orderId}</p>
             <p className="text-xs leading-5 text-emerald-100/80">
               Your request is pending manual review. {money(success.payoutAmount)} will be sent to {PROVIDER_LABELS[success.bankCode]} if accepted.
+            </p>
+            <p className="text-[11px] text-emerald-100/65">
+              {money(success.totalDeducted ?? success.amount + success.fee)} was deducted, including the {money(success.fee)} fee.
             </p>
             <button type="button" onClick={onClose} className="w-full rounded-xl bg-[#D8FD2F] px-4 py-3 text-xs font-extrabold text-[#08132B]">
               Done
@@ -268,17 +268,17 @@ export const WithdrawTab: React.FC<WithdrawTabProps> = ({
               </p>
             )}
             <label className="block text-xs font-semibold text-blue-100/80">
-              Amount (minimum ₱102)
+              Amount to receive (minimum ₱100)
               <input
                 type="number"
                 inputMode="decimal"
-                min="102"
+                min="100"
                 step="0.01"
-                max={balance}
+                max={balance / 1.02}
                 required
                 value={amountInput}
                 onChange={(event) => setAmountInput(event.target.value)}
-                placeholder="102.00"
+                placeholder="100.00"
                 className="mt-1.5 w-full rounded-xl border border-[#1E3A78] bg-[#08132B] px-3 py-3 text-sm text-white outline-none focus:border-cyan-400"
               />
             </label>
@@ -320,9 +320,9 @@ export const WithdrawTab: React.FC<WithdrawTabProps> = ({
             )}
 
             <div className="space-y-2 rounded-xl border border-[#1E3A78] bg-[#08132B] p-3 text-xs">
-              <div className="flex justify-between text-blue-100/70"><span>Withdrawal amount (balance deduction)</span><span>{money(Number.isFinite(amount) ? amount : 0)}</span></div>
+              <div className="flex justify-between text-blue-100/70"><span>Amount to receive</span><span>{money(Number.isFinite(amount) ? amount : 0)}</span></div>
               <div className="flex justify-between text-blue-100/70"><span>Fee (2%)</span><span>{money(fee)}</span></div>
-              <div className="flex justify-between border-t border-[#1E3A78] pt-2 font-bold text-white"><span>Amount to receive</span><span>{money(payoutAmount)}</span></div>
+              <div className="flex justify-between border-t border-[#1E3A78] pt-2 font-bold text-white"><span>Total deducted from balance</span><span>{money(totalDeductedCents / 100)}</span></div>
             </div>
 
             <label className="block text-xs font-semibold text-blue-100/80">
@@ -341,11 +341,11 @@ export const WithdrawTab: React.FC<WithdrawTabProps> = ({
               />
             </label>
             <p className="text-[10px] leading-4 text-blue-100/60">
-              The entered amount is deducted from your balance. The 2% fee is included; the remaining 98% is sent if accepted by an admin.
+              The amount you enter is the payout amount. A 2% fee is added to it; for example, a ₱100 payout deducts ₱102 from your balance.
             </p>
             <button
               type="submit"
-              disabled={isSubmitting || accounts.length === 0 || !selectedProvider || amountCents < 10_200 || amountCents > Math.round(balance * 100) || authenticatorCode.length !== 6}
+              disabled={isSubmitting || accounts.length === 0 || !selectedProvider || amountCents < 10_000 || totalDeductedCents > Math.round(balance * 100) || authenticatorCode.length !== 6}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#D8FD2F] px-4 py-3 text-xs font-extrabold text-[#08132B] disabled:opacity-50"
             >
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
