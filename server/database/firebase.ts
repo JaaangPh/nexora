@@ -2,6 +2,7 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import { mergeWorkoutSnapshotProgress } from '../services/workoutSnapshot.js';
 
 dotenv.config();
 
@@ -327,7 +328,10 @@ export async function updateUserWorkoutSnapshot(
     const serverStartedAt = sameWorkout
       ? Number(currentSnapshot?.serverStartedAt || Date.now())
       : Date.now();
-    const savedSnapshot = { ...snapshot, serverStartedAt };
+    const savedSnapshot = {
+      ...mergeWorkoutSnapshotProgress(currentSnapshot, snapshot),
+      serverStartedAt,
+    };
     transaction.update(userRef, { workoutSnapshot: savedSnapshot });
     return savedSnapshot;
   });
