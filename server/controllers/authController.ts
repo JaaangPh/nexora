@@ -18,6 +18,11 @@ import {
   generateUniqueReferralCode,
   generateAutoUsername,
   updateUserProfileImage,
+  getUserPayoutAccounts,
+  saveUserPayoutAccount,
+  deleteUserPayoutAccount,
+  PayoutProvider,
+  PayoutAccount,
   FirestoreUser,
 } from '../database/firebase.js';
 import { completeWorkoutAndClearSnapshot, MarathonError } from '../services/marathonService.js';
@@ -30,6 +35,11 @@ const RUNNER_PRICES: Record<string, number> = {
   'snk-3': 2000,
   'snk-4': 3500,
 };
+const PAYOUT_PROVIDERS = new Set<PayoutProvider>(['gcash', 'maya', 'gotyme']);
+
+function isPayoutProvider(value: unknown): value is PayoutProvider {
+  return typeof value === 'string' && PAYOUT_PROVIDERS.has(value as PayoutProvider);
+}
 
 async function getDisplayUsername(user: FirestoreUser): Promise<string> {
   if (user.username && !/^NexoraMember_\d+$/i.test(user.username)) return user.username;
@@ -399,6 +409,94 @@ export async function getMe(req: AuthRequest, res: Response): Promise<void> {
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error?.message || 'Failed to retrieve profile.' });
+  }
+}
+
+export async function getPayoutAccounts(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Unauthorized session.' });
+      return;
+    }
+
+    const accounts = await getUserPayoutAccounts(req.user.id);
+    if (!accounts) {
+      res.status(404).json({ success: false, message: 'User not found.' });
+      return;
+    }
+    res.json({ success: true, accounts });
+  } catch (error) {
+    console.error('[Payout Accounts Read Error]', error);
+    res.status(500).json({ success: false, message: 'Could not retrieve payout accounts.' });
+  }
+}
+
+export async function savePayoutAccount(req: AuthRequest, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ success: false, message: 'Unauthorized session.' });
+    return;
+  }
+
+  const provider = req.body?.provider;
+  const accountNumber = typeof req.body?.accountNumber === 'string'
+    ? req.body.accountNumber.replace(/[\s-]/g, '')
+    : '';
+  const accountHolder = typeof req.body?.accountHolder === 'string'
+    ? req.body.accountHolder.trim()
+    : '';
+
+  if (
+    !isPayoutProvider(provider) ||
+    !/^\d{7,20}$/.test(accountNumber) ||
+    accountHolder.length < 2 ||
+    accountHolder.length > 80 ||
+    /[\u0000-\u001f\u007f]/.test(accountHolder)
+  ) {
+    res.status(400).json({
+      success: false,
+      message: 'Choose a supported provider and enter a valid account number and account holder name.',
+    });
+    return;
+  }
+
+  try {
+    const accounts = await saveUserPayoutAccount(req.user.id, {
+      provider,
+      accountNumber,
+      accountHolder,
+    } satisfies PayoutAccount);
+    res.json({ success: true, accounts });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'ACCOUNT_NOT_FOUND') {
+      res.status(404).json({ success: false, message: 'User not found.' });
+      return;
+    }
+    console.error('[Payout Account Save Error]', error);
+    res.status(500).json({ success: false, message: 'Could not save this payout account.' });
+  }
+}
+
+export async function deletePayoutAccount(req: AuthRequest, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ success: false, message: 'Unauthorized session.' });
+    return;
+  }
+  const provider = req.params.provider;
+  if (!isPayoutProvider(provider)) {
+    res.status(400).json({ success: false, message: 'Choose a supported payout provider.' });
+    return;
+  }
+
+  try {
+    const accounts = await deleteUserPayoutAccount(req.user.id, provider);
+    res.json({ success: true, accounts });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'ACCOUNT_NOT_FOUND') {
+      res.status(404).json({ success: false, message: 'User not found.' });
+      return;
+    }
+    console.error('[Payout Account Delete Error]', error);
+    res.status(500).json({ success: false, message: 'Could not remove this payout account.' });
   }
 }
 

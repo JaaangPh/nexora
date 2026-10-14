@@ -86,6 +86,14 @@ export interface OwnedRunner {
   purchasedAt: number;
 }
 
+export type PayoutProvider = 'gcash' | 'maya' | 'gotyme';
+
+export interface PayoutAccount {
+  provider: PayoutProvider;
+  accountNumber: string;
+  accountHolder: string;
+}
+
 export interface FirestoreUser {
   id: string;
   phoneNumber: string;
@@ -103,6 +111,7 @@ export interface FirestoreUser {
   ownedRunners?: (OwnedRunner | string)[];
   equippedRunnerId?: string;
   runnerCooldowns?: Record<string, number>;
+  payoutAccounts?: PayoutAccount[];
   activeSessionId?: string | null;
   workoutSnapshot?: Record<string, unknown>;
 }
@@ -220,6 +229,61 @@ export async function updateUserUsername(id: string, username: string): Promise<
 
 export async function updateUserProfileImage(id: string, profileImage: string): Promise<void> {
   await firestore.collection('users').doc(id).update({ profileImage });
+}
+
+function readPayoutAccounts(value: unknown): PayoutAccount[] {
+  if (!Array.isArray(value)) return [];
+
+  const providers = new Set<PayoutProvider>();
+  return value.filter((account): account is PayoutAccount => {
+    if (
+      !account ||
+      typeof account !== 'object' ||
+      !['gcash', 'maya', 'gotyme'].includes((account as PayoutAccount).provider) ||
+      typeof (account as PayoutAccount).accountNumber !== 'string' ||
+      typeof (account as PayoutAccount).accountHolder !== 'string'
+    ) return false;
+
+    const payoutAccount = account as PayoutAccount;
+    if (providers.has(payoutAccount.provider)) return false;
+    providers.add(payoutAccount.provider);
+    return true;
+  });
+}
+
+export async function getUserPayoutAccounts(id: string): Promise<PayoutAccount[] | null> {
+  const snapshot = await firestore.collection('users').doc(id).get();
+  if (!snapshot.exists) return null;
+  return readPayoutAccounts(snapshot.data()?.payoutAccounts);
+}
+
+export async function saveUserPayoutAccount(id: string, account: PayoutAccount): Promise<PayoutAccount[]> {
+  const userRef = firestore.collection('users').doc(id);
+  return firestore.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(userRef);
+    if (!snapshot.exists) throw new Error('ACCOUNT_NOT_FOUND');
+
+    const accounts = readPayoutAccounts(snapshot.data()?.payoutAccounts);
+    const existingIndex = accounts.findIndex((item) => item.provider === account.provider);
+    if (existingIndex === -1) accounts.push(account);
+    else accounts[existingIndex] = account;
+
+    transaction.update(userRef, { payoutAccounts: accounts });
+    return accounts;
+  });
+}
+
+export async function deleteUserPayoutAccount(id: string, provider: PayoutProvider): Promise<PayoutAccount[]> {
+  const userRef = firestore.collection('users').doc(id);
+  return firestore.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(userRef);
+    if (!snapshot.exists) throw new Error('ACCOUNT_NOT_FOUND');
+
+    const accounts = readPayoutAccounts(snapshot.data()?.payoutAccounts)
+      .filter((account) => account.provider !== provider);
+    transaction.update(userRef, { payoutAccounts: accounts });
+    return accounts;
+  });
 }
 
 export async function updateUserRunners(

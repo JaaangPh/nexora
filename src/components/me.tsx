@@ -16,16 +16,17 @@ import {
   ClipboardList,
   Smartphone,
   ChevronRight,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { User } from '../types/auth';
-import { api } from '../services/api';
+import { api, PayoutAccount, PayoutProvider } from '../services/api';
 
 interface MeTabProps {
   user: User;
   onLogout: () => void;
   onUpdateUser?: (user: User) => void;
   onNavigateTab: (tab: 'market' | 'track' | 'team' | 'marathon' | 'myrunners' | 'myrecord') => void;
-  onOpenBankAccount: () => void;
   onOpenCustomerService: () => void;
   onOpenAppModal: () => void;
 }
@@ -35,7 +36,6 @@ export const MeTab: React.FC<MeTabProps> = ({
   onLogout,
   onUpdateUser,
   onNavigateTab,
-  onOpenBankAccount,
   onOpenCustomerService,
   onOpenAppModal,
 }) => {
@@ -48,12 +48,45 @@ export const MeTab: React.FC<MeTabProps> = ({
   const [profileImage, setProfileImage] = useState(user.profileImage);
   const [isUploadingProfileImage, setIsUploadingProfileImage] = useState(false);
   const [profileImageMessage, setProfileImageMessage] = useState<string | null>(null);
+  const [isManagingPayoutAccounts, setIsManagingPayoutAccounts] = useState(false);
+  const [payoutAccounts, setPayoutAccounts] = useState<PayoutAccount[]>([]);
+  const [isLoadingPayoutAccounts, setIsLoadingPayoutAccounts] = useState(false);
+  const [selectedPayoutProvider, setSelectedPayoutProvider] = useState<PayoutProvider | null>(null);
+  const [payoutAccountNumber, setPayoutAccountNumber] = useState('');
+  const [payoutAccountHolder, setPayoutAccountHolder] = useState('');
+  const [payoutAccountError, setPayoutAccountError] = useState<string | null>(null);
+  const [isSavingPayoutAccount, setIsSavingPayoutAccount] = useState(false);
+  const [deletingPayoutProvider, setDeletingPayoutProvider] = useState<PayoutProvider | null>(null);
   const profileImageInput = useRef<HTMLInputElement>(null);
   const usernameMigrationAttempted = useRef(false);
 
   useEffect(() => {
     setProfileImage(user.profileImage);
   }, [user.profileImage]);
+
+  useEffect(() => {
+    if (!isManagingPayoutAccounts) return;
+
+    let isActive = true;
+    setIsLoadingPayoutAccounts(true);
+    setPayoutAccountError(null);
+    api.getPayoutAccounts()
+      .then((accounts) => {
+        if (isActive) setPayoutAccounts(accounts);
+      })
+      .catch((error: unknown) => {
+        if (isActive) {
+          setPayoutAccountError(error instanceof Error ? error.message : 'Could not load payout accounts.');
+        }
+      })
+      .finally(() => {
+        if (isActive) setIsLoadingPayoutAccounts(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [isManagingPayoutAccounts]);
 
   useEffect(() => {
     if (
@@ -86,7 +119,7 @@ export const MeTab: React.FC<MeTabProps> = ({
   const menuItems = [
     { label: 'TEAM MARATHON', icon: Users, onClick: () => onNavigateTab('marathon') },
     { label: 'MY RUNNERS', icon: Footprints, onClick: () => onNavigateTab('myrunners') },
-    { label: 'BANK ACCOUNT', icon: CreditCard, onClick: onOpenBankAccount },
+    { label: 'BANK ACCOUNT', icon: CreditCard, onClick: () => setIsManagingPayoutAccounts(true) },
     { label: 'CUSTOMER SERVICE', icon: Headphones, onClick: onOpenCustomerService },
     { label: 'MY RECORDS', icon: ClipboardList, onClick: () => onNavigateTab('myrecord') },
     { label: 'DOWNLOAD APP', icon: Smartphone, onClick: onOpenAppModal },
@@ -198,6 +231,85 @@ export const MeTab: React.FC<MeTabProps> = ({
       setIsUploadingProfileImage(false);
     }
   };
+
+  const openPayoutAccountForm = (provider: PayoutProvider) => {
+    const existingAccount = payoutAccounts.find((account) => account.provider === provider);
+    setSelectedPayoutProvider(provider);
+    setPayoutAccountNumber(existingAccount?.accountNumber || '');
+    setPayoutAccountHolder(existingAccount?.accountHolder || '');
+    setPayoutAccountError(null);
+  };
+
+  const handleSavePayoutAccount = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedPayoutProvider) return;
+
+    const accountNumber = payoutAccountNumber.replace(/[\s-]/g, '');
+    const accountHolder = payoutAccountHolder.trim();
+    if (!/^\d{7,20}$/.test(accountNumber)) {
+      setPayoutAccountError('Enter an account number containing 7 to 20 digits.');
+      return;
+    }
+    if (accountHolder.length < 2 || accountHolder.length > 80) {
+      setPayoutAccountError('Enter the account holder name (2 to 80 characters).');
+      return;
+    }
+
+    setIsSavingPayoutAccount(true);
+    setPayoutAccountError(null);
+    try {
+      const accounts = await api.savePayoutAccount({
+        provider: selectedPayoutProvider,
+        accountNumber,
+        accountHolder,
+      });
+      setPayoutAccounts(accounts);
+      setSelectedPayoutProvider(null);
+    } catch (error: unknown) {
+      setPayoutAccountError(error instanceof Error ? error.message : 'Could not save this payout account.');
+    } finally {
+      setIsSavingPayoutAccount(false);
+    }
+  };
+
+  const handleDeletePayoutAccount = async (provider: PayoutProvider) => {
+    setDeletingPayoutProvider(provider);
+    setPayoutAccountError(null);
+    try {
+      const accounts = await api.deletePayoutAccount(provider);
+      setPayoutAccounts(accounts);
+      if (selectedPayoutProvider === provider) setSelectedPayoutProvider(null);
+    } catch (error: unknown) {
+      setPayoutAccountError(error instanceof Error ? error.message : 'Could not remove this payout account.');
+    } finally {
+      setDeletingPayoutProvider(null);
+    }
+  };
+
+  const providerLabels: Record<PayoutProvider, string> = {
+    gcash: 'GCash',
+    maya: 'Maya',
+    gotyme: 'GoTyme',
+  };
+  const renderProviderLogo = (provider: PayoutProvider, compact = false) => (
+    <span
+      className={`inline-flex items-center gap-2 ${compact ? 'min-w-[84px]' : ''}`}
+      aria-label={providerLabels[provider]}
+    >
+      {provider === 'gotyme' && (
+        <svg viewBox="0 0 20 20" className="h-5 w-5 flex-shrink-0" aria-hidden="true">
+          <path d="M2 3h4v14H2zM8 3h4v14H8zM14 3h4v14h-4z" fill="#26C6B8" />
+        </svg>
+      )}
+      <span
+        className={`font-black tracking-tight ${
+          provider === 'gcash' ? 'text-[#007DFE]' : provider === 'maya' ? 'text-[#35B36F]' : 'text-white'
+        } ${compact ? 'text-sm' : 'text-base'}`}
+      >
+        {providerLabels[provider]}
+      </span>
+    </span>
+  );
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -370,6 +482,169 @@ export const MeTab: React.FC<MeTabProps> = ({
         <LogOut className="w-4 h-4" />
         <span>Sign Out</span>
       </button>
+
+      {isManagingPayoutAccounts && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          onClick={() => {
+            setIsManagingPayoutAccounts(false);
+            setSelectedPayoutProvider(null);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="payout-accounts-title"
+            className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-3xl border border-[#2459C4]/60 bg-[#091738] p-5 text-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 id="payout-accounts-title" className="text-lg font-extrabold">Payout Accounts</h2>
+                <p className="mt-1 text-xs leading-5 text-blue-100/70">
+                  Add one account for each provider. Saved details are private to your account.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsManagingPayoutAccounts(false);
+                  setSelectedPayoutProvider(null);
+                }}
+                aria-label="Close payout accounts"
+                className="rounded-lg p-1 text-blue-200 hover:bg-white/10 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {isLoadingPayoutAccounts ? (
+              <div className="flex items-center justify-center gap-2 py-8 text-sm text-blue-100/70">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading saved accounts...
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  {(['gcash', 'maya', 'gotyme'] as const).map((provider) => {
+                    const account = payoutAccounts.find((item) => item.provider === provider);
+                    return (
+                      <div key={provider} className="rounded-2xl border border-[#1E3A78] bg-[#0D204A] p-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex min-h-9 flex-1 items-center">
+                            {renderProviderLogo(provider, true)}
+                          </div>
+                          {account ? (
+                            <>
+                              <div className="min-w-0 flex-1 text-right">
+                                <p className="truncate text-xs font-semibold text-white">{account.accountHolder}</p>
+                                <p className="text-[11px] text-blue-100/60">
+                                  •••• {account.accountNumber.slice(-4)}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeletePayoutAccount(provider)}
+                                disabled={deletingPayoutProvider === provider}
+                                aria-label={`Remove ${providerLabels[provider]} account`}
+                                className="rounded-lg p-2 text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+                              >
+                                {deletingPayoutProvider === provider
+                                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                                  : <Trash2 className="h-4 w-4" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openPayoutAccountForm(provider)}
+                                className="rounded-lg bg-[#17366F] px-3 py-2 text-xs font-bold text-white hover:bg-[#2459C4]"
+                              >
+                                Edit
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => openPayoutAccountForm(provider)}
+                              className="flex items-center gap-1 rounded-lg bg-[#D8FD2F] px-3 py-2 text-xs font-extrabold text-[#08132B]"
+                            >
+                              <Plus className="h-3.5 w-3.5" /> Add
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {selectedPayoutProvider && (
+                  <form onSubmit={handleSavePayoutAccount} className="mt-4 space-y-3 rounded-2xl border border-[#2459C4]/50 bg-[#0D204A] p-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-extrabold">
+                        {payoutAccounts.some((item) => item.provider === selectedPayoutProvider) ? 'Edit' : 'Add'}{' '}
+                        {providerLabels[selectedPayoutProvider]} account
+                      </h3>
+                      {renderProviderLogo(selectedPayoutProvider, true)}
+                    </div>
+                    <label className="block text-xs font-semibold text-blue-100/80">
+                      Account Holder
+                      <input
+                        type="text"
+                        autoComplete="name"
+                        maxLength={80}
+                        value={payoutAccountHolder}
+                        onChange={(event) => setPayoutAccountHolder(event.target.value)}
+                        required
+                        className="mt-1.5 w-full rounded-xl border border-[#1E3A78] bg-[#08132B] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400"
+                        placeholder="Name registered to the account"
+                      />
+                    </label>
+                    <label className="block text-xs font-semibold text-blue-100/80">
+                      Account Number
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        maxLength={20}
+                        value={payoutAccountNumber}
+                        onChange={(event) => setPayoutAccountNumber(event.target.value.replace(/[^\d -]/g, ''))}
+                        required
+                        className="mt-1.5 w-full rounded-xl border border-[#1E3A78] bg-[#08132B] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400"
+                        placeholder="7 to 20 digits"
+                      />
+                    </label>
+                    {payoutAccountError && (
+                      <p role="alert" className="text-xs font-semibold text-red-300">{payoutAccountError}</p>
+                    )}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPayoutProvider(null)}
+                        className="flex-1 rounded-xl border border-[#1E3A78] px-3 py-2.5 text-xs font-bold text-blue-100"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingPayoutAccount}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#D8FD2F] px-3 py-2.5 text-xs font-extrabold text-[#08132B] disabled:opacity-50"
+                      >
+                        {isSavingPayoutAccount && <Loader2 className="h-4 w-4 animate-spin" />}
+                        {isSavingPayoutAccount ? 'Saving...' : 'Save Account'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {payoutAccountError && !selectedPayoutProvider && (
+                  <p role="alert" className="mt-3 text-xs font-semibold text-red-300">{payoutAccountError}</p>
+                )}
+                <p className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 text-[11px] leading-5 text-amber-100/80">
+                  Payout account setup is available, but withdrawals are not integrated yet. Adding an account does not submit a withdrawal or move funds.
+                </p>
+              </>
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 };

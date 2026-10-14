@@ -6,6 +6,9 @@ import {
   getMe,
   updateUsername,
   updateProfileImage,
+  getPayoutAccounts,
+  savePayoutAccount,
+  deletePayoutAccount,
   updateRunners,
   purchaseRunner,
   getWorkoutSnapshot,
@@ -29,6 +32,9 @@ router.put('/workout', authMiddleware, saveWorkoutSnapshot);
 router.delete('/workout', authMiddleware, clearWorkoutSnapshot);
 router.put('/username', authMiddleware, updateUsername);
 router.put('/profile-image', authMiddleware, updateProfileImage);
+router.get('/payout-accounts', authMiddleware, getPayoutAccounts);
+router.post('/payout-accounts', authMiddleware, savePayoutAccount);
+router.delete('/payout-accounts/:provider', authMiddleware, deletePayoutAccount);
 router.post('/runners/purchase', authMiddleware, purchaseRunner);
 router.put('/runners', authMiddleware, updateRunners);
 

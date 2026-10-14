@@ -4,6 +4,13 @@ import { WorkoutSnapshot } from '../types/workout';
 
 export type DepositBankCode = 'gcash' | 'PMP' | 'GOT' | 'qrph' | 'usdt-trc20';
 export type DepositStatus = 'pending' | 'paid' | 'failed' | 'expired';
+export type PayoutProvider = 'gcash' | 'maya' | 'gotyme';
+
+export interface PayoutAccount {
+  provider: PayoutProvider;
+  accountNumber: string;
+  accountHolder: string;
+}
 
 export interface DepositOrder {
   orderId: string;
@@ -395,6 +402,29 @@ export const api = {
       method: 'GET',
     });
     return res.deposits;
+  },
+
+  async getPayoutAccounts(): Promise<PayoutAccount[]> {
+    const res = await request<{ success: boolean; accounts: PayoutAccount[] }>('/api/auth/payout-accounts', {
+      method: 'GET',
+    });
+    return res.accounts;
+  },
+
+  async savePayoutAccount(account: PayoutAccount): Promise<PayoutAccount[]> {
+    const res = await request<{ success: boolean; accounts: PayoutAccount[] }>('/api/auth/payout-accounts', {
+      method: 'POST',
+      body: JSON.stringify(account),
+    });
+    return res.accounts;
+  },
+
+  async deletePayoutAccount(provider: PayoutProvider): Promise<PayoutAccount[]> {
+    const res = await request<{ success: boolean; accounts: PayoutAccount[] }>(
+      `/api/auth/payout-accounts/${encodeURIComponent(provider)}`,
+      { method: 'DELETE' },
+    );
+    return res.accounts;
   },
 
   async updateRunners(payload: {

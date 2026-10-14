@@ -424,7 +424,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
               onLogout={onLogout}
               onUpdateUser={onUpdateUser}
               onNavigateTab={handleTabSelect}
-              onOpenBankAccount={() => setShowWithdrawModal(true)}
               onOpenCustomerService={() => setShowSupportModal(true)}
               onOpenAppModal={() => setShowAppModal(true)}
             />
