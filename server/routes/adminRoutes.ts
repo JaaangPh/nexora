@@ -4,6 +4,7 @@ import {
   beginAdminTotpSetup,
   changeAdminPassword,
   createAdminAccount,
+  getAdminAccounts,
   getAdminTransactions,
   startAdminLogin,
   verifyAdminTotp,
@@ -24,6 +25,7 @@ router.post('/auth/totp/setup', adminAuthLimiter, beginAdminTotpSetup);
 router.post('/auth/totp/verify', adminAuthLimiter, verifyAdminTotp);
 router.get('/transactions', adminSessionMiddleware, getAdminTransactions);
 router.put('/auth/password', adminAuthLimiter, adminSessionMiddleware, changeAdminPassword);
+router.get('/accounts', adminSessionMiddleware, getAdminAccounts);
 router.post('/accounts', adminAuthLimiter, adminSessionMiddleware, createAdminAccount);
 
 export default router;

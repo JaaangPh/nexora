@@ -534,6 +534,36 @@ export async function createAdminAccount(req: AdminRequest, res: Response): Prom
   }
 }
 
+export async function getAdminAccounts(req: AdminRequest, res: Response): Promise<void> {
+  if (req.adminRole !== 'admin') {
+    res.status(403).json({ success: false, message: 'Only administrators can view the staff team.' });
+    return;
+  }
+  try {
+    const snapshot = await firestore.collection(ADMIN_ACCOUNTS_COLLECTION).get();
+    const accounts = snapshot.docs
+      .map((document) => {
+        const account = document.data() as AdminAccount;
+        return {
+          email: account.email,
+          role: account.role,
+          status: account.status,
+          createdAt: account.createdAt,
+        };
+      })
+      .filter((account) =>
+        typeof account.email === 'string' &&
+        (account.role === 'admin' || account.role === 'staff') &&
+        (account.status === 'active' || account.status === 'disabled')
+      )
+      .sort((left, right) => left.email.localeCompare(right.email));
+    res.json({ success: true, accounts });
+  } catch (error) {
+    console.error('[Admin Accounts Error]', error);
+    res.status(500).json({ success: false, message: 'Could not load administrator and staff accounts.' });
+  }
+}
+
 function toIsoDate(value: unknown): string {
   if (typeof value === 'string') return value;
   if (value && typeof value === 'object' && 'toDate' in value && typeof value.toDate === 'function') {

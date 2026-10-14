@@ -17,6 +17,7 @@ import {
   RefreshCw,
   ShieldCheck,
   UserPlus,
+  Users,
 } from 'lucide-react';
 import { getApiBaseUrl } from '../services/api';
 
@@ -24,7 +25,7 @@ type AdminScreen = 'login' | 'setup' | 'verify' | 'dashboard';
 type TransactionType = 'deposit' | 'withdrawal';
 type DateRange = '24h' | '7d' | '30d' | 'all';
 type AdminRole = 'admin' | 'staff';
-type AdminView = 'overview' | TransactionType | 'security';
+type AdminView = 'overview' | TransactionType | 'security' | 'staff-team';
 
 interface AdminTransaction {
   id: string;
@@ -36,6 +37,13 @@ interface AdminTransaction {
   userId: string;
   username: string;
   phoneNumber: string;
+}
+
+interface AdminTeamMember {
+  email: string;
+  role: AdminRole;
+  status: 'active' | 'disabled';
+  createdAt: string;
 }
 
 interface AdminApiResponse {
@@ -161,6 +169,9 @@ export const Admin: React.FC = () => {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [manualEntryKey, setManualEntryKey] = useState('');
   const [transactions, setTransactions] = useState<AdminTransaction[]>([]);
+  const [teamMembers, setTeamMembers] = useState<AdminTeamMember[]>([]);
+  const [isLoadingTeam, setIsLoadingTeam] = useState(false);
+  const [teamRefreshKey, setTeamRefreshKey] = useState(0);
   const [activeView, setActiveView] = useState<AdminView>('overview');
   const [dateRange, setDateRange] = useState<DateRange>('7d');
   const [isLoading, setIsLoading] = useState(false);
@@ -212,6 +223,23 @@ export const Admin: React.FC = () => {
     return () => { isCurrent = false; };
   }, [sessionToken]);
 
+  useEffect(() => {
+    if (!sessionToken || role !== 'admin' || activeView !== 'staff-team') return;
+    let isCurrent = true;
+    setIsLoadingTeam(true);
+    adminRequest<{ accounts: AdminTeamMember[] }>('/api/admin/accounts', { method: 'GET' }, sessionToken)
+      .then((result) => {
+        if (isCurrent) setTeamMembers(result.accounts);
+      })
+      .catch((loadError: unknown) => {
+        if (isCurrent) setError(loadError instanceof Error ? loadError.message : 'Could not load the staff team.');
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingTeam(false);
+      });
+    return () => { isCurrent = false; };
+  }, [activeView, role, sessionToken, teamRefreshKey]);
+
   const filteredTransactions = useMemo(() => {
     const now = Date.now();
     const rangeMs: Record<Exclude<DateRange, 'all'>, number> = {
@@ -220,7 +248,7 @@ export const Admin: React.FC = () => {
       '30d': 30 * 24 * 60 * 60 * 1000,
     };
     return transactions.filter((transaction) => {
-      if (activeView !== 'overview' && activeView !== 'security' && transaction.type !== activeView) return false;
+      if (activeView !== 'overview' && activeView !== 'security' && activeView !== 'staff-team' && transaction.type !== activeView) return false;
       if (dateRange === 'all') return true;
       const timestamp = Date.parse(transaction.createdAt);
       return Number.isFinite(timestamp) && timestamp >= now - rangeMs[dateRange];
@@ -533,6 +561,14 @@ export const Admin: React.FC = () => {
             <>
               <div className="mt-3 h-px w-8 bg-[#24466f]" />
               <button
+                title="Staff team"
+                aria-label="Staff team"
+                onClick={() => { setActiveView('staff-team'); setMobileNavOpen(false); }}
+                className={`grid h-11 w-11 place-items-center rounded-xl border-l-[3px] transition ${activeView === 'staff-team' ? 'border-cyan-300 bg-[#142b5b] text-cyan-200' : 'border-transparent text-[#c5bfbb] hover:bg-[#10234a]'}`}
+              >
+                <Users className="h-5 w-5" />
+              </button>
+              <button
                 title="Security and accounts"
                 aria-label="Security and accounts"
                 onClick={() => { setActiveView('security'); setMobileNavOpen(false); }}
@@ -556,8 +592,8 @@ export const Admin: React.FC = () => {
               <Menu className="h-4 w-4" />
             </button>
             <div className="flex items-center gap-2 text-sm font-semibold">
-              {activeView === 'overview' ? <LayoutDashboard className="h-4 w-4 text-[#f15408]" /> : activeView === 'security' ? <ShieldCheck className="h-4 w-4 text-[#f15408]" /> : <ArrowLeftRight className="h-4 w-4 text-[#f15408]" />}
-              {activeView === 'overview' ? 'Dashboard' : activeView === 'security' ? 'Security & accounts' : activeView === 'deposit' ? 'Deposits' : 'Withdrawals'}
+              {activeView === 'overview' ? <LayoutDashboard className="h-4 w-4 text-[#f15408]" /> : activeView === 'security' ? <ShieldCheck className="h-4 w-4 text-[#f15408]" /> : activeView === 'staff-team' ? <Users className="h-4 w-4 text-cyan-300" /> : <ArrowLeftRight className="h-4 w-4 text-[#f15408]" />}
+              {activeView === 'overview' ? 'Dashboard' : activeView === 'security' ? 'Security & accounts' : activeView === 'staff-team' ? 'Staff team' : activeView === 'deposit' ? 'Deposits' : 'Withdrawals'}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -592,7 +628,7 @@ export const Admin: React.FC = () => {
             </div>
           )}
 
-          {activeView !== 'security' && <div className="flex flex-wrap items-center justify-between gap-3">
+          {activeView !== 'security' && activeView !== 'staff-team' && <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
               {rangeLabels.map(({ id, label }) => (
                 <button
@@ -665,6 +701,56 @@ export const Admin: React.FC = () => {
                     Create account
                   </button>
                 </form>
+              </div>
+            </section>
+          )}
+
+          {activeView === 'staff-team' && role === 'admin' && (
+            <section className="overflow-hidden rounded-xl border border-[#1e3a78] bg-[#081b3d]">
+              <div className="flex items-center justify-between gap-3 border-b border-[#1e3a78] px-4 py-4 sm:px-5">
+                <div>
+                  <h2 className="text-sm font-bold text-white">Staff team</h2>
+                  <p className="mt-1 text-[11px] text-[#8f9fba]">Registered administrator and staff accounts</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTeamRefreshKey((key) => key + 1)}
+                  disabled={isLoadingTeam}
+                  className="flex items-center gap-2 rounded-lg border border-[#24466f] bg-[#10234a] px-3 py-2 text-xs font-semibold text-white hover:border-cyan-300 disabled:opacity-60"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isLoadingTeam ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] text-left">
+                  <thead className="bg-[#06132e] text-[10px] uppercase tracking-wider text-[#8f9fba]">
+                    <tr>
+                      <th className="px-5 py-3 font-semibold">Email</th>
+                      <th className="px-5 py-3 font-semibold">Role</th>
+                      <th className="px-5 py-3 font-semibold">Status</th>
+                      <th className="px-5 py-3 font-semibold">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1e3a78] text-xs">
+                    {isLoadingTeam ? (
+                      <tr><td colSpan={4} className="px-5 py-12 text-center text-[#8f9fba]"><LoaderCircle className="mx-auto mb-2 h-5 w-5 animate-spin text-cyan-300" />Loading staff team…</td></tr>
+                    ) : teamMembers.length === 0 ? (
+                      <tr><td colSpan={4} className="px-5 py-12 text-center text-[#8f9fba]">No registered admin or staff accounts found.</td></tr>
+                    ) : teamMembers.map((member) => (
+                      <tr key={member.email} className="hover:bg-[#10234a]">
+                        <td className="px-5 py-3.5 font-medium text-white">{member.email}</td>
+                        <td className="px-5 py-3.5">
+                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${member.role === 'admin' ? 'bg-[#142b5b] text-cyan-200' : 'bg-slate-700/60 text-slate-200'}`}>{member.role}</span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${member.status === 'active' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-300'}`}>{member.status}</span>
+                        </td>
+                        <td className="px-5 py-3.5 text-[#aab9d0]">{member.createdAt ? new Date(member.createdAt).toLocaleDateString() : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </section>
           )}
