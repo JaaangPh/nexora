@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { api, DepositHistoryItem, DepositStatus, PayoutProvider, WithdrawalRecord, WithdrawalStatus } from '../services/api';
 
-type StatusFilter = 'all' | DepositStatus | 'accepted';
+type StatusFilter = 'all' | 'pending' | 'success' | 'failed' | 'expired';
 type MemberTransaction =
   | { type: 'deposit'; record: DepositHistoryItem }
   | { type: 'withdrawal'; record: WithdrawalRecord };
@@ -25,8 +25,7 @@ interface MyRecordTabProps {
 const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'pending', label: 'Pending' },
-  { id: 'paid', label: 'Success' },
-  { id: 'accepted', label: 'Accepted' },
+  { id: 'success', label: 'Success' },
   { id: 'failed', label: 'Failed' },
   { id: 'expired', label: 'Expired' },
 ];
@@ -43,7 +42,7 @@ const STATUS_STYLES: Record<DepositStatus | WithdrawalStatus, { label: string; c
     Icon: CheckCircle2,
   },
   accepted: {
-    label: 'Accepted',
+    label: 'Success',
     className: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-300',
     Icon: CheckCircle2,
   },
@@ -126,7 +125,10 @@ export const MyRecordTab: React.FC<MyRecordTabProps> = ({ onBack }) => {
       ...withdrawals.map((record) => ({ type: 'withdrawal' as const, record })),
     ];
     return transactions
-      .filter(({ record }) => filter === 'all' || record.status === filter)
+      .filter(({ record }) =>
+        filter === 'all' ||
+        (filter === 'success' ? record.status === 'paid' || record.status === 'accepted' : record.status === filter)
+      )
       .sort((first, second) => Date.parse(second.record.createdAt) - Date.parse(first.record.createdAt));
   },
     [deposits, filter, withdrawals],
