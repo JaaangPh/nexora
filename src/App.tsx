@@ -282,7 +282,7 @@ export const App: React.FC = () => {
         <div className="flex flex-col items-center gap-3">
           <div className="w-10 h-10 border-4 border-[#142B5B] border-t-cyan-400 rounded-full animate-spin" />
           <span className="text-xs font-bold tracking-wider text-[#142B5B] uppercase">
-            {isUpdatingApp ? 'Updating Nexora...' : 'Loading Nexora Portal...'}
+            {isUpdatingApp ? 'Updating Stepora...' : 'Loading Stepora Portal...'}
           </span>
         </div>
       </div>
