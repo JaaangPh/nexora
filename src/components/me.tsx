@@ -292,22 +292,12 @@ export const MeTab: React.FC<MeTabProps> = ({
     gotyme: 'GoTyme',
   };
   const renderProviderLogo = (provider: PayoutProvider, compact = false) => (
-    <span
-      className={`inline-flex items-center gap-2 ${compact ? 'min-w-[84px]' : ''}`}
-      aria-label={providerLabels[provider]}
-    >
-      {provider === 'gotyme' && (
-        <svg viewBox="0 0 20 20" className="h-5 w-5 flex-shrink-0" aria-hidden="true">
-          <path d="M2 3h4v14H2zM8 3h4v14H8zM14 3h4v14h-4z" fill="#26C6B8" />
-        </svg>
-      )}
-      <span
-        className={`font-black tracking-tight ${
-          provider === 'gcash' ? 'text-[#007DFE]' : provider === 'maya' ? 'text-[#35B36F]' : 'text-white'
-        } ${compact ? 'text-sm' : 'text-base'}`}
-      >
-        {providerLabels[provider]}
-      </span>
+    <span className={`inline-flex items-center ${compact ? 'min-w-[84px]' : ''}`}>
+      <img
+        src={`/images/payment/${provider}.png`}
+        alt={`${providerLabels[provider]} logo`}
+        className="h-10 max-w-[88px] rounded-md object-contain"
+      />
     </span>
   );
 
