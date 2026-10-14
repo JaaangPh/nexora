@@ -106,6 +106,14 @@ export interface FirestoreUser {
   workoutSnapshot?: Record<string, unknown>;
 }
 
+export interface AdminSecurityRecord {
+  encryptedTotpSecret?: string;
+  pendingEncryptedTotpSecret?: string;
+  pendingTotpExpiresAt?: number;
+  lastUsedTotpCounter?: number;
+  updatedAt?: string;
+}
+
 const AUTO_USERNAME_NAMES = [
   'Pablo', 'Juan', 'Miguel', 'Diego', 'Carlos', 'Luis', 'Marco', 'Andres',
   'Mateo', 'Jose', 'Gabriel', 'Rafael', 'Nico', 'Leo', 'Sofia', 'Maria',

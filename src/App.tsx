@@ -8,6 +8,7 @@ import { RegisterForm } from './components/RegisterForm';
 import { Dashboard } from './components/Dashboard';
 import { AboutWhitepaper } from './components/about';
 import { InviteCodeHelper } from './components/InviteCodeHelper';
+import { Admin } from './components/admin';
 import { User } from './types/auth';
 import { getStoredUser, getStoredToken, setStoredSession, api } from './services/api';
 import { hasWorkoutInProgressInStorage } from './services/workoutStorage';
@@ -274,6 +275,10 @@ export const App: React.FC = () => {
 
   if (window.location.pathname.replace(/\/+$/, '') === '/about') {
     return <AboutWhitepaper />;
+  }
+
+  if (window.location.pathname.replace(/\/+$/, '') === '/admin') {
+    return <Admin />;
   }
 
   if (isInitializing) {
