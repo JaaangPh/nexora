@@ -21,10 +21,11 @@ import {
   TrendingUp,
   Zap,
   Play,
+  Bell,
 } from 'lucide-react';
 import { User } from '../types/auth';
 import { BrandLogo } from './BrandLogo';
-import { api, DepositBankCode, DepositOrder } from '../services/api';
+import { api, DepositBankCode, DepositOrder, WithdrawalRecord } from '../services/api';
 
 // Separated Tab Components
 import { MarketTab } from './market';
@@ -45,6 +46,11 @@ interface DashboardProps {
 
 type NavTab = 'home' | 'market' | 'track' | 'team' | 'marathon' | 'me' | 'myrunners' | 'myrecord';
 
+interface WithdrawalStatusNotification {
+  orderId: string;
+  status: 'accepted' | 'failed';
+}
+
 function getTabFromUrl(): NavTab {
   if (typeof window === 'undefined') return 'home';
   const path = window.location.pathname.toLowerCase();
@@ -63,6 +69,7 @@ function getTabFromUrl(): NavTab {
 export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUser }) => {
   const [activeTab, setActiveTab] = useState<NavTab>(() => getTabFromUrl());
   const [equippedSneaker, setEquippedSneaker] = useState<string>('Cyber Aero Walker');
+  const [withdrawalNotifications, setWithdrawalNotifications] = useState<WithdrawalStatusNotification[]>([]);
 
   const handleTabSelect = (tab: NavTab) => {
     setActiveTab(tab);
@@ -168,6 +175,61 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
       window.clearInterval(intervalId);
     };
   }, [depositOrder?.orderId, depositOrder?.status, onUpdateUser, user]);
+
+  useEffect(() => {
+    let isActive = true;
+    let isChecking = false;
+    let hasBaseline = false;
+    const previousStatuses = new Map<string, WithdrawalRecord['status']>();
+
+    const checkWithdrawalStatuses = async () => {
+      if (!isActive || isChecking || document.visibilityState === 'hidden') return;
+      isChecking = true;
+      try {
+        const withdrawals = await api.getWithdrawalHistory();
+        if (!isActive) return;
+
+        const changedWithdrawals: WithdrawalStatusNotification[] = [];
+        for (const withdrawal of withdrawals) {
+          const previousStatus = previousStatuses.get(withdrawal.orderId);
+          if (
+            hasBaseline &&
+            previousStatus === 'pending' &&
+            (withdrawal.status === 'accepted' || withdrawal.status === 'failed')
+          ) {
+            changedWithdrawals.push({ orderId: withdrawal.orderId, status: withdrawal.status });
+          }
+          previousStatuses.set(withdrawal.orderId, withdrawal.status);
+        }
+        hasBaseline = true;
+
+        if (changedWithdrawals.length > 0) {
+          setWithdrawalNotifications((current) => {
+            const knownOrderIds = new Set(current.map(({ orderId }) => orderId));
+            return [
+              ...current,
+              ...changedWithdrawals.filter(({ orderId }) => !knownOrderIds.has(orderId)),
+            ];
+          });
+          const notificationSound = new Audio('/notif.mp3');
+          void notificationSound.play().catch((error: unknown) => {
+            console.warn('[Withdrawal Notification Sound]', error);
+          });
+        }
+      } catch (error) {
+        console.warn('[Withdrawal Status Check]', error);
+      } finally {
+        isChecking = false;
+      }
+    };
+
+    void checkWithdrawalStatuses();
+    const intervalId = window.setInterval(() => void checkWithdrawalStatuses(), 10000);
+    return () => {
+      isActive = false;
+      window.clearInterval(intervalId);
+    };
+  }, [user.id]);
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden bg-[#08132B] text-white font-sans select-none">
@@ -443,6 +505,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
 
         </div>
       </div>
+
+      {withdrawalNotifications.length > 0 && (
+        <div className="fixed left-1/2 top-4 z-[80] w-[min(92vw,420px)] -translate-x-1/2 space-y-3">
+          {withdrawalNotifications.map((notification) => (
+            <div
+              key={notification.orderId}
+              role="alert"
+              className="rounded-2xl border border-cyan-300/30 bg-[#0b1e43] p-4 shadow-2xl shadow-black/50"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-300/10 text-cyan-200">
+                  <Bell className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-white">
+                    Withdrawal {notification.status === 'accepted' ? 'successful' : 'failed'}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-blue-100/75">
+                    {notification.status === 'accepted'
+                      ? 'Your withdrawal has been processed.'
+                      : 'Your withdrawal was rejected and the balance has been refunded.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWithdrawalNotifications((current) =>
+                        current.filter(({ orderId }) => orderId !== notification.orderId),
+                      );
+                      handleTabSelect('myrecord');
+                    }}
+                    className="mt-3 rounded-lg bg-cyan-300 px-3 py-2 text-xs font-bold text-[#08132B] hover:bg-cyan-200"
+                  >
+                    View in My Record
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Dismiss withdrawal notification"
+                  onClick={() => setWithdrawalNotifications((current) =>
+                    current.filter(({ orderId }) => orderId !== notification.orderId),
+                  )}
+                  className="rounded-md p-1 text-blue-100/60 hover:bg-white/10 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ======================================================== */}
       {/* BOTTOM NAVIGATION BAR (HOME MARKET TRACK TEAM ME)        */}
