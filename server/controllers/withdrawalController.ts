@@ -155,7 +155,7 @@ export async function verifyWithdrawalTotpSetup(req: AuthRequest, res: Response)
       return;
     }
     if (message === 'TOTP_CODE_INVALID') {
-      res.status(401).json({ success: false, message: 'That authenticator code is not valid.' });
+      res.status(400).json({ success: false, message: 'That authenticator code is not valid.' });
       return;
     }
     console.error('[Withdrawal Authenticator Verify Error]', error);
@@ -249,7 +249,7 @@ export async function createWithdrawal(req: AuthRequest, res: Response): Promise
       return;
     }
     if (message === 'TOTP_CODE_INVALID') {
-      res.status(401).json({ success: false, message: 'Enter a valid, unused authenticator code.' });
+      res.status(400).json({ success: false, message: 'Enter a valid, unused authenticator code.' });
       return;
     }
     if (message === 'PAYOUT_ACCOUNT_NOT_FOUND') {
