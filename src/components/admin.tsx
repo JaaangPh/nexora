@@ -991,7 +991,7 @@ function TransactionTable({
   onWithdrawalReferenceNoChange?: (orderId: string, value: string) => void;
 }) {
   const withdrawalTable = Boolean(onReviewWithdrawal);
-  const columnCount = withdrawalTable ? 8 : 6;
+  const columnCount = withdrawalTable ? 9 : 7;
   return (
     <section className="overflow-hidden rounded-xl border border-[#1e3a78] bg-[#081b3d]">
       <div className="flex items-center justify-between border-b border-[#1e3a78] px-4 py-4 sm:px-5">
@@ -1004,10 +1004,11 @@ function TransactionTable({
         )}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse text-left">
+        <table className="w-full min-w-[1100px] border-collapse text-left">
           <thead className="bg-[#06132e] text-[10px] uppercase tracking-wider text-[#8f9fba]">
             <tr>
-              <th className="px-5 py-3 font-semibold">Transaction ID</th>
+              <th className="px-5 py-3 font-semibold">Transaction</th>
+              <th className="px-5 py-3 font-semibold">ID</th>
               <th className="px-5 py-3 font-semibold">User</th>
               <th className="px-5 py-3 font-semibold">Method</th>
               <th className="px-5 py-3 font-semibold">Status</th>
@@ -1028,9 +1029,9 @@ function TransactionTable({
                   <div className="font-mono text-[11px] text-white">{transaction.id}</div>
                   <div className="mt-1 text-[10px] capitalize text-[#817c79]">{transaction.type}</div>
                 </td>
+                <td className="px-5 py-3.5 font-mono text-[11px] text-cyan-200">{transaction.steporaId}</td>
                 <td className="px-5 py-3.5">
                   <div className="font-semibold text-[#e3dedb]">{transaction.username}</div>
-                  <div className="mt-1 text-[10px] text-cyan-200">STEPORA ID: {transaction.steporaId}</div>
                   <div className="mt-1 text-[10px] text-[#817c79]">{transaction.phoneNumber || '—'}</div>
                 </td>
                 <td className="px-5 py-3.5 text-[#c0b8b3]">
