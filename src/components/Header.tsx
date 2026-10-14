@@ -22,7 +22,7 @@ export const Header: React.FC = () => {
         <div className="flex items-center gap-2.5 rounded-2xl border border-white/10 bg-[#08132B]/80 px-2.5 py-2 backdrop-blur-md">
           <BrandLogo size="sm" />
           <div>
-            <p className="text-sm font-black tracking-wide text-white">NEXORA</p>
+            <p className="text-sm font-black tracking-wide text-white">STEPORA</p>
             <p className="text-[9px] font-bold tracking-[0.2em] text-cyan-100/80">MOVE TO EARN</p>
           </div>
         </div>
