@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getDb, FirestoreUser } from '../database/firebase.js';
 import {
   allocateEqualCents,
+  calculateWorkoutRewardCents,
   checkMarathonRunnerEligibility,
   displayedNexoraId,
   fromCents,
@@ -11,6 +12,7 @@ import {
   marathonWorkoutInProgress,
   MARATHON_PACKAGES,
   MARATHON_RUNNER_LIMITS_KM,
+  isPlausibleSensorWorkout,
   ownsRequiredMarathonRunners,
   toCents,
 } from './marathonRules.js';
@@ -876,7 +878,8 @@ export async function cancelMarathonLobby(userIdInput: string | undefined, teamI
 
 function validCompletedWorkout(snapshot: Record<string, unknown>, user: FirestoreUser, completedAt: number) {
   const points = snapshot.routePoints;
-  const meters = haversineDistanceMeters(points);
+  const routeMeters = haversineDistanceMeters(points);
+  const reportedMeters = Number(snapshot.distanceKm || 0) * 1000;
   const owned = Array.isArray(user.ownedRunners) ? user.ownedRunners : [];
   const runners = owned.flatMap((runner) => {
     if (typeof runner === 'string') return [{ id: runner, runnerId: runner }];
@@ -904,41 +907,88 @@ function validCompletedWorkout(snapshot: Record<string, unknown>, user: Firestor
   const serverStartedAt = Number(snapshot.serverStartedAt || 0);
   const startedAt = Number(snapshot.workoutStartTime || 0);
   const observedSeconds = Math.max(1, (completedAt - serverStartedAt) / 1000);
-  const plausible = validSelection && meters > 0 && limitKm > 0 && meters <= limitKm * 1000 &&
+  const validTiming = validSelection && limitKm > 0 &&
     serverStartedAt > 0 && startedAt > 0 &&
     startedAt <= completedAt && Math.abs(serverStartedAt - startedAt) <= 120_000 &&
-    completedAt >= serverStartedAt && meters / observedSeconds <= 20;
+    completedAt >= serverStartedAt;
+  const routePlausible = validTiming && routeMeters > 0 && routeMeters / observedSeconds <= 20;
+  const sensorPlausible = validTiming &&
+    routeMeters === 0 &&
+    reportedMeters <= limitKm * 1000 &&
+    isPlausibleSensorWorkout(reportedMeters, Number(snapshot.stepCount || 0), observedSeconds);
+  const rewardMeters = routePlausible
+    ? Math.min(routeMeters, limitKm * 1000)
+    : sensorPlausible
+      ? reportedMeters
+      : 0;
   return {
-    meters: plausible ? meters : 0,
-    eligible: plausible,
+    meters: routePlausible ? Math.min(routeMeters, limitKm * 1000) : 0,
+    eligible: routePlausible,
+    rewardMeters,
+    rewardEligible: rewardMeters > 0,
     startedAt,
     serverStartedAt,
     completedAt,
-    selectedRunnerIds: selectedRunners.map((runner) => runner.runnerId).filter(Boolean),
+    selectedRunnerIds: selectedRunners
+      .map((runner) => runner.runnerId)
+      .filter((runnerId): runnerId is string => typeof runnerId === 'string'),
   };
 }
 
-export async function completeWorkoutAndClearSnapshot(userIdInput: string | undefined) {
+export async function completeWorkoutAndClearSnapshot(
+  userIdInput: string | undefined,
+  expectedWorkoutStartTime?: number,
+) {
   const userId = requireUserId(userIdInput);
   const userRef = getDb().collection('users').doc(userId);
   let creditedMeters = 0;
+  let creditedRewardCents = 0;
+  let resultingBalance = 0;
+  let workoutVerified = false;
   await getDb().runTransaction(async (transaction) => {
     const userSnapshot = await transaction.get(userRef);
     const user = getUserData(userSnapshot);
     if (!user) throw new MarathonError(404, 'Account not found.');
     const snapshot = user.workoutSnapshot as Record<string, unknown> | undefined;
     if (!snapshot || snapshot.pendingFinish !== true || snapshot.isTracking === true) {
+      if (expectedWorkoutStartTime && Number.isFinite(expectedWorkoutStartTime) && expectedWorkoutStartTime > 0) {
+        const completedWorkoutRef = getDb().collection('completed_workouts')
+          .doc(`${userId}_${Math.trunc(expectedWorkoutStartTime)}`);
+        const completedWorkoutSnapshot = await transaction.get(completedWorkoutRef);
+        const completedWorkout = completedWorkoutSnapshot.data();
+        if (completedWorkoutSnapshot.exists && completedWorkout?.userId === userId) {
+          creditedRewardCents = Number(completedWorkout.rewardCents || 0);
+          resultingBalance = fromCents(toCents(user.balance));
+          workoutVerified = completedWorkout.rewardVerified === true;
+          return;
+        }
+      }
       throw new MarathonError(409, 'Complete End & Earn before finishing this workout.');
     }
 
     const startedAt = Number(snapshot.workoutStartTime || 0);
     if (!Number.isFinite(startedAt) || startedAt <= 0) throw new MarathonError(400, 'The workout start time is invalid.');
+    if (expectedWorkoutStartTime && Math.trunc(expectedWorkoutStartTime) !== Math.trunc(startedAt)) {
+      throw new MarathonError(409, 'The workout changed before its reward could be credited. Refresh and try again.');
+    }
     const workoutId = `${userId}_${Math.trunc(startedAt)}`;
     const workoutRef = getDb().collection('completed_workouts').doc(workoutId);
+    const rewardRef = getDb().collection('wallet_transactions').doc(`${workoutId}_reward`);
     const membershipSnapshot = await transaction.get(memberRef(userId));
     const workoutSnapshot = await transaction.get(workoutRef);
+    const rewardSnapshot = await transaction.get(rewardRef);
     const now = Date.now();
     const verification = validCompletedWorkout(snapshot, user, now);
+    workoutVerified = verification.rewardEligible;
+    const rewardCents = verification.rewardEligible
+      ? calculateWorkoutRewardCents(verification.rewardMeters, verification.selectedRunnerIds)
+      : 0;
+    const currentBalanceCents = toCents(user.balance);
+    const shouldCreditReward = !workoutSnapshot.exists && !rewardSnapshot.exists && rewardCents > 0;
+    creditedRewardCents = shouldCreditReward
+      ? rewardCents
+      : Number(rewardSnapshot.data()?.amountCents || 0);
+    resultingBalance = fromCents(currentBalanceCents + (shouldCreditReward ? rewardCents : 0));
     const teamId = membershipSnapshot.data()?.teamId as string | undefined;
     const teamSnapshot = teamId ? await transaction.get(teamRef(teamId)) : null;
     const team = teamSnapshot?.exists ? teamSnapshot.data() as MarathonTeam : null;
@@ -983,12 +1033,35 @@ export async function completeWorkoutAndClearSnapshot(userIdInput: string | unde
         completedAt: now,
         verified: verification.eligible,
         verifiedMeters: verification.meters,
+        rewardVerified: verification.rewardEligible,
+        rewardCents: creditedRewardCents,
         creditedMarathonId: creditedMeters > 0 ? teamId : null,
         selectedRunnerIds: verification.selectedRunnerIds,
       });
     }
 
-    transaction.update(userRef, { workoutSnapshot: FieldValue.delete() });
+    if (shouldCreditReward) {
+      transaction.create(rewardRef, {
+        id: `${workoutId}_reward`,
+        userId,
+        type: 'workout_reward',
+        workoutId,
+        amountCents: rewardCents,
+        amount: fromCents(rewardCents),
+        createdAt: now,
+      });
+    }
+
+    transaction.update(userRef, {
+      workoutSnapshot: FieldValue.delete(),
+      ...(shouldCreditReward ? { balance: resultingBalance } : {}),
+    });
   });
-  return { success: true, creditedMeters };
+  return {
+    success: true,
+    verified: workoutVerified,
+    creditedMeters,
+    creditedReward: fromCents(creditedRewardCents),
+    balance: resultingBalance,
+  };
 }

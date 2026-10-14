@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   allocateEqualCents,
+  calculateWorkoutRewardCents,
   checkMarathonRunnerEligibility,
   displayedNexoraId,
   haversineDistanceMeters,
+  isPlausibleSensorWorkout,
   isBeforeMarathonDeadline,
   marathonWorkoutInProgress,
   ownsRequiredMarathonRunners,
@@ -59,4 +61,19 @@ test('server derives route distance from validated coordinates', () => {
   assert.ok(meters > 111_000 && meters < 111_500);
   assert.equal(haversineDistanceMeters([[0, 0], [91, 1]]), 0);
   assert.equal(haversineDistanceMeters([]), 0);
+});
+
+test('workout rewards use server rates and each selected runner limit', () => {
+  assert.equal(calculateWorkoutRewardCents(6_000, ['snk-1']), 5_040);
+  assert.equal(calculateWorkoutRewardCents(7_000, ['snk-1']), 5_040);
+  assert.equal(calculateWorkoutRewardCents(6_000, ['snk-1', 'snk-2']), 11_160);
+  assert.equal(calculateWorkoutRewardCents(6_000, ['unknown']), 0);
+  assert.equal(calculateWorkoutRewardCents(-1, ['snk-1']), 0);
+});
+
+test('motion-sensor reward distance must match plausible steps and elapsed time', () => {
+  assert.equal(isPlausibleSensorWorkout(6_000, 8_000, 1_800), true);
+  assert.equal(isPlausibleSensorWorkout(6_000, 0, 1_800), false);
+  assert.equal(isPlausibleSensorWorkout(6_000, 100, 1_800), false);
+  assert.equal(isPlausibleSensorWorkout(6_000, 8_000, 10), false);
 });

@@ -260,9 +260,22 @@ export const api = {
     });
   },
 
-  async clearWorkoutSnapshot(): Promise<{ success: boolean }> {
-    return request<{ success: boolean }>('/api/auth/workout', {
+  async clearWorkoutSnapshot(workoutStartTime: number): Promise<{
+    success: boolean;
+    verified: boolean;
+    creditedMeters: number;
+    creditedReward: number;
+    balance: number;
+  }> {
+    return request<{
+      success: boolean;
+      verified: boolean;
+      creditedMeters: number;
+      creditedReward: number;
+      balance: number;
+    }>('/api/auth/workout', {
       method: 'DELETE',
+      body: JSON.stringify({ workoutStartTime }),
     });
   },
 

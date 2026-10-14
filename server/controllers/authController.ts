@@ -460,7 +460,16 @@ export async function clearWorkoutSnapshot(req: AuthRequest, res: Response): Pro
       return;
     }
 
-    const result = await completeWorkoutAndClearSnapshot(req.user.id);
+    const workoutStartTime = req.body?.workoutStartTime;
+    if (
+      workoutStartTime !== undefined &&
+      (typeof workoutStartTime !== 'number' || !Number.isFinite(workoutStartTime) || workoutStartTime <= 0)
+    ) {
+      res.status(400).json({ success: false, message: 'The workout start time is invalid.' });
+      return;
+    }
+
+    const result = await completeWorkoutAndClearSnapshot(req.user.id, workoutStartTime);
     res.json(result);
   } catch (error: any) {
     if (error instanceof MarathonError) {

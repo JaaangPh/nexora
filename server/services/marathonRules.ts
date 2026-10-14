@@ -10,6 +10,41 @@ export const MARATHON_RUNNER_LIMITS_KM: Record<string, number> = {
   'snk-4': 35,
 };
 
+export const WORKOUT_RUNNER_EARNING_RATES: Record<string, number> = {
+  'snk-1': 8.4,
+  'snk-2': 10.2,
+  'snk-3': 20.1,
+  'snk-4': 40,
+};
+
+export function calculateWorkoutRewardCents(distanceMeters: number, runnerIds: string[]): number {
+  if (!Number.isFinite(distanceMeters) || distanceMeters <= 0) return 0;
+  const distanceKm = distanceMeters / 1000;
+  const reward = runnerIds.reduce((total, runnerId) => {
+    const earningRate = WORKOUT_RUNNER_EARNING_RATES[runnerId] || 0;
+    const limitKm = MARATHON_RUNNER_LIMITS_KM[runnerId] || 0;
+    return total + Math.min(distanceKm, limitKm) * earningRate;
+  }, 0);
+  return Math.round(reward * 100);
+}
+
+export function isPlausibleSensorWorkout(
+  distanceMeters: number,
+  stepCount: number,
+  elapsedSeconds: number,
+): boolean {
+  // Device-motion rewards require a plausible stride length and average speed.
+  return Number.isFinite(distanceMeters) &&
+    Number.isFinite(stepCount) &&
+    Number.isFinite(elapsedSeconds) &&
+    distanceMeters > 0 &&
+    stepCount > 0 &&
+    elapsedSeconds > 0 &&
+    distanceMeters / elapsedSeconds <= 20 &&
+    distanceMeters >= stepCount * 0.1 &&
+    distanceMeters <= stepCount * 1.5;
+}
+
 export interface RunnerEligibility {
   eligible: boolean;
   ownsCobalt: boolean;

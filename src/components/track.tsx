@@ -48,7 +48,7 @@ interface TrackTabProps {
   onNavigateTab?: (tab: 'home' | 'market' | 'track' | 'team' | 'me') => void;
   equippedSneakerName?: string;
   onEquipSneaker?: (runner: RunnerItem) => void;
-  onWorkoutFinish?: (earned: number, runnerIds?: string[]) => void;
+  onWorkoutFinish?: (earned: number, runnerIds: string[], balance: number) => void;
 }
 
 type WorkoutMode = 'running' | 'cycling' | 'transit';
@@ -104,6 +104,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     return eligibleOwnedRunners[0] ? [eligibleOwnedRunners[0].id] : [];
   });
   const [showFinishModal, setShowFinishModal] = useState(false);
+  const [isSettlingWorkout, setIsSettlingWorkout] = useState(false);
+  const [isWorkoutSettled, setIsWorkoutSettled] = useState(false);
+  const [isWorkoutVerified, setIsWorkoutVerified] = useState(false);
   const [workoutSyncError, setWorkoutSyncError] = useState('');
   const [isWorkoutHydrated, setIsWorkoutHydrated] = useState(false);
 
@@ -298,6 +301,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       sessionRunnerIdsRef.current = restoredRunnerIds;
       setSessionRunnerIds(restoredRunnerIds);
       finishWasPausedRef.current = !!data.pendingWasPaused;
+      workoutStartTimeRef.current = data.workoutStartTime;
+      setIsWorkoutSettled(false);
+      setIsWorkoutVerified(false);
       if (restoredRunnerIds.length) setSelectedRunnerIds(restoredRunnerIds);
       setIsTracking(false);
       isTrackingRef.current = false;
@@ -941,10 +947,10 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   };
 
   // --------------------------------------------------------------------------
-  // 9. END & EARN -> OPEN CELEBRATION MODAL
+  // 9. END, VERIFY, AND CREDIT THE WORKOUT
   // --------------------------------------------------------------------------
   const handleFinishWorkout = async () => {
-    if (!isTrackingRef.current) return;
+    if (!isTrackingRef.current || isSettlingWorkout) return;
     const now = Date.now();
     const activePauseDuration = isPausedRef.current && pauseStartTimeRef.current > 0
       ? now - pauseStartTimeRef.current
@@ -971,8 +977,11 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     await stopContinuousGpsWatch();
 
     setLastWorkoutSummary(summary);
+    setIsWorkoutSettled(false);
+    setIsWorkoutVerified(false);
     setShowFinishModal(true);
-    await saveWorkoutSnapshot(true, summary, true);
+    setIsSettlingWorkout(true);
+    await settleWorkoutReward(workoutStartTimeRef.current, summary);
   };
 
   useEffect(() => {
@@ -1060,50 +1069,42 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     return () => window.clearInterval(intervalId);
   }, [isTracking, isOffline]);
 
-  const handleCancelFinish = () => {
-    setShowFinishModal(false);
-    isTrackingRef.current = true;
-    isPausedRef.current = finishWasPausedRef.current;
-    setIsTracking(true);
-    setIsPaused(finishWasPausedRef.current);
-
-    if (finishWasPausedRef.current) {
-      const now = Date.now();
-      if (pauseStartTimeRef.current > 0) {
-        pausedDurationRef.current += now - pauseStartTimeRef.current;
-      }
-      pauseStartTimeRef.current = now;
-      releaseWakeLock();
-    } else {
-      pauseStartTimeRef.current = 0;
-      void startContinuousGpsWatch();
-      if (keepScreenOn) requestWakeLock();
+  const settleWorkoutReward = async (
+    workoutStartTime: number,
+    summary = lastWorkoutSummary,
+  ) => {
+    setWorkoutSyncError('');
+    setIsSettlingWorkout(true);
+    try {
+      await saveWorkoutSnapshot(true, summary, true);
+      await remoteWorkoutSyncChainRef.current;
+      const result = await api.clearWorkoutSnapshot(workoutStartTime);
+      if (!result.success) throw new Error('The workout reward was not credited.');
+      const runnerIds = sessionRunnerIdsRef.current.length > 0
+        ? sessionRunnerIdsRef.current
+        : sessionRunnerIds;
+      setLastWorkoutSummary((summary) => ({ ...summary, earned: result.creditedReward }));
+      setIsWorkoutVerified(result.verified);
+      onWorkoutFinish?.(result.creditedReward, runnerIds, result.balance);
+      setIsWorkoutSettled(true);
+    } catch (error) {
+      console.error('[Workout Reward] Failed to credit the completed workout.', error);
+      setWorkoutSyncError('Could not verify and credit your workout. Check your connection and retry.');
+    } finally {
+      setIsSettlingWorkout(false);
     }
-    void saveWorkoutSnapshot(false, lastWorkoutSummary, true);
   };
 
   // --------------------------------------------------------------------------
-  // 10. COLLECT & CONTINUE (Claims reward, sets 24h cooldown, resets)
+  // 10. CONTINUE AFTER REWARD CREDIT
   // --------------------------------------------------------------------------
-  const handleCollectAndContinue = async () => {
-    setWorkoutSyncError('');
-    try {
-      await remoteWorkoutSyncChainRef.current;
-      await api.clearWorkoutSnapshot();
-    } catch (error) {
-      console.error('[Workout Snapshot Sync] Failed to clear the collected workout.', error);
-      setWorkoutSyncError('Could not sync your workout to your account. Check your connection and try again.');
-      return;
-    }
-
+  const handleContinueAfterWorkout = () => {
+    if (!isWorkoutSettled) return;
     setShowFinishModal(false);
 
-    const finalEarned = lastWorkoutSummary.earned;
     const runnerIds = sessionRunnerIdsRef.current.length > 0
       ? sessionRunnerIdsRef.current
       : sessionRunnerIds;
-
-    onWorkoutFinish?.(finalEarned, runnerIds);
 
     // Clear active workout session
     try {
@@ -1697,14 +1698,26 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                 Workout Complete!
               </h3>
               <p className="text-xs text-slate-300 mt-1">
-                Your workout using <span className="text-[#D8FD2F] font-bold">{lastWorkoutSummary.runnerName}</span> has ended. Collect your reward to place each selected Runner on a 24-hour cooldown.
+                Your workout using <span className="text-[#D8FD2F] font-bold">{lastWorkoutSummary.runnerName}</span> has ended.{' '}
+                {isWorkoutSettled
+                  ? isWorkoutVerified
+                    ? 'Its validated reward was added to your balance.'
+                    : 'It could not be verified, so no reward was added to your balance.'
+                  : 'Its reward is being verified and credited to your balance.'}{' '}
+                The selected Runners enter a 24-hour cooldown.
               </p>
             </div>
 
             <div className="bg-[#0E1118] border border-[#232936] rounded-2xl p-4 space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                Estimated Reward (Not Credited)
-              </span>
+                  {isWorkoutSettled && isWorkoutVerified
+                    ? 'Reward Credited to Balance'
+                    : isWorkoutSettled
+                      ? 'Workout Not Verified — No Reward Credited'
+                    : isSettlingWorkout
+                      ? 'Verifying and Crediting Reward'
+                      : 'Reward Not Yet Credited'}
+                </span>
               <div className="text-3xl font-black font-mono text-[#D8FD2F]">
                 +₱{lastWorkoutSummary.earned.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
@@ -1726,7 +1739,13 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-[10px] text-amber-200 flex items-center justify-center gap-1.5 font-semibold">
               <Hourglass className="w-3.5 h-3.5 text-amber-400" />
-              <span>Workout reward credits are paused; selected Runners will still be locked for 24 hours.</span>
+              <span>
+                {isWorkoutSettled
+                  ? isWorkoutVerified
+                    ? 'Reward credited to your wallet. Marathon progress is handled separately.'
+                    : 'This workout could not be verified, so no reward was credited. Marathon progress is handled separately.'
+                  : 'Your workout reward is being validated and added to your wallet.'}
+              </span>
             </div>
 
             {workoutSyncError && (
@@ -1735,20 +1754,26 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               </p>
             )}
 
-            <button
-              onClick={handleCancelFinish}
-              disabled={!isWorkoutHydrated}
-              className="w-full py-3 rounded-2xl bg-[#202633] hover:bg-[#2b3445] text-white border border-white/10 font-black text-xs uppercase tracking-wider active:scale-95 transition-all"
-            >
-              Cancel & Continue Workout
-            </button>
-            <button
-              onClick={handleCollectAndContinue}
-              disabled={!isWorkoutHydrated}
-              className="w-full py-3.5 rounded-2xl bg-[#D8FD2F] hover:bg-[#c6ec22] text-[#0A0D11] font-black text-xs uppercase tracking-wider shadow-lg shadow-[#D8FD2F]/20 active:scale-95 transition-all"
-            >
-              Collect & Continue
-            </button>
+            {isWorkoutSettled ? (
+              <button
+                onClick={handleContinueAfterWorkout}
+                className="w-full py-3.5 rounded-2xl bg-[#D8FD2F] hover:bg-[#c6ec22] text-[#0A0D11] font-black text-xs uppercase tracking-wider shadow-lg shadow-[#D8FD2F]/20 active:scale-95 transition-all"
+              >
+                Continue
+              </button>
+            ) : (
+              <button
+                onClick={() => void settleWorkoutReward(workoutStartTimeRef.current)}
+                disabled={!isWorkoutHydrated || isSettlingWorkout}
+                className="w-full py-3.5 rounded-2xl bg-[#D8FD2F] hover:bg-[#c6ec22] text-[#0A0D11] font-black text-xs uppercase tracking-wider shadow-lg shadow-[#D8FD2F]/20 active:scale-95 transition-all disabled:opacity-60"
+              >
+                {isSettlingWorkout
+                  ? 'Verifying Reward...'
+                  : workoutSyncError
+                    ? 'Retry Reward Credit'
+                    : 'Credit Reward'}
+              </button>
+            )}
           </div>
         </div>
       )}
