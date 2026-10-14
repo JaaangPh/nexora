@@ -292,12 +292,14 @@ export const MeTab: React.FC<MeTabProps> = ({
     gotyme: 'GoTyme',
   };
   const renderProviderLogo = (provider: PayoutProvider, compact = false) => (
-    <span className={`inline-flex items-center ${compact ? 'min-w-[84px]' : ''}`}>
+    <span className={`inline-flex items-center gap-2 ${compact ? 'min-w-[84px]' : ''}`}>
       <img
         src={`/images/payment/${provider}.png`}
-        alt={`${providerLabels[provider]} logo`}
-        className="h-10 max-w-[88px] rounded-md object-contain"
+        alt=""
+        aria-hidden="true"
+        className="h-8 w-8 flex-shrink-0 object-contain"
       />
+      <span className="text-sm font-semibold text-white">{providerLabels[provider]}</span>
     </span>
   );
 
@@ -568,10 +570,7 @@ export const MeTab: React.FC<MeTabProps> = ({
                 {selectedPayoutProvider && (
                   <form onSubmit={handleSavePayoutAccount} className="mt-4 space-y-3 rounded-2xl border border-[#2459C4]/50 bg-[#0D204A] p-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-extrabold">
-                        {payoutAccounts.some((item) => item.provider === selectedPayoutProvider) ? 'Edit' : 'Add'}{' '}
-                        {providerLabels[selectedPayoutProvider]} account
-                      </h3>
+                      <h3 className="text-sm font-extrabold">Payout account details</h3>
                       {renderProviderLogo(selectedPayoutProvider, true)}
                     </div>
                     <label className="block text-xs font-semibold text-blue-100/80">
