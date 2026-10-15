@@ -2,7 +2,11 @@ import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
-import { canReplaceWorkoutSnapshot, mergeWorkoutSnapshotProgress } from '../services/workoutSnapshot.js';
+import {
+  canReplaceWorkoutSnapshot,
+  mergeWorkoutSnapshotProgress,
+  pauseWorkoutSnapshotForNewSession,
+} from '../services/workoutSnapshot.js';
 
 dotenv.config();
 
@@ -221,6 +225,23 @@ export async function updateUserActiveSession(id: string, sessionId: string | nu
   await firestore.collection('users').doc(id).update({ activeSessionId: sessionId });
 }
 
+export async function activateUserSessionAndPauseWorkout(
+  id: string,
+  sessionId: string
+): Promise<void> {
+  const userRef = firestore.collection('users').doc(id);
+  await firestore.runTransaction(async (transaction) => {
+    const userDocument = await transaction.get(userRef);
+    const user = userDocument.data() as FirestoreUser | undefined;
+    if (!userDocument.exists || !user) throw new Error('User not found.');
+
+    const pausedSnapshot = pauseWorkoutSnapshotForNewSession(user.workoutSnapshot, Date.now());
+    const updates: Record<string, unknown> = { activeSessionId: sessionId };
+    if (pausedSnapshot) updates.workoutSnapshot = pausedSnapshot;
+    transaction.update(userRef, updates);
+  });
+}
+
 export async function updateUserUsername(id: string, username: string): Promise<void> {
   await firestore.collection('users').doc(id).update({
     username: username.trim(),
@@ -376,12 +397,16 @@ export async function getUserWorkoutSnapshot(id: string): Promise<Record<string,
 
 export async function updateUserWorkoutSnapshot(
   id: string,
-  snapshot: Record<string, unknown>
+  snapshot: Record<string, unknown>,
+  sessionId: string
 ): Promise<Record<string, unknown>> {
   const userRef = firestore.collection('users').doc(id);
   return firestore.runTransaction(async (transaction) => {
     const userDocument = await transaction.get(userRef);
     const user = userDocument.data() as FirestoreUser | undefined;
+    if (!userDocument.exists || !user || user.activeSessionId !== sessionId) {
+      throw new Error('WORKOUT_SESSION_REPLACED');
+    }
     const currentSnapshot = user?.workoutSnapshot;
     const currentLastUpdated = Number(currentSnapshot?.lastUpdated || 0);
     const incomingLastUpdated = Number(snapshot.lastUpdated);

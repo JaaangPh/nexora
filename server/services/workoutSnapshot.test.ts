@@ -4,6 +4,7 @@ import {
   canReplaceWorkoutSnapshot,
   isWorkoutSnapshotActive,
   mergeWorkoutSnapshotProgress,
+  pauseWorkoutSnapshotForNewSession,
   shouldPreferRemoteWorkoutSnapshot,
 } from './workoutSnapshot.js';
 
@@ -81,4 +82,47 @@ test('prefers the active account workout over a newer conflicting local workout'
   const remote = { workoutStartTime: 1_000, lastUpdated: 2_000, isPaused: true };
 
   assert.equal(shouldPreferRemoteWorkoutSnapshot(local, remote), true);
+});
+
+test('pauses the active workout when a new account session starts without resetting progress', () => {
+  const active = {
+    workoutStartTime: 1_000,
+    lastUpdated: 1_101_000,
+    elapsedSeconds: 1_100,
+    pausedDuration: 0,
+    distanceKm: 2.4,
+    stepCount: 3_200,
+    caloriesBurned: 128,
+    tokensEarned: 4.8,
+    isTracking: true,
+    isPaused: false,
+    pendingFinish: false,
+  };
+
+  assert.deepEqual(pauseWorkoutSnapshotForNewSession(active, 1_106_000), {
+    ...active,
+    isPaused: true,
+    pauseStartTime: 1_106_000,
+    pausedDuration: 0,
+    elapsedSeconds: 1_105,
+    lastUpdated: 1_106_000,
+  });
+});
+
+test('does not move the pause time of an already paused workout on login', () => {
+  const paused = {
+    workoutStartTime: 1_000,
+    lastUpdated: 1_101_000,
+    elapsedSeconds: 1_100,
+    pausedDuration: 10_000,
+    pauseStartTime: 1_111_000,
+    isTracking: true,
+    isPaused: true,
+    pendingFinish: false,
+  };
+
+  assert.deepEqual(pauseWorkoutSnapshotForNewSession(paused, 1_500_000), {
+    ...paused,
+    lastUpdated: 1_500_000,
+  });
 });

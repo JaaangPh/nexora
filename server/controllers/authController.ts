@@ -10,6 +10,7 @@ import {
   createUser,
   updateUserLastLogin,
   updateUserActiveSession,
+  activateUserSessionAndPauseWorkout,
   updateUserUsername,
   updateUserRunners,
   getUserWorkoutSnapshot,
@@ -140,7 +141,7 @@ function isValidPhone(phone: string): boolean {
 // Helper: Issue JWT Session Token & set HTTP-only cookie
 async function issueSession(user: { id: string; phoneNumber: string; role: string }, res: Response): Promise<string> {
   const sessionId = crypto.randomUUID();
-  await updateUserActiveSession(user.id, sessionId);
+  await activateUserSessionAndPauseWorkout(user.id, sessionId);
   const token = jwt.sign(
     { id: user.id, phoneNumber: user.phoneNumber, role: user.role, sessionId },
     config.jwtSecret,
@@ -537,12 +538,16 @@ export async function saveWorkoutSnapshot(req: AuthRequest, res: Response): Prom
       return;
     }
 
-    const savedSnapshot = await updateUserWorkoutSnapshot(req.user.id, snapshot);
+    const savedSnapshot = await updateUserWorkoutSnapshot(req.user.id, snapshot, req.user.sessionId);
     res.json({
       success: true,
       workoutSnapshot: { ...savedSnapshot, accountId: req.user.id },
     });
   } catch (error: any) {
+    if (error instanceof Error && error.message === 'WORKOUT_SESSION_REPLACED') {
+      res.status(409).json({ success: false, message: 'This account was signed in on another device.' });
+      return;
+    }
     console.error('[Save Workout Snapshot Error]', error);
     res.status(500).json({ success: false, message: error?.message || 'Failed to save workout progress.' });
   }

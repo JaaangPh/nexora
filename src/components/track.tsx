@@ -37,6 +37,7 @@ import { api, getApiBaseUrl } from '../services/api';
 import {
   getActiveWorkoutStorageKey,
   getPausedWorkoutTiming,
+  mergeWorkoutSnapshots,
   shouldPreferRemoteWorkoutSnapshot,
 } from '../services/workoutStorage';
 import { WorkoutSnapshot } from '../types/workout';
@@ -240,7 +241,22 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const queueRemoteWorkoutSnapshot = (snapshot: WorkoutSnapshot): Promise<void> => {
     const nextSync = remoteWorkoutSyncChainRef.current
       .catch(() => undefined)
-      .then(() => api.saveWorkoutSnapshot(snapshot))
+      .then(async () => {
+        if (!navigator.onLine) return;
+        let lastError: unknown;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            await api.saveWorkoutSnapshot(snapshot);
+            return;
+          } catch (error) {
+            lastError = error;
+            if (attempt < 2) {
+              await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
+            }
+          }
+        }
+        throw lastError;
+      })
       .then(() => undefined)
       .catch((error) => {
         console.warn('[Workout Snapshot Sync] Failed to save workout progress to the account.', error);
@@ -393,11 +409,12 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     api.getWorkoutSnapshot().then(({ workoutSnapshot }) => {
       if (isCancelled || !workoutSnapshot) return;
       if (shouldPreferRemoteWorkoutSnapshot(localSnapshot, workoutSnapshot)) {
-        restoreWorkoutSnapshot(workoutSnapshot, true);
-        if (workoutSnapshot.pendingFinish) {
-          void queueRemoteWorkoutSnapshot(workoutSnapshot);
+        const restoredSnapshot = mergeWorkoutSnapshots(localSnapshot, workoutSnapshot);
+        restoreWorkoutSnapshot(restoredSnapshot, true);
+        if (restoredSnapshot.pendingFinish) {
+          void queueRemoteWorkoutSnapshot(restoredSnapshot);
         } else {
-          void saveWorkoutSnapshot(false, workoutSnapshot.lastWorkoutSummary, true);
+          void saveWorkoutSnapshot(false, restoredSnapshot.lastWorkoutSummary, true);
         }
       } else if (localSnapshot) {
         void queueRemoteWorkoutSnapshot(localSnapshot);

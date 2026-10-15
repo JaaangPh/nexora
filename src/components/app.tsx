@@ -89,11 +89,11 @@ export const AppModal: React.FC<AppModalProps> = ({ isOpen, onClose }) => {
             <div className="border border-slate-100 rounded-2xl overflow-hidden divide-y divide-slate-100 text-xs">
               <div className="flex justify-between p-3 bg-white">
                 <span className="text-slate-400 font-medium">Version</span>
-                <span className="font-extrabold text-[#0B1A3D]">1.0.0</span>
+                <span className="font-extrabold text-[#0B1A3D]">1.0.40</span>
               </div>
               <div className="flex justify-between p-3 bg-white">
                 <span className="text-slate-400 font-medium">Updated on</span>
-                <span className="font-extrabold text-[#0B1A3D]">October 11, 2026</span>
+                <span className="font-extrabold text-[#0B1A3D]">October 15, 2026</span>
               </div>
               <div className="flex justify-between p-3 bg-white">
                 <span className="text-slate-400 font-medium">Downloads</span>

@@ -26,7 +26,41 @@ export function shouldPreferRemoteWorkoutSnapshot(
     Number(local.workoutStartTime) === Number(remote.workoutStartTime);
   if (!sameWorkout && (remote.isTracking || remote.isPaused || remote.pendingFinish)) return true;
   if (!local) return true;
+  if (sameWorkout && remote.pendingFinish && !local.pendingFinish) return true;
+  if (sameWorkout && remote.isPaused && !local.isPaused) return true;
+  if (
+    sameWorkout &&
+    (
+      remote.distanceKm > local.distanceKm ||
+      remote.stepCount > local.stepCount ||
+      remote.caloriesBurned > local.caloriesBurned ||
+      remote.tokensEarned > local.tokensEarned ||
+      remote.elapsedSeconds > local.elapsedSeconds
+    )
+  ) return true;
   return remote.lastUpdated > local.lastUpdated;
+}
+
+export function mergeWorkoutSnapshots(
+  local: WorkoutSnapshot | null,
+  remote: WorkoutSnapshot
+): WorkoutSnapshot {
+  if (!local || Number(local.workoutStartTime) !== Number(remote.workoutStartTime)) {
+    return remote;
+  }
+
+  const preferRemote = shouldPreferRemoteWorkoutSnapshot(local, remote);
+  const preferred = preferRemote ? remote : local;
+  return {
+    ...preferred,
+    distanceKm: Math.max(local.distanceKm, remote.distanceKm),
+    stepCount: Math.max(local.stepCount, remote.stepCount),
+    caloriesBurned: Math.max(local.caloriesBurned, remote.caloriesBurned),
+    tokensEarned: Math.max(local.tokensEarned, remote.tokensEarned),
+    elapsedSeconds: Math.max(local.elapsedSeconds, remote.elapsedSeconds),
+    isPaused: local.isPaused || remote.isPaused,
+    pendingFinish: local.pendingFinish || remote.pendingFinish,
+  };
 }
 
 export function hasWorkoutInProgressInStorage(): boolean {

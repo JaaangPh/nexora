@@ -10,6 +10,37 @@ export function isWorkoutSnapshotActive(snapshot: WorkoutSnapshotData): boolean 
     snapshot.pendingFinish === true;
 }
 
+export function pauseWorkoutSnapshotForNewSession(
+  snapshot: WorkoutSnapshotData | undefined,
+  pausedAt: number
+): WorkoutSnapshotData | undefined {
+  if (!snapshot || snapshot.isTracking !== true || snapshot.pendingFinish === true) {
+    return snapshot;
+  }
+
+  if (snapshot.isPaused === true) {
+    return { ...snapshot, lastUpdated: pausedAt };
+  }
+
+  const elapsedSeconds = nonNegativeNumber(snapshot.elapsedSeconds) +
+    Math.floor(Math.max(0, pausedAt - nonNegativeNumber(snapshot.lastUpdated)) / 1000);
+  const workoutStartTime = nonNegativeNumber(snapshot.workoutStartTime);
+  const pausedDuration = Math.max(
+    0,
+    pausedAt - workoutStartTime - elapsedSeconds * 1000
+  );
+
+  return {
+    ...snapshot,
+    isTracking: true,
+    isPaused: true,
+    pauseStartTime: pausedAt,
+    pausedDuration,
+    elapsedSeconds,
+    lastUpdated: pausedAt,
+  };
+}
+
 export function canReplaceWorkoutSnapshot(
   current: WorkoutSnapshotData | undefined,
   incoming: WorkoutSnapshotData
