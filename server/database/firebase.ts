@@ -7,6 +7,11 @@ import {
   mergeWorkoutSnapshotProgress,
   pauseWorkoutSnapshotForNewSession,
 } from '../services/workoutSnapshot.js';
+import {
+  getReferralRewards,
+  isEligibleForReferralReward,
+  MAX_REFERRAL_REWARD_GENERATION,
+} from '../services/referralRules.js';
 
 dotenv.config();
 
@@ -107,6 +112,8 @@ export interface FirestoreUser {
   role: 'member' | 'admin';
   inviteCodeUsed?: string;
   referralCode: string;
+  referredByUserId?: string;
+  referralRewardClaimed?: boolean;
   status: 'active' | 'suspended';
   createdAt: string;
   lastLoginAt?: string;
@@ -192,6 +199,40 @@ export async function findUserById(id: string): Promise<FirestoreUser | null> {
   return doc.data() as FirestoreUser;
 }
 
+export async function findUserByReferralCode(code: string): Promise<FirestoreUser | null> {
+  const query = await firestore
+    .collection('users')
+    .where('referralCode', '==', code)
+    .limit(1)
+    .get();
+
+  if (query.empty) return null;
+  return query.docs[0].data() as FirestoreUser;
+}
+
+export async function getUserReferralStats(
+  id: string
+): Promise<{ directTeamCount: number; referralRewards: number }> {
+  const [directTeam, transactions] = await Promise.all([
+    firestore.collection('users').where('referredByUserId', '==', id).get(),
+    firestore.collection('wallet_transactions').where('userId', '==', id).get(),
+  ]);
+
+  const referralRewards = transactions.docs.reduce((total, document) => {
+    const transaction = document.data();
+    if (transaction.type !== 'referral_reward') return total;
+
+    const amount = Number(transaction.amount);
+    const amountCents = Number(transaction.amountCents);
+    return total + (Number.isFinite(amount) ? amount : Number.isFinite(amountCents) ? amountCents / 100 : 0);
+  }, 0);
+
+  return {
+    directTeamCount: directTeam.size,
+    referralRewards: Math.round(referralRewards * 100) / 100,
+  };
+}
+
 export async function createUser(userData: {
   id: string;
   phoneNumber: string;
@@ -199,6 +240,7 @@ export async function createUser(userData: {
   role: 'member' | 'admin';
   inviteCodeUsed?: string;
   referralCode: string;
+  referredByUserId?: string;
   username?: string;
 }): Promise<FirestoreUser> {
   const autoUsername = userData.username || generateAutoUsername();
@@ -318,13 +360,33 @@ export async function purchaseUserRunner(
   id: string,
   runnerId: string,
   price: number
-): Promise<{ balance: number; ownedRunners: OwnedRunner[]; purchasedRunner: OwnedRunner }> {
+): Promise<{ balance: number; ownedRunners: OwnedRunner[]; purchasedRunner: OwnedRunner; referralRewardGranted: boolean }> {
   const userRef = firestore.collection('users').doc(id);
 
   return firestore.runTransaction(async (transaction) => {
     const userDocument = await transaction.get(userRef);
     const user = userDocument.data() as FirestoreUser | undefined;
     if (!user) throw new Error('ACCOUNT_NOT_FOUND');
+
+    const referrerIds: string[] = [];
+    const referrerDocuments = new Map<string, FirebaseFirestore.DocumentSnapshot>();
+    if (isEligibleForReferralReward(user)) {
+      const seenReferrers = new Set([id]);
+      let referrerId = user.referredByUserId;
+
+      for (let generation = 0; generation < MAX_REFERRAL_REWARD_GENERATION; generation += 1) {
+        if (!referrerId || seenReferrers.has(referrerId)) break;
+        seenReferrers.add(referrerId);
+
+        const referrerDocument = await transaction.get(firestore.collection('users').doc(referrerId));
+        if (!referrerDocument.exists) break;
+
+        referrerIds.push(referrerId);
+        referrerDocuments.set(referrerId, referrerDocument);
+        referrerId = (referrerDocument.data() as FirestoreUser).referredByUserId;
+      }
+    }
+    const referralRewards = getReferralRewards(referrerIds, id);
 
     const balance = Number(user.balance || 0);
     if (balance < price) throw new Error('INSUFFICIENT_BALANCE');
@@ -380,12 +442,35 @@ export async function purchaseUserRunner(
       balance: Math.round((balance - price) * 100) / 100,
       ownedRunners,
       equippedRunnerId: purchasedRunner.id,
+      ...(referralRewards.length > 0 ? { referralRewardClaimed: true } : {}),
     });
+
+    for (const reward of referralRewards) {
+      const referrerDocument = referrerDocuments.get(reward.referrerId);
+      if (!referrerDocument) continue;
+
+      const rewardId = reward.generation === 1
+        ? `${id}_referral_reward`
+        : `${id}_referral_reward_${reward.referrerId}`;
+      transaction.update(referrerDocument.ref, { balance: FieldValue.increment(reward.amount) });
+      transaction.create(firestore.collection('wallet_transactions').doc(rewardId), {
+        id: rewardId,
+        userId: reward.referrerId,
+        type: 'referral_reward',
+        referredUserId: id,
+        runnerId,
+        generation: reward.generation,
+        amountCents: reward.amount * 100,
+        amount: reward.amount,
+        createdAt: Date.now(),
+      });
+    }
 
     return {
       balance: Math.round((balance - price) * 100) / 100,
       ownedRunners,
       purchasedRunner,
+      referralRewardGranted: referralRewards.length > 0,
     };
   });
 }

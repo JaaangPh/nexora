@@ -5,6 +5,7 @@ import {
   login,
   logout,
   getMe,
+  getReferralStats,
   updateUsername,
   updateProfileImage,
   getPayoutAccounts,
@@ -49,6 +50,7 @@ router.post('/logout', authMiddleware, logout);
 
 // Protected endpoints
 router.get('/me', authMiddleware, getMe);
+router.get('/referrals', authMiddleware, getReferralStats);
 router.get('/workout', authMiddleware, getWorkoutSnapshot);
 router.put('/workout', authMiddleware, saveWorkoutSnapshot);
 router.delete('/workout', authMiddleware, clearWorkoutSnapshot);

@@ -274,6 +274,14 @@ export const api = {
     });
   },
 
+  async getReferralStats(): Promise<{
+    success: boolean;
+    directTeamCount: number;
+    referralRewards: number;
+  }> {
+    return request('/api/auth/referrals', { method: 'GET' });
+  },
+
   async getWorkoutSnapshot(): Promise<{ success: boolean; workoutSnapshot: WorkoutSnapshot | null }> {
     return request<{ success: boolean; workoutSnapshot: WorkoutSnapshot | null }>('/api/auth/workout', {
       method: 'GET',

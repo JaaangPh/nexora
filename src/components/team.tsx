@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Users, Link as LinkIcon, Check, Copy, Share2, Flag } from 'lucide-react';
 import { User } from '../types/auth';
+import { api } from '../services/api';
 
 interface TeamTabProps {
   user: User;
@@ -10,6 +11,33 @@ interface TeamTabProps {
 export const TeamTab: React.FC<TeamTabProps> = ({ user, onNavigateMarathon }) => {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [directTeamCount, setDirectTeamCount] = useState<number | null>(null);
+  const [referralRewards, setReferralRewards] = useState<number | null>(null);
+  const [statsError, setStatsError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    setDirectTeamCount(null);
+    setReferralRewards(null);
+    setStatsError('');
+
+    api.getReferralStats()
+      .then((stats) => {
+        if (!active) return;
+        setDirectTeamCount(stats.directTeamCount);
+        setReferralRewards(stats.referralRewards);
+        setStatsError('');
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        console.error('[Team Referral Stats Error]', error);
+        setStatsError('Referral statistics could not be loaded.');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user.id]);
 
   const referralCode = user.referralCode || 'NT723906';
   const inviteLink = `https://nexoratech.live/register/${referralCode}`;
@@ -55,7 +83,7 @@ export const TeamTab: React.FC<TeamTabProps> = ({ user, onNavigateMarathon }) =>
           </h4>
         </div>
         <p className="text-[11px] text-blue-100/80 mb-3.5 leading-relaxed">
-          Share your unique 6-digit referral code or invite link. Every newly created account gains access through your link.
+          Share your unique 6-digit referral code or invite link. When an invited member buys their first runner, you earn ₱100. The next two generations earn ₱50 each. Repeat runner purchases do not earn another referral reward.
         </p>
 
         {/* Referral Code Box */}
@@ -99,17 +127,24 @@ export const TeamTab: React.FC<TeamTabProps> = ({ user, onNavigateMarathon }) =>
       <div className="grid grid-cols-3 gap-2.5 text-center">
         <div className="bg-[#0D204A] border border-[#1E3E80] rounded-xl p-3">
           <span className="text-[10px] font-bold text-blue-200/70 uppercase block">DIRECT TEAM</span>
-          <span className="text-base font-black font-mono text-white mt-1 block">0</span>
+          <span className="text-base font-black font-mono text-white mt-1 block">
+            {directTeamCount === null ? '—' : directTeamCount}
+          </span>
         </div>
         <div className="bg-[#0D204A] border border-[#1E3E80] rounded-xl p-3">
           <span className="text-[10px] font-bold text-blue-200/70 uppercase block">TEAM VOLUME</span>
           <span className="text-base font-black font-mono text-cyan-300 mt-1 block">₱0.00</span>
         </div>
         <div className="bg-[#0D204A] border border-[#1E3E80] rounded-xl p-3">
-          <span className="text-[10px] font-bold text-blue-200/70 uppercase block">COMMISSION</span>
-          <span className="text-base font-black font-mono text-emerald-300 mt-1 block">₱0.00</span>
+          <span className="text-[10px] font-bold text-blue-200/70 uppercase block">REFERRAL REWARD</span>
+          <span className="text-base font-black font-mono text-emerald-300 mt-1 block">
+            {referralRewards === null ? '—' : `₱${referralRewards.toFixed(2)}`}
+          </span>
         </div>
       </div>
+      {statsError && (
+        <p role="alert" className="text-xs text-rose-300">{statsError}</p>
+      )}
     </div>
   );
 };

@@ -7,6 +7,8 @@ import { AuthRequest } from '../middleware/auth.js';
 import {
   findUserByPhone,
   findUserById,
+  findUserByReferralCode,
+  getUserReferralStats,
   createUser,
   updateUserLastLogin,
   updateUserActiveSession,
@@ -213,7 +215,10 @@ export async function register(req: Request, res: Response): Promise<void> {
 
     // 5. Generate unique NT referral code for this new member
     const myReferralCode = await generateUniqueReferralCode();
-    const usedCode = inviteCode ? inviteCode.trim().toUpperCase() : 'DIRECT-SIGNUP';
+    const usedCode = typeof inviteCode === 'string' ? inviteCode.trim().toUpperCase() : 'DIRECT-SIGNUP';
+    const referrer = /^NT\d{6}$/.test(usedCode)
+      ? await findUserByReferralCode(usedCode)
+      : null;
 
     // 6. Hash password
     const saltRounds = 10;
@@ -228,6 +233,7 @@ export async function register(req: Request, res: Response): Promise<void> {
       role: 'member',
       inviteCodeUsed: usedCode,
       referralCode: myReferralCode,
+      ...(referrer ? { referredByUserId: referrer.id } : {}),
     });
 
     const userPayload = {
@@ -410,6 +416,21 @@ export async function getMe(req: AuthRequest, res: Response): Promise<void> {
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error?.message || 'Failed to retrieve profile.' });
+  }
+}
+
+export async function getReferralStats(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Unauthorized session.' });
+      return;
+    }
+
+    const stats = await getUserReferralStats(req.user.id);
+    res.json({ success: true, ...stats });
+  } catch (error: unknown) {
+    console.error('[Referral Stats Error]', error);
+    res.status(500).json({ success: false, message: 'Failed to retrieve referral statistics.' });
   }
 }
 
