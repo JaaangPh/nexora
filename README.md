@@ -1,13 +1,52 @@
 # Stepora Movement — Web & Mobile Application
 
-A modern, responsive, high-security authentication platform for **Stepora Movement**, engineered as both a responsive web application and an installable native Android application via Capacitor.
+A responsive web and Android fitness app for **Stepora Movement** members. It combines outdoor activity tracking, virtual runners, server-verified workout rewards, a member wallet, and cooperative team Marathons.
+
+## What Stepora is for
+
+Stepora gives members one place to record outdoor movement, understand how their selected runners affect reward calculations, manage their account balance, and join shared distance challenges. This guide starts with the member experience; developer setup and implementation notes follow.
+
+## How it works for a member
+
+1. **Create an account or sign in.** Register with a valid invite code, phone number, and password. Use the same account on the web app or Android app.
+2. **Choose a runner.** Browse the Market, purchase a runner using the displayed price, and equip an owned runner. Each runner has a reward rate and a maximum eligible distance.
+3. **Track a workout.** Open Track, select one or more available runners, allow location access, and start an outdoor workout. The app displays active time, steps, distance, calories, and an estimated reward.
+4. **Pause, resume, or finish.** Pause when taking a break. Choose **End & Earn** when finished to submit the workout for server verification; the displayed estimate is not a confirmed reward.
+5. **Use the wallet or join a challenge.** Verified workout rewards and eligible Marathon payouts are reflected in the member balance. Members can request withdrawals or join a Marathon if they meet its eligibility and balance requirements.
+
+## How workout earnings work
+
+The app estimates earnings during a workout. The server calculates any final reward from eligible distance and the selected runners, and checks saved workout timing, runner ownership, and movement evidence (GPS route or plausible step-sensor data). The client-reported estimate alone does not determine the final credit.
+
+For each selected runner, the calculation is **eligible distance × reward rate**, capped at that runner's maximum eligible distance. Multiple selected runners are calculated separately and added together.
+
+| Runner | Listed price | Reward rate | Maximum eligible distance |
+| --- | ---: | ---: | ---: |
+| Cyber Aero Walker | ₱500 | ₱8.40/km | 6 km |
+| Bio Surge Trainer | ₱1,000 | ₱10.20/km | 10 km |
+| Cobalt Aero Jogger | ₱2,000 | ₱20.10/km | 20 km |
+| Vortex Blaze Sprint | ₱3,500 | ₱40.00/km | 35 km |
+
+These are the values currently configured in the app and may change. They are not guaranteed earnings: a workout must pass verification, distance is capped per runner, and cooldowns or account rules may limit use. Each runner used in a completed workout receives a 12-hour cooldown. Rewards are credited once after a successful **End & Earn** verification.
+
+## Pausing and using another device
+
+Workout progress is stored on the device and synced to the account when a connection is available. If a member signs in to the same account on another device, the account's active workout is automatically paused, and the new device restores the saved workout progress. The previous device cannot overwrite the account snapshot after its session is replaced.
+
+Changing between Wi-Fi and mobile data does not itself reset a workout. An offline device cannot sync new progress until it reconnects; progress that exists only on that offline device is not available to another device until it has synced.
+
+## Wallet, withdrawals, and Marathons
+
+Members can request withdrawals of at least **₱100** to a saved GCash, Maya, or GoTyme account. A withdrawal requires a connected Google Authenticator and a current six-digit code. The app applies a **2% fee**, deducted in addition to the requested payout amount. A request is recorded for review; submitting it does not mean the payout is complete. Members can check the request status in the app.
+
+Marathons are optional seven-day team challenges for 5–10 accepted members. Teams select a 250 km or 500 km target and fund the corresponding bounty pool from member balances. Members must meet the runner ownership requirements before a team can start. Verified workout distance can contribute to an active team's progress. If the team reaches its target before the deadline, the pool is distributed to eligible members still on the roster. If it misses the target, contributions are refunded and no bounty is paid. Check the in-app rules before joining because participation can lock balance and apply cooldowns.
 
 ---
 
 ## 📸 Design & Brand Identity
 
 * **Brand Name:** Stepora Movement
-* **Tagline:** Secure Access to Your Account
+* **Tagline:** Move With Purpose. Earn with every step.
 * **Design Philosophy:** Inspired by high-security enterprise defense & technology portals.
 * **Palette:**
   * **Primary Deep Navy:** `#142B5B`
@@ -23,7 +62,7 @@ A modern, responsive, high-security authentication platform for **Stepora Moveme
 
 ---
 
-## 🚀 Key Features
+## 🧩 Platform capabilities
 
 1. **Pixel-Perfect Authentication UI:**
    * Full-width dark-to-bright blue gradient header with geometric circuits and orbital radar arcs.
@@ -57,7 +96,8 @@ A modern, responsive, high-security authentication platform for **Stepora Moveme
    * **Automatic Invitation Links:** Every user receives an invitation URL: `http://localhost:3000/register/NT723906` (or production domain).
    * **URL Pre-filling & Auto-Validation:** Visiting an invitation link automatically selects the "Create Account" tab, fills the referral code, and triggers real-time verification.
    * **Dashboard Sharing Hub:** Authenticated dashboard features a dedicated Referral Pass card with 1-click **Copy Code** and **Copy Link** buttons.
-   * **Referral Registration in Firestore:** Member referral codes are registered in the `invite_codes` collection, creating a self-sustaining referral network.
+   * **First-Runner Rewards:** When a referred member buys their first Runner, the direct referrer receives ₱100 and the next two ancestors each receive ₱50. Rewards are calculated per referred member; repeat Runner purchases do not pay again.
+   * **Referral Registration in Firestore:** New accounts are linked to the referring member, and earned rewards are recorded in wallet transactions.
 
 5. **Member Dashboard:**
    * Displays member tier, verification badge, phone number, invite code used, member ID, and personal referral pass.
@@ -100,13 +140,13 @@ Configure these backend-only environment variables in the deployment hosting the
 * `TURBOPAY_CALLBACK_URL` — public HTTPS URL ending in `/api/payments/turbopay/callback`.
 * `TURBOPAY_RETURN_URL` — public HTTPS URL for the user redirect after payment.
 
-The minimum deposit is ₱100 for GCash, Maya, GoTyme, and QRPh; successful callbacks credit the exact PHP amount in the order (for example, a ₱150 payment credits ₱150). TurboPay's documentation requires a minimum of ₱800 for USDT-TRC20. The QRPh UI choice is sent using `bank_code=gcash` per the merchant's instructions; confirm this with TurboPay because its bank-code directory lists `qrph` separately. The hosting provider must expose the callback route publicly and allow the backend's static outbound IP to be registered with TurboPay if their account requires IP whitelisting. `34.143.182.198` is identified in TurboPay's documentation as TurboPay's API IP; it is not Nexora's outbound IP. Withdrawals are manual and are not submitted to TurboPay; workout reward credits remain paused.
+The minimum deposit is ₱100 for GCash, Maya, GoTyme, and QRPh; successful callbacks credit the exact PHP amount in the order (for example, a ₱150 payment credits ₱150). TurboPay's documentation requires a minimum of ₱800 for USDT-TRC20. The QRPh UI choice is sent using `bank_code=gcash` per the merchant's instructions; confirm this with TurboPay because its bank-code directory lists `qrph` separately. The hosting provider must expose the callback route publicly and allow the backend's static outbound IP to be registered with TurboPay if their account requires IP whitelisting. `34.143.182.198` is identified in TurboPay's documentation as TurboPay's API IP; it is not Nexora's outbound IP. Withdrawals are member-requested and recorded in `payment_withdrawals` for review; workout rewards are credited after successful server verification.
 
 ## 🔐 Administrator Portal
 
 Open `/admin` to use the separate administrator dashboard. Configure `ADMIN_EMAIL=admin@stepora.xyz`, set `ADMIN_PASSWORD` to the chosen backend-only password, and set `ADMIN_AUTH_SECRET` to a unique random value at least 32 characters long before signing in. Keep the auth secret stable so the stored authenticator key remains decryptable. Do not put administrator credentials in client-side `VITE_` variables or source code. After password verification, the first sign-in displays a QR code for Google Authenticator; the setup is only complete after submitting a valid six-digit code. The TOTP secret is encrypted before it is stored in Firestore, and admin sessions expire after eight hours. Admins can change their password and create admin or read-only staff accounts from **Security & accounts**. The admin-only **Staff team** view lists registered account emails, roles, and statuses. Password changes and account creation require the current admin's fresh authenticator code. New accounts are prompted to enroll Google Authenticator and scan their own QR code at first sign-in. Staff accounts can view deposits and withdrawals but cannot change account security, create accounts, or view the staff team.
 
-The dashboard reads deposits from `payment_deposits`. Withdrawals are displayed from `payment_withdrawals` if that collection contains records; the member app does not currently submit or persist withdrawal requests, so the withdrawal view can be empty. Fee totals are not available because no fee ledger is configured.
+The dashboard reads deposits from `payment_deposits` and a member's withdrawal history from `payment_withdrawals`. Members can submit withdrawal requests in the app; requests debit the balance and are recorded with a pending status for administrator review. The app currently has no separate fee ledger.
 
 ## 🏃 Marathon
 
