@@ -18,7 +18,9 @@ import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES, saveRunnerPrici
 import {
   createTurboPayPayout,
   createTurboPaySignature,
+  getTurboPayPayoutBankCode,
   getTurboPayPayoutConfig,
+  TurboPayPayoutConfigError,
   TurboPayPayoutRejectedError,
   TurboPayPayload,
 } from '../services/turbopay.js';
@@ -822,11 +824,7 @@ export async function reviewWithdrawal(req: AdminRequest, res: Response): Promis
       const withdrawal = withdrawalSnapshot.data()!;
       if (withdrawal.status !== 'pending') throw new Error('WITHDRAWAL_ALREADY_REVIEWED');
 
-      const bankCode = withdrawal.bankCode === 'gcash'
-        ? 'gcash'
-        : withdrawal.bankCode === 'maya'
-          ? 'PMP'
-          : null;
+      const bankCode = getTurboPayPayoutBankCode(String(withdrawal.bankCode || ''));
       if (!bankCode) throw new Error('WITHDRAWAL_BANK_UNSUPPORTED');
 
       const payoutAmountCents = Number(withdrawal.payoutAmountCents ?? withdrawal.amountCents);
@@ -924,6 +922,12 @@ export async function reviewWithdrawal(req: AdminRequest, res: Response): Promis
         return;
       }
       res.status(502).json({ success: false, message: 'TurboPay rejected the payout request; the withdrawal was marked failed and refunded.' });
+      return;
+    }
+
+    if (error instanceof TurboPayPayoutConfigError) {
+      console.error('[TurboPay Payout Config Error]', error.message);
+      res.status(503).json({ success: false, message: error.message });
       return;
     }
 

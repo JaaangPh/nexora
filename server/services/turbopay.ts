@@ -17,6 +17,17 @@ export interface TurboPayPayoutConfig {
   callbackUrl: string;
 }
 
+export class TurboPayPayoutConfigError extends Error {}
+
+export function getTurboPayPayoutBankCode(provider: string): 'gcash' | 'MYA' | 'GOT' | null {
+  switch (provider) {
+    case 'gcash': return 'gcash';
+    case 'maya': return 'MYA';
+    case 'gotyme': return 'GOT';
+    default: return null;
+  }
+}
+
 export function getTurboPayCredentials(): Pick<TurboPayConfig, 'merchantId' | 'merchantKey'> {
   const merchantId = process.env.TURBOPAY_MERCHANT_ID;
   const merchantKey = process.env.TURBOPAY_MERCHANT_KEY;
@@ -70,16 +81,25 @@ export function getTurboPayConfig(): TurboPayConfig {
 }
 
 export function getTurboPayPayoutConfig(): TurboPayPayoutConfig {
+  const missingSettings = [
+    process.env.TURBOPAY_ENABLED === 'true' ? null : 'TURBOPAY_ENABLED=true',
+    process.env.TURBOPAY_API_URL ? null : 'TURBOPAY_API_URL',
+    process.env.TURBOPAY_MERCHANT_ID ? null : 'TURBOPAY_MERCHANT_ID',
+    process.env.TURBOPAY_MERCHANT_KEY ? null : 'TURBOPAY_MERCHANT_KEY',
+    process.env.TURBOPAY_WITHDRAWAL_CALLBACK_URL ? null : 'TURBOPAY_WITHDRAWAL_CALLBACK_URL',
+  ].filter((setting): setting is string => setting !== null);
+
+  if (missingSettings.length > 0) {
+    throw new TurboPayPayoutConfigError(
+      `TurboPay payouts are not configured. Set ${missingSettings.join(', ')} in the backend environment and restart the server.`
+    );
+  }
+
   const { merchantId, merchantKey } = getTurboPayCredentials();
   const apiUrl = process.env.TURBOPAY_API_URL;
   const callbackUrl = process.env.TURBOPAY_WITHDRAWAL_CALLBACK_URL;
 
-  if (process.env.TURBOPAY_ENABLED !== 'true') {
-    throw new Error('TurboPay payouts are disabled.');
-  }
-  if (!apiUrl || !callbackUrl) {
-    throw new Error('TurboPay API and withdrawal callback URLs are not configured.');
-  }
+  if (!apiUrl || !callbackUrl) throw new TurboPayPayoutConfigError('TurboPay payout configuration is incomplete.');
 
   let parsedApiUrl: URL;
   let parsedCallbackUrl: URL;
@@ -87,7 +107,7 @@ export function getTurboPayPayoutConfig(): TurboPayPayoutConfig {
     parsedApiUrl = new URL(apiUrl);
     parsedCallbackUrl = new URL(callbackUrl);
   } catch {
-    throw new Error('TurboPay API and withdrawal callback URLs must be valid absolute URLs.');
+    throw new TurboPayPayoutConfigError('TURBOPAY_API_URL and TURBOPAY_WITHDRAWAL_CALLBACK_URL must be valid absolute URLs.');
   }
 
   if (
@@ -95,7 +115,9 @@ export function getTurboPayPayoutConfig(): TurboPayPayoutConfig {
     parsedApiUrl.hostname !== 'merchant.turbopay.ph' ||
     parsedCallbackUrl.protocol !== 'https:'
   ) {
-    throw new Error('TurboPay API must use the official HTTPS host and the withdrawal callback must use HTTPS.');
+    throw new TurboPayPayoutConfigError(
+      'TURBOPAY_API_URL must use https://merchant.turbopay.ph and TURBOPAY_WITHDRAWAL_CALLBACK_URL must use HTTPS.'
+    );
   }
 
   return {
