@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   SlidersHorizontal,
   Search,
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { User } from '../types/auth';
 import { api } from '../services/api';
+import { RunnerPrice } from '../services/api';
 import { getOwnedRunnerInstances } from '../services/runnerInventory';
 
 export interface RunnerItem {
@@ -25,6 +26,8 @@ export interface RunnerItem {
   level: string;
   serial: string;
   pricePhp: number;
+  originalPrice?: number;
+  discountPercentage?: number;
   image: string;
   speedRange: string;
   earningRate: number; // +₱/km
@@ -142,11 +145,40 @@ export const MarketTab: React.FC<MarketTabProps> = ({
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [filterSort, setFilterSort] = useState<'featured' | 'priceAsc' | 'priceDesc'>('featured');
+  const [runnerPrices, setRunnerPrices] = useState<Record<string, RunnerPrice>>({});
+  const [isLoadingPrices, setIsLoadingPrices] = useState(true);
+  const [priceLoadError, setPriceLoadError] = useState('');
+
+  useEffect(() => {
+    let isCurrent = true;
+    api.getRunnerPrices()
+      .then((prices) => {
+        if (isCurrent) setRunnerPrices(prices);
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) {
+          setPriceLoadError(error instanceof Error ? error.message : 'Could not load current runner prices.');
+        }
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingPrices(false);
+      });
+    return () => { isCurrent = false; };
+  }, []);
 
   const ownedRunnerInstances = getOwnedRunnerInstances(user?.ownedRunners);
   const equippedId = user?.equippedRunnerId || equippedSneakerId || '';
+  const catalogWithPrices = RUNNER_CATALOG.map((runner) => {
+    const price = runnerPrices[runner.id];
+    return {
+      ...runner,
+      originalPrice: price?.originalPrice ?? runner.pricePhp,
+      pricePhp: price?.newPrice ?? runner.pricePhp,
+      discountPercentage: price?.discountPercentage ?? 0,
+    };
+  });
 
-  const filteredRunners = RUNNER_CATALOG.filter((item) => {
+  const filteredRunners = catalogWithPrices.filter((item) => {
     const matchesCat = selectedCategory === 'ALL' || item.category === selectedCategory;
     const matchesSearch =
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -208,6 +240,16 @@ export const MarketTab: React.FC<MarketTabProps> = ({
       </div>
 
       {/* SEARCH & CATEGORY FILTER PILLS */}
+      {isLoadingPrices && (
+        <p role="status" className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-100">
+          Loading current runner prices…
+        </p>
+      )}
+      {priceLoadError && (
+        <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+          Runner prices could not be refreshed. {priceLoadError}
+        </p>
+      )}
       <div className="space-y-2.5">
         <div className="relative">
           <Search className="w-4 h-4 text-blue-300/60 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -327,11 +369,29 @@ export const MarketTab: React.FC<MarketTabProps> = ({
                   </span>
                 </div>
 
-                <div className="w-full pt-1.5 border-t border-[#193268] flex items-center justify-between text-xs">
+                <div className="w-full pt-1.5 border-t border-[#193268] flex items-center justify-between gap-1 text-xs">
                   <span className="text-[10px] text-blue-300/70 font-bold">PRICE</span>
-                  <span className="font-black text-amber-400 font-mono text-sm">
-                    ₱{runner.pricePhp.toLocaleString()}
-                  </span>
+                  {isLoadingPrices ? (
+                    <span className="text-[10px] text-cyan-200">Loading…</span>
+                  ) : priceLoadError ? (
+                    <span className="text-[10px] text-rose-200">Unavailable</span>
+                  ) : (
+                    <span className="flex min-w-0 items-center justify-end gap-1 font-mono">
+                      {(runner.discountPercentage ?? 0) > 0 && (
+                        <>
+                          <span className="rounded-full bg-[#ff1744] px-1.5 py-0.5 text-[8px] font-black text-white whitespace-nowrap">
+                            {runner.discountPercentage}% OFF
+                          </span>
+                          <span className="text-[9px] text-slate-400 line-through">
+                            ₱{runner.originalPrice?.toLocaleString()}
+                          </span>
+                        </>
+                      )}
+                      <span className="font-black text-amber-400 text-sm whitespace-nowrap">
+                        ₱{runner.pricePhp.toLocaleString()}
+                      </span>
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -444,17 +504,41 @@ export const MarketTab: React.FC<MarketTabProps> = ({
                 <span className="text-[10px] text-blue-200/60 uppercase font-bold block">
                   PRICE
                 </span>
-                <span className="text-xl font-black text-amber-400 font-mono">
-                  ₱{selectedRunner.pricePhp.toLocaleString()}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {isLoadingPrices ? (
+                    <span className="text-sm text-cyan-200">Loading…</span>
+                  ) : priceLoadError ? (
+                    <span className="text-sm text-rose-200">Unavailable</span>
+                  ) : (
+                    <>
+                      {(selectedRunner.discountPercentage ?? 0) > 0 && (
+                        <>
+                          <span className="rounded-full bg-[#ff1744] px-2.5 py-1 text-[10px] font-black text-white">
+                            {selectedRunner.discountPercentage}% OFF
+                          </span>
+                          <span className="font-mono text-sm text-slate-400 line-through">
+                            ₱{selectedRunner.originalPrice?.toLocaleString()}
+                          </span>
+                        </>
+                      )}
+                      <span className="text-xl font-black text-amber-400 font-mono">
+                        ₱{selectedRunner.pricePhp.toLocaleString()}
+                      </span>
+                    </>
+                  )}
+                </div>
               </div>
 
               <button
                 onClick={() => handleBuyRunner(selectedRunner)}
-                disabled={isPurchasing}
+                disabled={isPurchasing || isLoadingPrices || Boolean(priceLoadError)}
                 className="px-5 py-3 rounded-2xl bg-[#D8FD2F] hover:bg-[#cbf128] text-black font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-[#D8FD2F]/20 transition-all active:scale-95 disabled:opacity-60"
               >
-                {isPurchasing ? (
+                {isLoadingPrices ? (
+                  <span>Loading price...</span>
+                ) : priceLoadError ? (
+                  <span>Price unavailable</span>
+                ) : isPurchasing ? (
                   <span>Processing...</span>
                 ) : (
                   <>

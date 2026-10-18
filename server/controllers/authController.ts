@@ -29,15 +29,10 @@ import {
   FirestoreUser,
 } from '../database/firebase.js';
 import { completeWorkoutAndClearSnapshot, MarathonError } from '../services/marathonService.js';
+import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES } from '../services/runnerPricing.js';
 
 const MAX_WORKOUT_ROUTE_POINTS = 1000;
 const MAX_PROFILE_IMAGE_DATA_URL_LENGTH = 84 * 1024;
-const RUNNER_PRICES: Record<string, number> = {
-  'snk-1': 500,
-  'snk-2': 1000,
-  'snk-3': 2000,
-  'snk-4': 3500,
-};
 const PAYOUT_PROVIDERS = new Set<PayoutProvider>(['gcash', 'maya', 'gotyme']);
 
 function isPayoutProvider(value: unknown): value is PayoutProvider {
@@ -787,12 +782,14 @@ export async function purchaseRunner(req: AuthRequest, res: Response): Promise<v
     }
 
     const runnerId = req.body?.runnerId;
-    if (typeof runnerId !== 'string' || !Object.prototype.hasOwnProperty.call(RUNNER_PRICES, runnerId)) {
+    if (typeof runnerId !== 'string' || !Object.prototype.hasOwnProperty.call(RUNNER_BASE_PRICES, runnerId)) {
       res.status(400).json({ success: false, message: 'Invalid runner selection.' });
       return;
     }
 
-    const purchase = await purchaseUserRunner(req.user.id, runnerId, RUNNER_PRICES[runnerId]);
+    const pricing = await readRunnerPricing();
+    const price = getRunnerPrices(pricing.discounts, pricing.originalPrices, pricing.newPrices)[runnerId].newPrice;
+    const purchase = await purchaseUserRunner(req.user.id, runnerId, price);
     res.json({
       success: true,
       message: 'Runner purchased successfully.',
@@ -818,5 +815,15 @@ export async function purchaseRunner(req: AuthRequest, res: Response): Promise<v
     }
     console.error('[Runner Purchase Error]', error);
     res.status(500).json({ success: false, message: error?.message || 'Failed to purchase runner.' });
+  }
+}
+
+export async function getPublicRunnerPrices(_req: Request, res: Response): Promise<void> {
+  try {
+    const pricing = await readRunnerPricing();
+    res.json({ success: true, prices: getRunnerPrices(pricing.discounts, pricing.originalPrices, pricing.newPrices) });
+  } catch (error) {
+    console.error('[Runner Pricing Error]', error);
+    res.status(500).json({ success: false, message: 'Could not load runner prices.' });
   }
 }

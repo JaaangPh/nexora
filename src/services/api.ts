@@ -12,6 +12,12 @@ export interface PayoutAccount {
   accountHolder: string;
 }
 
+export interface RunnerPrice {
+  originalPrice: number;
+  discountPercentage: number;
+  newPrice: number;
+}
+
 export type WithdrawalStatus = 'pending' | 'accepted' | 'failed';
 
 export interface WithdrawalRecord {
@@ -231,6 +237,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
+  async getRunnerPrices(): Promise<Record<string, RunnerPrice>> {
+    const result = await request<{ success: boolean; prices: Record<string, RunnerPrice> }>('/api/auth/runner-prices', {
+      method: 'GET',
+    });
+    return result.prices;
+  },
+
   async login(phoneNumber: string, password: string): Promise<AuthResponse> {
     const res = await request<AuthResponse>('/api/auth/login', {
       method: 'POST',

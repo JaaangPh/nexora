@@ -14,6 +14,7 @@ import {
   TOTP_PERIOD_SECONDS,
 } from '../services/totp.js';
 import { displayedNexoraId } from '../services/marathonRules.js';
+import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES, saveRunnerPricing } from '../services/runnerPricing.js';
 
 type AdminRole = 'admin' | 'staff';
 interface AdminAccount extends AdminSecurityRecord {
@@ -474,6 +475,7 @@ export async function getAdminAccounts(req: AdminRequest, res: Response): Promis
     res.status(403).json({ success: false, message: 'Only administrators can view the staff team.' });
     return;
   }
+
   try {
     const snapshot = await firestore.collection(ADMIN_ACCOUNTS_COLLECTION).get();
     const accounts = snapshot.docs
@@ -496,6 +498,55 @@ export async function getAdminAccounts(req: AdminRequest, res: Response): Promis
   } catch (error) {
     console.error('[Admin Accounts Error]', error);
     res.status(500).json({ success: false, message: 'Could not load administrator and staff accounts.' });
+  }
+}
+
+export async function getAdminRunnerPrices(req: AdminRequest, res: Response): Promise<void> {
+  if (req.adminRole !== 'admin') {
+    res.status(403).json({ success: false, message: 'Only administrators can manage runner prices.' });
+    return;
+  }
+  try {
+    const pricing = await readRunnerPricing();
+    res.json({ success: true, prices: getRunnerPrices(pricing.discounts, pricing.originalPrices, pricing.newPrices) });
+  } catch (error) {
+    console.error('[Admin Runner Pricing Error]', error);
+    res.status(500).json({ success: false, message: 'Could not load runner prices.' });
+  }
+}
+
+export async function updateAdminRunnerPrice(req: AdminRequest, res: Response): Promise<void> {
+  if (req.adminRole !== 'admin') {
+    res.status(403).json({ success: false, message: 'Only administrators can manage runner prices.' });
+    return;
+  }
+
+  const { runnerId, originalPrice, newPrice } = req.body ?? {};
+  if (
+    typeof runnerId !== 'string' ||
+    !Object.prototype.hasOwnProperty.call(RUNNER_BASE_PRICES, runnerId) ||
+    typeof originalPrice !== 'number' ||
+    !Number.isFinite(originalPrice) ||
+    originalPrice < 0.01 ||
+    typeof newPrice !== 'number' ||
+    !Number.isFinite(newPrice) ||
+    newPrice < 0 ||
+    newPrice > originalPrice
+  ) {
+    res.status(400).json({ success: false, message: 'Enter a valid runner price: the new price must be between ₱0 and the original price.' });
+    return;
+  }
+
+  try {
+    const pricing = await saveRunnerPricing(runnerId, originalPrice, newPrice);
+    res.json({
+      success: true,
+      prices: getRunnerPrices(pricing.discounts, pricing.originalPrices, pricing.newPrices),
+      message: 'Runner price updated successfully.',
+    });
+  } catch (error) {
+    console.error('[Admin Runner Pricing Update Error]', error);
+    res.status(500).json({ success: false, message: 'Could not update the runner price.' });
   }
 }
 

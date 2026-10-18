@@ -15,6 +15,7 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
+  Percent,
   RefreshCw,
   Search,
   ShoppingBag,
@@ -24,12 +25,13 @@ import {
   Users,
 } from 'lucide-react';
 import { getApiBaseUrl } from '../services/api';
+import type { RunnerPrice } from '../services/api';
 
 type AdminScreen = 'login' | 'setup' | 'verify' | 'dashboard';
 type TransactionType = 'deposit' | 'withdrawal';
 type DateRange = '24h' | '7d' | '30d' | 'all';
 type AdminRole = 'admin' | 'staff';
-type AdminView = 'overview' | TransactionType | 'runner-purchases' | 'profile' | 'security' | 'staff-team';
+type AdminView = 'overview' | TransactionType | 'runner-purchases' | 'profile' | 'security' | 'staff-team' | 'runner-pricing';
 
 interface AdminTransaction {
   id: string;
@@ -281,6 +283,13 @@ export const Admin: React.FC = () => {
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [reviewingWithdrawalId, setReviewingWithdrawalId] = useState('');
   const [withdrawalReferenceNumbers, setWithdrawalReferenceNumbers] = useState<Record<string, string>>({});
+  const [runnerPrices, setRunnerPrices] = useState<Record<string, RunnerPrice>>({});
+  const [selectedPriceRunner, setSelectedPriceRunner] = useState('snk-1');
+  const [originalPriceInput, setOriginalPriceInput] = useState('500');
+  const [newPriceInput, setNewPriceInput] = useState('500');
+  const [discountInput, setDiscountInput] = useState('0');
+  const [isLoadingRunnerPrices, setIsLoadingRunnerPrices] = useState(false);
+  const [isSavingRunnerPrice, setIsSavingRunnerPrice] = useState(false);
 
   const loadTransactions = async (token: string) => {
     const result = await adminRequest<{ transactions: AdminTransaction[]; runnerPurchases: AdminRunnerPurchase[]; email: string; role: AdminRole }>('/api/admin/transactions', { method: 'GET' }, token);
@@ -332,6 +341,28 @@ export const Admin: React.FC = () => {
       });
     return () => { isCurrent = false; };
   }, [activeView, role, sessionToken, teamRefreshKey]);
+
+  useEffect(() => {
+    if (!sessionToken || role !== 'admin' || activeView !== 'runner-pricing') return;
+    let isCurrent = true;
+    setIsLoadingRunnerPrices(true);
+    adminRequest<{ prices: Record<string, RunnerPrice> }>('/api/admin/runner-prices', { method: 'GET' }, sessionToken)
+      .then((result) => {
+        if (isCurrent) {
+          setRunnerPrices(result.prices);
+          setOriginalPriceInput(String(result.prices[selectedPriceRunner]?.originalPrice ?? 500));
+          setNewPriceInput(String(result.prices[selectedPriceRunner]?.newPrice ?? 500));
+          setDiscountInput(String(result.prices[selectedPriceRunner]?.discountPercentage ?? 0));
+        }
+      })
+      .catch((loadError: unknown) => {
+        if (isCurrent) setError(loadError instanceof Error ? loadError.message : 'Could not load runner prices.');
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingRunnerPrices(false);
+      });
+    return () => { isCurrent = false; };
+  }, [activeView, role, sessionToken]);
 
   useEffect(() => {
     if (!sessionToken || activeView !== 'profile' || !profileLookupId) return;
@@ -600,6 +631,64 @@ export const Admin: React.FC = () => {
     }
   };
 
+  const saveRunnerPrice = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    const originalPrice = Number(originalPriceInput);
+    const newPrice = Number(newPriceInput);
+    const discountPercentage = Number(discountInput);
+    if (!Number.isFinite(originalPrice) || originalPrice <= 0) {
+      setError('Original price must be greater than ₱0.');
+      return;
+    }
+    if (!Number.isFinite(newPrice) || newPrice < 0 || newPrice > originalPrice) {
+      setError('New price must be between ₱0 and the original price.');
+      return;
+    }
+    if (!Number.isFinite(discountPercentage) || discountPercentage < 0 || discountPercentage > 100) {
+      setError('Discount must be between 0% and 100%.');
+      return;
+    }
+    const expectedDiscount = originalPrice > 0
+      ? Math.round((1 - newPrice / originalPrice) * 1_000_000) / 10_000
+      : 0;
+    setIsSavingRunnerPrice(true);
+    try {
+      const result = await adminRequest<{ prices?: Record<string, RunnerPrice>; message?: string }>(
+        '/api/admin/runner-prices',
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            runnerId: selectedPriceRunner,
+            originalPrice,
+            newPrice,
+            discountPercentage: expectedDiscount,
+          }),
+        },
+        sessionToken,
+      );
+      const savedPrice = result.prices?.[selectedPriceRunner];
+      if (
+        !result.prices ||
+        !savedPrice ||
+        Math.abs(savedPrice.originalPrice - originalPrice) > 0.01 ||
+        Math.abs(savedPrice.newPrice - newPrice) > 0.01
+      ) {
+        throw new Error('The pricing API is outdated and did not save the entered amounts. Restart the local server or deploy the latest backend, then try again.');
+      }
+      setRunnerPrices(result.prices);
+      setOriginalPriceInput(String(savedPrice.originalPrice));
+      setNewPriceInput(String(savedPrice.newPrice));
+      setDiscountInput(String(savedPrice.discountPercentage));
+      setNotice(result.message || 'Runner price updated successfully.');
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not update this runner price.');
+    } finally {
+      setIsSavingRunnerPrice(false);
+    }
+  };
+
   const logout = () => {
     sessionStorage.removeItem(SESSION_KEY);
     setSessionToken('');
@@ -773,6 +862,14 @@ export const Admin: React.FC = () => {
             <>
               <div className="mt-3 h-px w-8 bg-[#24466f]" />
               <button
+                title="Runner prices"
+                aria-label="Runner prices"
+                onClick={() => { setActiveView('runner-pricing'); setMobileNavOpen(false); }}
+                className={`grid h-11 w-11 place-items-center rounded-xl border-l-[3px] transition ${activeView === 'runner-pricing' ? 'border-cyan-300 bg-[#142b5b] text-cyan-200' : 'border-transparent text-[#c5bfbb] hover:bg-[#10234a]'}`}
+              >
+                <Percent className="h-5 w-5" />
+              </button>
+              <button
                 title="User profile"
                 aria-label="User profile"
                 onClick={() => { setActiveView('profile'); setMobileNavOpen(false); }}
@@ -812,8 +909,8 @@ export const Admin: React.FC = () => {
               <Menu className="h-4 w-4" />
             </button>
             <div className="flex items-center gap-2 text-sm font-semibold">
-              {activeView === 'overview' ? <LayoutDashboard className="h-4 w-4 text-[#f15408]" /> : activeView === 'security' ? <ShieldCheck className="h-4 w-4 text-[#f15408]" /> : activeView === 'staff-team' ? <Users className="h-4 w-4 text-cyan-300" /> : activeView === 'runner-purchases' ? <ShoppingBag className="h-4 w-4 text-[#f15408]" /> : activeView === 'profile' ? <UserRound className="h-4 w-4 text-[#f15408]" /> : <ArrowLeftRight className="h-4 w-4 text-[#f15408]" />}
-              {activeView === 'overview' ? 'Dashboard' : activeView === 'security' ? 'Security & accounts' : activeView === 'staff-team' ? 'Staff team' : activeView === 'deposit' ? 'Deposits' : activeView === 'withdrawal' ? 'Withdrawals' : activeView === 'runner-purchases' ? 'Runner purchases' : 'User profile'}
+              {activeView === 'overview' ? <LayoutDashboard className="h-4 w-4 text-[#f15408]" /> : activeView === 'security' ? <ShieldCheck className="h-4 w-4 text-[#f15408]" /> : activeView === 'staff-team' ? <Users className="h-4 w-4 text-cyan-300" /> : activeView === 'runner-purchases' ? <ShoppingBag className="h-4 w-4 text-[#f15408]" /> : activeView === 'runner-pricing' ? <Percent className="h-4 w-4 text-cyan-300" /> : activeView === 'profile' ? <UserRound className="h-4 w-4 text-[#f15408]" /> : <ArrowLeftRight className="h-4 w-4 text-[#f15408]" />}
+              {activeView === 'overview' ? 'Dashboard' : activeView === 'security' ? 'Security & accounts' : activeView === 'staff-team' ? 'Staff team' : activeView === 'deposit' ? 'Deposits' : activeView === 'withdrawal' ? 'Withdrawals' : activeView === 'runner-purchases' ? 'Runner purchases' : activeView === 'runner-pricing' ? 'Runner prices' : 'User profile'}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -848,7 +945,7 @@ export const Admin: React.FC = () => {
             </div>
           )}
 
-          {activeView !== 'security' && activeView !== 'staff-team' && activeView !== 'profile' && <div className="flex flex-wrap items-center justify-between gap-3">
+          {activeView !== 'security' && activeView !== 'staff-team' && activeView !== 'profile' && activeView !== 'runner-pricing' && <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
               {rangeLabels.map(({ id, label }) => (
                 <button
@@ -972,6 +1069,126 @@ export const Admin: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+            </section>
+          )}
+
+          {activeView === 'runner-pricing' && role === 'admin' && (
+            <section className="max-w-2xl rounded-xl border border-[#1e3a78] bg-[#081b3d] p-5 sm:p-6">
+              <div className="mb-5">
+                <h2 className="text-base font-bold text-white">Runner market pricing</h2>
+                <p className="mt-1 text-xs leading-5 text-[#99908b]">
+                  Set a percentage discount. The sale price is calculated from the original price and applies immediately to the market and purchases.
+                </p>
+              </div>
+              {isLoadingRunnerPrices ? (
+                <p className="py-8 text-center text-xs text-[#8f9fba]">
+                  <LoaderCircle className="mx-auto mb-2 h-4 w-4 animate-spin text-cyan-300" />
+                  Loading runner prices…
+                </p>
+              ) : (
+                <form onSubmit={saveRunnerPrice} className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="price-runner-type">Runner type</label>
+                    <select
+                      id="price-runner-type"
+                      value={selectedPriceRunner}
+                      onChange={(event) => {
+                        const runnerId = event.target.value;
+                        const price = runnerPrices[runnerId];
+                        setSelectedPriceRunner(runnerId);
+                        setOriginalPriceInput(String(price?.originalPrice ?? 0));
+                        setNewPriceInput(String(price?.newPrice ?? 0));
+                        setDiscountInput(String(price?.discountPercentage ?? 0));
+                      }}
+                      className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+                    >
+                      {Object.entries(runnerNames).map(([runnerId, name]) => (
+                        <option key={runnerId} value={runnerId}>{name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="runner-original-price">Original price</label>
+                      <input
+                        id="runner-original-price"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        required
+                        value={originalPriceInput}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setOriginalPriceInput(value);
+                          const originalPrice = Number(value);
+                          const discountPercentage = Number(discountInput);
+                          if (originalPrice > 0 && Number.isFinite(discountPercentage)) {
+                            const newPrice = Math.round(originalPrice * (1 - discountPercentage / 100) * 100) / 100;
+                            setNewPriceInput(String(newPrice));
+                          }
+                        }}
+                        className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="runner-new-price">New price</label>
+                      <input
+                        id="runner-new-price"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
+                        value={newPriceInput}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setNewPriceInput(value);
+                          const originalPrice = Number(originalPriceInput);
+                          const newPrice = Number(value);
+                          if (originalPrice > 0 && Number.isFinite(newPrice)) {
+                            const discountPercentage = Math.max(0, Math.min(100, (1 - newPrice / originalPrice) * 100));
+                            setDiscountInput(discountPercentage.toFixed(4).replace(/\.?0+$/, ''));
+                          }
+                        }}
+                        className="w-full rounded-lg border border-emerald-500/30 bg-[#06132e] px-3 py-2.5 text-sm font-bold text-emerald-200 outline-none focus:border-emerald-300"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="runner-discount">Discount percentage</label>
+                    <div className="relative">
+                      <input
+                        id="runner-discount"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        required
+                        value={discountInput}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setDiscountInput(value);
+                          const discountPercentage = Number(value);
+                          const originalPrice = Number(originalPriceInput);
+                          if (originalPrice > 0 && Number.isFinite(discountPercentage) && discountPercentage >= 0 && discountPercentage <= 100) {
+                            const newPrice = Math.round(originalPrice * (1 - discountPercentage / 100) * 100) / 100;
+                            setNewPriceInput(String(newPrice));
+                          }
+                        }}
+                        className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 pr-9 text-sm text-white outline-none focus:border-cyan-300"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-[#8f9fba]">%</span>
+                    </div>
+                    <p className="mt-1.5 text-[10px] text-[#8f9fba]">Enter 0 to remove the discount and hide the sale badge on the market.</p>
+                  </div>
+                  <button
+                    disabled={isSavingRunnerPrice || !runnerPrices[selectedPriceRunner]}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#e94f08] px-4 py-3 text-sm font-bold text-white hover:bg-[#ff6418] disabled:opacity-50"
+                  >
+                    {isSavingRunnerPrice && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                    Save runner price
+                  </button>
+                </form>
+              )}
             </section>
           )}
 
