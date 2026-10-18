@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  createTurboPayPayout,
   getTurboPayPayoutBankCode,
   getTurboPayPayoutConfig,
   TurboPayPayoutConfigError,
+  TurboPayPayoutRejectedError,
 } from './turbopay.js';
 
 const payoutEnvironmentKeys = [
@@ -34,9 +36,33 @@ function withPayoutEnvironment(values: Record<(typeof payoutEnvironmentKeys)[num
 
 test('maps supported payout providers to TurboPay bank codes', () => {
   assert.equal(getTurboPayPayoutBankCode('gcash'), 'gcash');
-  assert.equal(getTurboPayPayoutBankCode('maya'), 'MYA');
+  assert.equal(getTurboPayPayoutBankCode('maya'), 'PMP');
   assert.equal(getTurboPayPayoutBankCode('gotyme'), 'GOT');
   assert.equal(getTurboPayPayoutBankCode('unknown'), null);
+});
+
+test('retains TurboPay rejection status and message for admin diagnostics', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(
+    JSON.stringify({ status: '0', message: 'IP not found in allowed IPs (ref: ab12cd34)' }),
+    { status: 403, headers: { 'Content-Type': 'application/json' } },
+  );
+
+  try {
+    await assert.rejects(
+      createTurboPayPayout('https://merchant.turbopay.ph', { merchant: 'M100001' }),
+      (error: unknown) => {
+        assert.ok(error instanceof TurboPayPayoutRejectedError);
+        assert.equal(error.httpStatus, 403);
+        assert.equal(error.providerStatus, '0');
+        assert.match(error.message, /IP not found in allowed IPs/);
+        assert.match(error.message, /ab12cd34/);
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('reports missing payout environment settings without exposing credentials', () => {

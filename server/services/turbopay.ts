@@ -22,7 +22,7 @@ export class TurboPayPayoutConfigError extends Error {}
 export function getTurboPayPayoutBankCode(provider: string): 'gcash' | 'MYA' | 'GOT' | null {
   switch (provider) {
     case 'gcash': return 'gcash';
-    case 'maya': return 'MYA';
+    case 'maya': return 'PMP';
     case 'gotyme': return 'GOT';
     default: return null;
   }
@@ -129,7 +129,23 @@ export function getTurboPayPayoutConfig(): TurboPayPayoutConfig {
 }
 
 export class TurboPayTransferRejectedError extends Error {}
-export class TurboPayPayoutRejectedError extends Error {}
+export class TurboPayPayoutRejectedError extends Error {
+  constructor(
+    readonly httpStatus: number,
+    readonly providerStatus: string,
+    providerMessage: string | undefined,
+  ) {
+    const safeMessage = providerMessage
+      ?.replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .slice(0, 300)
+      .trim();
+    super(
+      safeMessage
+        ? `TurboPay rejected the payout (HTTP ${httpStatus}, status ${providerStatus}): ${safeMessage}`
+        : `TurboPay rejected the payout (HTTP ${httpStatus}, status ${providerStatus}).`,
+    );
+  }
+}
 
 export function createTurboPaySignature(payload: TurboPayPayload, merchantKey: string): string {
   const canonicalPayload = Object.keys(payload)
@@ -206,7 +222,11 @@ export async function createTurboPayPayout(
 
     const data = result as Record<string, unknown>;
     if (!response.ok || String(data.status) !== '1') {
-      throw new TurboPayPayoutRejectedError('TurboPay rejected this payout request.');
+      throw new TurboPayPayoutRejectedError(
+        response.status,
+        String(data.status ?? 'unknown'),
+        typeof data.message === 'string' ? data.message : undefined,
+      );
     }
     return data;
   } finally {

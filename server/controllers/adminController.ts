@@ -921,7 +921,10 @@ export async function reviewWithdrawal(req: AdminRequest, res: Response): Promis
         res.status(500).json({ success: false, message: 'TurboPay rejected this payout, but the refund could not be completed. Contact support.' });
         return;
       }
-      res.status(502).json({ success: false, message: 'TurboPay rejected the payout request; the withdrawal was marked failed and refunded.' });
+      res.status(502).json({
+        success: false,
+        message: `${error.message} The withdrawal was marked failed and refunded.`,
+      });
       return;
     }
 
