@@ -29,6 +29,7 @@ import {
   FirestoreUser,
 } from '../database/firebase.js';
 import { completeWorkoutAndClearSnapshot, MarathonError } from '../services/marathonService.js';
+import { displayedNexoraId } from '../services/marathonRules.js';
 import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES } from '../services/runnerPricing.js';
 import { sendSignupTelegramNotification } from '../services/telegramNotifications.js';
 
@@ -252,6 +253,7 @@ export async function register(req: Request, res: Response): Promise<void> {
 
     await sendSignupTelegramNotification({
       phoneNumber: cleanPhone,
+      steporaId: displayedNexoraId(myReferralCode, userId),
       createdAt: newUser.createdAt,
       referralCode: myReferralCode,
     });

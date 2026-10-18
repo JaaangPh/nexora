@@ -1,5 +1,6 @@
 interface SignupNotification {
   phoneNumber: string;
+  steporaId: string;
   createdAt: string;
   referralCode: string;
 }
@@ -8,6 +9,7 @@ let configurationWarningLogged = false;
 
 export function formatSignupNotification({
   phoneNumber,
+  steporaId,
   createdAt,
   referralCode,
 }: SignupNotification): string {
@@ -18,13 +20,21 @@ export function formatSignupNotification({
   }).format(new Date(createdAt));
 
   return [
-    '🎉 Welcome Message (STEPORA MOVEMENT | STEPM | MOVE TO EARN)',
+    '🎉 NEW USER SIGN-UP!',
     '',
-    'A new mover has joined the Stepora community! Welcome aboard—let’s move, grow, and earn together.',
+    '🚀 Welcome to STEPORA MOVEMENT | STEPM!',
     '',
-    `Phone number: ****${phoneNumber.slice(-4)}`,
-    `Created at: ${formattedCreatedAt}`,
-    `Referral Code: ${referralCode}`,
+    `👤 New Member: ****${phoneNumber.slice(-4)}`,
+    `🆔 User ID: ${steporaId}`,
+    `📧 Referral: ${referralCode}`,
+    `📅 Registered: ${formattedCreatedAt}`,
+    '',
+    '💚 A new member has joined the STEPM | MOVE TO EARN community!',
+    '',
+    "👟 Another mover has entered the movement. Let's keep growing and moving forward together!",
+    '',
+    '🔥 STEPORA MOVEMENT',
+    '💰 MOVE TO EARN | EVERY STEP COUNTS 🚀',
   ].join('\n');
 }
 
