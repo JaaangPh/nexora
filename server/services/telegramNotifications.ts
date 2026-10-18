@@ -33,6 +33,8 @@ export function formatSignupNotification({
     '',
     "👟 Another mover has entered the movement. Let's keep growing and moving forward together!",
     '',
+    'signup now at: https://stepm.fun/',
+    '',
     '🔥 STEPORA MOVEMENT',
     '💰 MOVE TO EARN | EVERY STEP COUNTS 🚀',
   ].join('\n');
