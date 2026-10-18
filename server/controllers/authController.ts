@@ -208,18 +208,36 @@ export async function register(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    // 5. Generate unique NT referral code for this new member
-    const myReferralCode = await generateUniqueReferralCode();
-    const usedCode = typeof inviteCode === 'string' ? inviteCode.trim().toUpperCase() : 'DIRECT-SIGNUP';
-    const referrer = /^NT\d{6}$/.test(usedCode)
-      ? await findUserByReferralCode(usedCode)
-      : null;
+    // 5. Validate an optional referral code against existing members.
+    if (inviteCode !== undefined && typeof inviteCode !== 'string') {
+      res.status(400).json({
+        success: false,
+        message: 'Please provide a valid referral code.',
+      });
+      return;
+    }
 
-    // 6. Hash password
+    const normalizedInviteCode = inviteCode?.trim().toUpperCase();
+    const referrer = normalizedInviteCode
+      ? await findUserByReferralCode(normalizedInviteCode)
+      : null;
+    if (normalizedInviteCode && !referrer) {
+      res.status(400).json({
+        success: false,
+        message: 'This referral code does not exist. Check the code or leave it blank to continue without one.',
+      });
+      return;
+    }
+
+    // 6. Generate unique NT referral code for this new member
+    const myReferralCode = await generateUniqueReferralCode();
+    const usedCode = normalizedInviteCode || 'DIRECT-SIGNUP';
+
+    // 7. Hash password
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    // 7. Save user in Firestore
+    // 8. Save user in Firestore
     const userId = crypto.randomUUID();
     const newUser = await createUser({
       id: userId,

@@ -267,7 +267,7 @@ export const AboutWhitepaper: React.FC = () => {
                 ))}
               </div>
               <p className="mt-4 leading-7 text-slate-600">Registration asks for a phone number, password, confirmation, and invite-code field. The interface checks for a 7–15 digit phone number and a matching password of at least six characters. The API hashes passwords with bcrypt, stores account data in Firebase Cloud Firestore, and issues a signed session token. Protected API calls check that the token belongs to the account’s current active session; signing in again replaces the previous session.</p>
-              <p className="mt-3 leading-7 text-slate-600">The registration screen requires a code and saves the submitted value, but the current registration handler does not validate it against the seeded invite-code records. Some legacy files mention charts and trading, but those are not active dashboard workflows.</p>
+              <p className="mt-3 leading-7 text-slate-600">The referral code is optional during registration. When one is provided, the server verifies that it belongs to an existing member before creating the account; leaving it blank creates an account without a referrer. Some legacy files mention charts and trading, but those are not active dashboard workflows.</p>
             </section>
 
             <section id="runners" className="scroll-mt-24 border-b border-slate-200 py-8 sm:py-10">

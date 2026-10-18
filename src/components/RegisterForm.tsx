@@ -27,18 +27,6 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const [inviteStatus, setInviteStatus] = useState<{
-    valid?: boolean;
-    message?: string;
-  } | null>(null);
-
-  // Auto set invite status when prefilled from invite link
-  React.useEffect(() => {
-    if (initialInviteCode && initialInviteCode.trim()) {
-      setInviteStatus({ valid: true, message: `Referral Pass Applied (${initialInviteCode.trim().toUpperCase()})` });
-    }
-  }, [initialInviteCode]);
-
   // Submit Registration
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,11 +46,6 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       setErrorMessage('Please confirm your password.');
       return;
     }
-    if (!inviteCode.trim()) {
-      setErrorMessage('An invite code is required to create a Stepora account.');
-      return;
-    }
-
     // 2. Password mismatch check
     if (password !== confirmPassword) {
       setErrorMessage('Passwords do not match. Please ensure both passwords match.');
@@ -242,25 +225,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
               htmlFor="reg-invite-code"
               className="block text-xs sm:text-[13px] font-bold text-[#17233B]"
             >
-              Invite Code
+              Invite Code (Optional)
             </label>
-            {inviteStatus && (
-              <span
-                className={`text-[11px] font-semibold flex items-center gap-1 ${
-                  inviteStatus.valid ? 'text-emerald-600' : 'text-red-500'
-                }`}
-              >
-                {inviteStatus.valid ? (
-                  <>
-                    <CheckCircle2 className="w-3 h-3" /> Valid Code
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle className="w-3 h-3" /> Invalid
-                  </>
-                )}
-              </span>
-            )}
           </div>
 
           <div className="relative rounded-2xl">
@@ -272,7 +238,6 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
               name="inviteCode"
               type="text"
               autoCapitalize="characters"
-              required
               disabled={isLoading}
               value={inviteCode}
               onChange={(e) => {
@@ -280,19 +245,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
                 setInviteCode(val);
                 if (errorMessage) setErrorMessage(null);
               }}
-              placeholder="Referral Code (Optional, e.g. NT723906)"
+              placeholder="Optional referral code (e.g. NT723906)"
               className="w-full pl-10 pr-4 py-3 sm:py-3.5 bg-[#F8FAFC] text-[#17233B] text-sm rounded-2xl border border-[#DCE4EF] focus:border-[#2459C4] placeholder:text-[#94A3B8] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#2459C4]/25 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </div>
-          {inviteStatus?.message && (
-            <p
-              className={`text-[11px] mt-1 pl-1 font-medium ${
-                inviteStatus.valid ? 'text-emerald-700' : 'text-red-500'
-              }`}
-            >
-              {inviteStatus.message}
-            </p>
-          )}
+          <p className="mt-1 pl-1 text-[11px] font-medium text-[#64748B]">
+            Optional. If provided, the referral code must belong to an existing member.
+          </p>
         </div>
 
         {/* Create Account Primary Button */}
