@@ -18,6 +18,7 @@ import {
   getUserWorkoutSnapshot,
   updateUserWorkoutSnapshot,
   purchaseUserRunner,
+  repairUserRunner,
   generateUniqueReferralCode,
   generateAutoUsername,
   updateUserProfileImage,
@@ -32,14 +33,25 @@ import { completeWorkoutAndClearSnapshot, MarathonError } from '../services/mara
 import { displayedNexoraId } from '../services/marathonRules.js';
 import { sendMarketplacePurchaseTelegramNotification } from '../services/marketplaceTelegramNotifications.js';
 import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES } from '../services/runnerPricing.js';
+import { readRunnerRules } from '../services/runnerRules.js';
 import { sendSignupTelegramNotification } from '../services/telegramNotifications.js';
+import { getTurboPayPayoutBank, isTurboPayPayoutBankCode } from '../../shared/turbopayBanks.js';
 
 const MAX_WORKOUT_ROUTE_POINTS = 1000;
 const MAX_PROFILE_IMAGE_DATA_URL_LENGTH = 84 * 1024;
-const PAYOUT_PROVIDERS = new Set<PayoutProvider>(['gcash', 'maya', 'gotyme']);
-
 function isPayoutProvider(value: unknown): value is PayoutProvider {
-  return typeof value === 'string' && PAYOUT_PROVIDERS.has(value as PayoutProvider);
+  return isTurboPayPayoutBankCode(value);
+}
+
+const legacyPayoutProviderCodes: Record<string, PayoutProvider> = {
+  gcash: 'gcash',
+  maya: 'PMP',
+  gotyme: 'GOT',
+};
+
+function normalizePayoutProvider(value: unknown): PayoutProvider | undefined {
+  if (isPayoutProvider(value)) return value;
+  return typeof value === 'string' ? legacyPayoutProviderCodes[value] : undefined;
 }
 
 async function getDisplayUsername(user: FirestoreUser): Promise<string> {
@@ -482,31 +494,40 @@ export async function savePayoutAccount(req: AuthRequest, res: Response): Promis
     return;
   }
 
-  const provider = req.body?.provider;
+  const provider = normalizePayoutProvider(req.body?.provider);
+  const requestedBankCode = req.body?.bankCode;
   const accountNumber = typeof req.body?.accountNumber === 'string'
-    ? req.body.accountNumber.replace(/[\s-]/g, '')
+    ? req.body.accountNumber.trim()
     : '';
   const accountHolder = typeof req.body?.accountHolder === 'string'
     ? req.body.accountHolder.trim()
     : '';
 
   if (
-    !isPayoutProvider(provider) ||
-    !/^\d{7,20}$/.test(accountNumber) ||
+    !provider ||
+    (requestedBankCode !== undefined && requestedBankCode !== provider) ||
+    !/^[A-Za-z0-9][A-Za-z0-9._/-]{5,79}$/.test(accountNumber) ||
     accountHolder.length < 2 ||
     accountHolder.length > 80 ||
     /[\u0000-\u001f\u007f]/.test(accountHolder)
   ) {
     res.status(400).json({
       success: false,
-      message: 'Choose a supported provider and enter a valid account number and account holder name.',
+      message: 'Choose a bank from the supported list and enter a valid account number and account holder name.',
     });
     return;
   }
 
   try {
+    const bank = getTurboPayPayoutBank(provider);
+    if (!bank) {
+      res.status(400).json({ success: false, message: 'Choose a supported bank.' });
+      return;
+    }
     const accounts = await saveUserPayoutAccount(req.user.id, {
       provider,
+      bankCode: provider,
+      bankName: bank.name,
       accountNumber,
       accountHolder,
     } satisfies PayoutAccount);
@@ -526,9 +547,9 @@ export async function deletePayoutAccount(req: AuthRequest, res: Response): Prom
     res.status(401).json({ success: false, message: 'Unauthorized session.' });
     return;
   }
-  const provider = req.params.provider;
-  if (!isPayoutProvider(provider)) {
-    res.status(400).json({ success: false, message: 'Choose a supported payout provider.' });
+  const provider = normalizePayoutProvider(req.params.provider);
+  if (!provider) {
+    res.status(400).json({ success: false, message: 'Choose a supported payout bank.' });
     return;
   }
 
@@ -582,14 +603,23 @@ export async function saveWorkoutSnapshot(req: AuthRequest, res: Response): Prom
       return;
     }
 
-    const savedSnapshot = await updateUserWorkoutSnapshot(req.user.id, snapshot, req.user.sessionId);
+    const saved = await updateUserWorkoutSnapshot(req.user.id, snapshot, req.user.sessionId);
     res.json({
       success: true,
-      workoutSnapshot: { ...savedSnapshot, accountId: req.user.id },
+      workoutSnapshot: { ...saved.workoutSnapshot, accountId: req.user.id },
+      ...(saved.ownedRunners ? { ownedRunners: saved.ownedRunners } : {}),
     });
   } catch (error: any) {
     if (error instanceof Error && error.message === 'WORKOUT_SESSION_REPLACED') {
       res.status(409).json({ success: false, message: 'This account was signed in on another device.' });
+      return;
+    }
+    if (error instanceof Error && error.message === 'RUNNER_NEEDS_REPAIR') {
+      res.status(409).json({ success: false, message: 'A selected Runner needs repair before it can be used.' });
+      return;
+    }
+    if (error instanceof Error && (error.message === 'RUNNER_NOT_OWNED' || error.message === 'NO_RUNNERS_SELECTED')) {
+      res.status(400).json({ success: false, message: 'Choose an available Runner that you own.' });
       return;
     }
     console.error('[Save Workout Snapshot Error]', error);
@@ -823,7 +853,8 @@ export async function purchaseRunner(req: AuthRequest, res: Response): Promise<v
       return;
     }
 
-    const purchase = await purchaseUserRunner(req.user.id, runnerId, price);
+    const runnerRules = await readRunnerRules();
+    const purchase = await purchaseUserRunner(req.user.id, runnerId, price, runnerRules[runnerId as keyof typeof runnerRules].healthLimit);
     await sendMarketplacePurchaseTelegramNotification({
       userId: req.user.id,
       referralCode: member.referralCode,
@@ -868,5 +899,71 @@ export async function getPublicRunnerPrices(_req: Request, res: Response): Promi
   } catch (error) {
     console.error('[Runner Pricing Error]', error);
     res.status(500).json({ success: false, message: 'Could not load runner prices.' });
+  }
+}
+
+export async function getPublicRunnerRules(_req: Request, res: Response): Promise<void> {
+  try {
+    res.json({ success: true, rules: await readRunnerRules() });
+  } catch (error) {
+    console.error('[Runner Rules Error]', error);
+    res.status(500).json({ success: false, message: 'Could not load runner settings.' });
+  }
+}
+
+export async function repairRunner(req: AuthRequest, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ success: false, message: 'Unauthorized session.' });
+    return;
+  }
+
+  const runnerInstanceId = req.body?.runnerInstanceId;
+  const quantity = req.body?.quantity;
+  if (typeof runnerInstanceId !== 'string' || !runnerInstanceId || !Number.isInteger(quantity) || quantity < 1 || quantity > 1000) {
+    res.status(400).json({ success: false, message: 'Choose a valid Runner and repair amount.' });
+    return;
+  }
+
+  try {
+    const member = await findUserById(req.user.id);
+    const runner = (Array.isArray(member?.ownedRunners) ? member.ownedRunners : [])
+      .find((item) => typeof item === 'object' && item !== null && item.id === runnerInstanceId);
+    if (!runner || typeof runner === 'string') {
+      res.status(404).json({ success: false, message: 'Runner not found in your inventory.' });
+      return;
+    }
+    const runnerRules = await readRunnerRules();
+    const rule = runnerRules[runner.runnerId as keyof typeof runnerRules];
+    if (!rule) {
+      res.status(400).json({ success: false, message: 'This Runner type is no longer supported.' });
+      return;
+    }
+    const result = await repairUserRunner(req.user.id, runnerInstanceId, quantity, rule.healthLimit);
+    res.json({
+      success: true,
+      message: `Restored ${result.repairedHealth} health for ₱${result.repairedHealth * 10}.`,
+      user: { balance: result.balance, ownedRunners: result.ownedRunners },
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'INSUFFICIENT_BALANCE') {
+        res.status(400).json({ success: false, message: 'Insufficient balance to repair this Runner.' });
+        return;
+      }
+      if (error.message === 'RUNNER_NOT_OWNED') {
+        res.status(404).json({ success: false, message: 'Runner not found in your inventory.' });
+        return;
+      }
+      if (error.message === 'RUNNER_FULLY_REPAIRED') {
+        res.status(400).json({ success: false, message: 'This Runner is already fully repaired.' });
+        return;
+      }
+      if (error.message === 'REPAIR_EXCEEDS_MISSING_HEALTH') {
+        res.status(400).json({ success: false, message: 'Repair amount exceeds this Runner’s missing health.' });
+        return;
+      }
+    }
+    console.error('[Runner Repair Error]', error);
+    res.status(500).json({ success: false, message: 'Could not repair this Runner.' });
   }
 }

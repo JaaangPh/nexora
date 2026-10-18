@@ -17,12 +17,21 @@ export const WORKOUT_RUNNER_EARNING_RATES: Record<string, number> = {
   'snk-4': 40,
 };
 
-export function calculateWorkoutRewardCents(distanceMeters: number, runnerIds: string[]): number {
+export function calculateWorkoutRewardCents(
+  distanceMeters: number,
+  runnerIds: string[],
+  runnerRules: Record<string, { earningRate: number; kmLimitPerDay: number }> = Object.fromEntries(
+    Object.keys(MARATHON_RUNNER_LIMITS_KM).map((id) => [id, {
+      earningRate: WORKOUT_RUNNER_EARNING_RATES[id],
+      kmLimitPerDay: MARATHON_RUNNER_LIMITS_KM[id],
+    }]),
+  ),
+): number {
   if (!Number.isFinite(distanceMeters) || distanceMeters <= 0) return 0;
   const distanceKm = distanceMeters / 1000;
   const reward = runnerIds.reduce((total, runnerId) => {
-    const earningRate = WORKOUT_RUNNER_EARNING_RATES[runnerId] || 0;
-    const limitKm = MARATHON_RUNNER_LIMITS_KM[runnerId] || 0;
+    const earningRate = runnerRules[runnerId]?.earningRate || 0;
+    const limitKm = runnerRules[runnerId]?.kmLimitPerDay || 0;
     return total + Math.min(distanceKm, limitKm) * earningRate;
   }, 0);
   return Math.round(reward * 100);

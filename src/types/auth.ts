@@ -21,6 +21,7 @@ export interface OwnedRunner {
   runnerId: string;
   serial: string;
   purchasedAt: number;
+  health?: number;
 }
 
 export interface AuthResponse {

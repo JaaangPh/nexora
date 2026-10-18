@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { FieldValue } from 'firebase-admin/firestore';
 import { toDataURL } from 'qrcode';
-import { AdminSecurityRecord, firestore } from '../database/firebase.js';
+import { AdminSecurityRecord, firestore, grantUserRunner } from '../database/firebase.js';
 import { AuthRequest } from '../middleware/auth.js';
 import {
   decryptTotpSecret as decryptSecret,
@@ -15,6 +15,7 @@ import {
 } from '../services/totp.js';
 import { displayedNexoraId } from '../services/marathonRules.js';
 import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES, saveRunnerPricing } from '../services/runnerPricing.js';
+import { isRunnerId, readRunnerRules, saveRunnerRule } from '../services/runnerRules.js';
 import {
   createTurboPayPayout,
   createTurboPaySignature,
@@ -529,7 +530,6 @@ export async function updateAdminRunnerPrice(req: AdminRequest, res: Response): 
     res.status(403).json({ success: false, message: 'Only administrators can manage runner prices.' });
     return;
   }
-
   const { runnerId, originalPrice, newPrice } = req.body ?? {};
   if (
     typeof runnerId !== 'string' ||
@@ -556,6 +556,97 @@ export async function updateAdminRunnerPrice(req: AdminRequest, res: Response): 
   } catch (error) {
     console.error('[Admin Runner Pricing Update Error]', error);
     res.status(500).json({ success: false, message: 'Could not update the runner price.' });
+  }
+}
+
+export async function getAdminRunnerRules(req: AdminRequest, res: Response): Promise<void> {
+  if (req.adminRole !== 'admin') {
+    res.status(403).json({ success: false, message: 'Only administrators can manage Runner settings.' });
+    return;
+  }
+  try {
+    res.json({ success: true, rules: await readRunnerRules() });
+  } catch (error) {
+    console.error('[Admin Runner Rules Error]', error);
+    res.status(500).json({ success: false, message: 'Could not load Runner settings.' });
+  }
+}
+
+export async function updateAdminRunnerRule(req: AdminRequest, res: Response): Promise<void> {
+  if (req.adminRole !== 'admin') {
+    res.status(403).json({ success: false, message: 'Only administrators can manage Runner settings.' });
+    return;
+  }
+  const { runnerId, earningRate, kmLimitPerDay, healthLimit } = req.body ?? {};
+  if (
+    typeof runnerId !== 'string' ||
+    !isRunnerId(runnerId) ||
+    typeof earningRate !== 'number' ||
+    !Number.isFinite(earningRate) ||
+    earningRate < 0 ||
+    typeof kmLimitPerDay !== 'number' ||
+    !Number.isFinite(kmLimitPerDay) ||
+    kmLimitPerDay <= 0 ||
+    typeof healthLimit !== 'number' ||
+    !Number.isInteger(healthLimit) ||
+    healthLimit < 1 ||
+    healthLimit > 1000
+  ) {
+    res.status(400).json({ success: false, message: 'Enter a valid Runner earning rate, daily distance limit, and health limit.' });
+    return;
+  }
+  try {
+    const rules = await saveRunnerRule(runnerId, { earningRate, kmLimitPerDay, healthLimit });
+    res.json({ success: true, rules, message: 'Runner settings updated successfully.' });
+  } catch (error) {
+    console.error('[Admin Runner Rules Update Error]', error);
+    res.status(500).json({ success: false, message: 'Could not update Runner settings.' });
+  }
+}
+
+export async function grantAdminRunner(req: AdminRequest, res: Response): Promise<void> {
+  if (req.adminRole !== 'admin') {
+    res.status(403).json({ success: false, message: 'Only administrators can give Runners to users.' });
+    return;
+  }
+  const steporaId = typeof req.body?.steporaId === 'string' ? req.body.steporaId.trim() : '';
+  const runnerId = req.body?.runnerId;
+  if (!/^\d{5}$/.test(steporaId) || typeof runnerId !== 'string' || !isRunnerId(runnerId)) {
+    res.status(400).json({ success: false, message: 'Enter a valid five-digit Stepora ID and Runner type.' });
+    return;
+  }
+  try {
+    const users = await firestore.collection('users').get();
+    const matches = users.docs.filter((document) => {
+      const user = document.data();
+      return displayedNexoraId(
+        typeof user.referralCode === 'string' ? user.referralCode : undefined,
+        document.id,
+      ) === steporaId;
+    });
+    if (matches.length === 0) {
+      res.status(404).json({ success: false, message: 'No user was found for that Stepora ID.' });
+      return;
+    }
+    if (matches.length > 1) {
+      res.status(409).json({ success: false, message: 'This Stepora ID matches multiple users. Use the user profile to identify the correct account.' });
+      return;
+    }
+    const userId = matches[0].id;
+    const rules = await readRunnerRules();
+    const result = await grantUserRunner(userId, runnerId, rules[runnerId].healthLimit);
+    res.status(201).json({
+      success: true,
+      message: `Runner granted to Stepora ID ${steporaId}.`,
+      runner: result.grantedRunner,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'RUNNER_SERIALS_EXHAUSTED') {
+      res.status(409).json({ success: false, message: 'No unique Runner serial is available for this user.' });
+      return;
+    }
+    console.error('[Admin Runner Grant Error]', error);
+    res.status(500).json({ success: false, message: 'Could not grant this Runner.' });
   }
 }
 
@@ -986,10 +1077,11 @@ async function refundFailedTurboPayPayout(
 
 export async function getAdminTransactions(req: AdminRequest, res: Response): Promise<void> {
   try {
-    const [depositSnapshot, withdrawalSnapshot, runnerPurchaseSnapshot] = await Promise.all([
+    const [depositSnapshot, withdrawalSnapshot, runnerPurchaseSnapshot, registeredUsersCount] = await Promise.all([
       firestore.collection('payment_deposits').get(),
       firestore.collection('payment_withdrawals').get(),
       firestore.collection('wallet_transactions').where('type', '==', 'runner_purchase').get(),
+      firestore.collection('users').count().get(),
     ]);
 
     const allRecords = [
@@ -1077,6 +1169,7 @@ export async function getAdminTransactions(req: AdminRequest, res: Response): Pr
         success: true,
         transactions,
         runnerPurchases: purchases,
+        registeredUsers: registeredUsersCount.data().count,
         email: req.adminEmail,
         role: req.adminRole,
     });

@@ -16,11 +16,18 @@ import {
   ClipboardList,
   Smartphone,
   ChevronRight,
+  ChevronDown,
   Plus,
   Trash2,
+  Search,
+  Building2,
 } from 'lucide-react';
 import { User } from '../types/auth';
 import { api, PayoutAccount, PayoutProvider } from '../services/api';
+import {
+  getTurboPayPayoutBank,
+  TURBOPAY_PAYOUT_BANKS,
+} from '../../shared/turbopayBanks';
 
 interface MeTabProps {
   user: User;
@@ -54,6 +61,9 @@ export const MeTab: React.FC<MeTabProps> = ({
   const [payoutAccounts, setPayoutAccounts] = useState<PayoutAccount[]>([]);
   const [isLoadingPayoutAccounts, setIsLoadingPayoutAccounts] = useState(false);
   const [selectedPayoutProvider, setSelectedPayoutProvider] = useState<PayoutProvider | null>(null);
+  const [isChoosingPayoutBank, setIsChoosingPayoutBank] = useState(false);
+  const [isBankTransferExpanded, setIsBankTransferExpanded] = useState(false);
+  const [payoutBankSearch, setPayoutBankSearch] = useState('');
   const [payoutAccountNumber, setPayoutAccountNumber] = useState('');
   const [payoutAccountHolder, setPayoutAccountHolder] = useState('');
   const [payoutAccountError, setPayoutAccountError] = useState<string | null>(null);
@@ -241,6 +251,7 @@ export const MeTab: React.FC<MeTabProps> = ({
   const openPayoutAccountForm = (provider: PayoutProvider) => {
     const existingAccount = payoutAccounts.find((account) => account.provider === provider);
     setSelectedPayoutProvider(provider);
+    setIsChoosingPayoutBank(false);
     setPayoutAccountNumber(existingAccount?.accountNumber || '');
     setPayoutAccountHolder(existingAccount?.accountHolder || '');
     setPayoutAccountError(null);
@@ -250,10 +261,10 @@ export const MeTab: React.FC<MeTabProps> = ({
     event.preventDefault();
     if (!selectedPayoutProvider) return;
 
-    const accountNumber = payoutAccountNumber.replace(/[\s-]/g, '');
+    const accountNumber = payoutAccountNumber.trim().replace(/\s+/g, '');
     const accountHolder = payoutAccountHolder.trim();
-    if (!/^\d{7,20}$/.test(accountNumber)) {
-      setPayoutAccountError('Enter an account number containing 7 to 20 digits.');
+    if (!/^[A-Za-z0-9][A-Za-z0-9._/-]{5,79}$/.test(accountNumber)) {
+      setPayoutAccountError('Enter an account number or wallet address using 6 to 80 letters, numbers, or . _ / - characters.');
       return;
     }
     if (accountHolder.length < 2 || accountHolder.length > 80) {
@@ -266,6 +277,8 @@ export const MeTab: React.FC<MeTabProps> = ({
     try {
       const accounts = await api.savePayoutAccount({
         provider: selectedPayoutProvider,
+        bankCode: selectedPayoutProvider,
+        bankName: getTurboPayPayoutBank(selectedPayoutProvider)?.name || selectedPayoutProvider,
         accountNumber,
         accountHolder,
       });
@@ -292,21 +305,44 @@ export const MeTab: React.FC<MeTabProps> = ({
     }
   };
 
-  const providerLabels: Record<PayoutProvider, string> = {
-    gcash: 'GCash',
-    maya: 'Maya',
-    gotyme: 'GoTyme',
+  const providerLabel = (provider: PayoutProvider) =>
+    getTurboPayPayoutBank(provider)?.name || provider;
+  const renderProviderLogo = (
+    provider: PayoutProvider,
+    compact = false,
+    label: string = providerLabel(provider),
+  ) => {
+    const logo = provider === 'gcash' ? '/images/payment/gcash.png' :
+      provider === 'PMP' ? '/images/payment/maya.png' :
+        provider === 'GOT' ? '/images/payment/gotyme.png' :
+          provider === 'usdt-trc20' ? '/images/payment/usdt.png' : null;
+    return (
+      <span className={`inline-flex items-center gap-2 ${compact ? 'min-w-[84px]' : ''}`}>
+        <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-white/10 text-cyan-200">
+          {logo ? <img src={logo} alt="" aria-hidden="true" className="h-7 w-7 object-contain" /> :
+            <Building2 className="h-4 w-4" />}
+        </span>
+        <span className="text-sm font-semibold text-white">{label}</span>
+      </span>
+    );
   };
-  const renderProviderLogo = (provider: PayoutProvider, compact = false) => (
-    <span className={`inline-flex items-center gap-2 ${compact ? 'min-w-[84px]' : ''}`}>
-      <img
-        src={`/images/payment/${provider}.png`}
-        alt=""
-        aria-hidden="true"
-        className="h-8 w-8 flex-shrink-0 object-contain"
-      />
-      <span className="text-sm font-semibold text-white">{providerLabels[provider]}</span>
-    </span>
+  const filteredPayoutBanks = TURBOPAY_PAYOUT_BANKS.filter((bank) => {
+    if (['gcash', 'PMP', 'MYA', 'GOT'].includes(bank.code)) return false;
+    const search = payoutBankSearch.trim().toLowerCase();
+    return !search || bank.name.toLowerCase().includes(search) || bank.code.toLowerCase().includes(search);
+  });
+  const primaryPayoutProviders: readonly { code: PayoutProvider; label: string }[] = [
+    { code: 'gcash', label: 'GCash' },
+    { code: 'PMP', label: 'Maya' },
+    { code: 'GOT', label: 'GoTyme' },
+    { code: 'usdt-trc20', label: 'USDT' },
+  ];
+  const getProviderAccount = (provider: PayoutProvider) =>
+    payoutAccounts.find((account) => account.provider === provider || account.bankCode === provider);
+  const additionalPayoutAccounts = payoutAccounts.filter(
+    (account) => !primaryPayoutProviders.some(
+      ({ code }) => account.provider === code || account.bankCode === code,
+    ),
   );
 
   return (
@@ -493,13 +529,13 @@ export const MeTab: React.FC<MeTabProps> = ({
             role="dialog"
             aria-modal="true"
             aria-labelledby="payout-accounts-title"
-            className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-3xl border border-[#2459C4]/60 bg-[#091738] p-5 text-white shadow-2xl"
+            className="max-h-[88vh] w-full max-w-sm overflow-y-auto rounded-3xl border border-[#2459C4]/60 bg-[#091738] p-4 text-white shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
-                <h2 id="payout-accounts-title" className="text-lg font-extrabold">Payout Accounts</h2>
-                <p className="mt-1 text-xs leading-5 text-blue-100/70">
+                <h2 id="payout-accounts-title" className="text-base font-extrabold">Payout Accounts</h2>
+                <p className="mt-1 text-[11px] leading-4 text-blue-100/70">
                   Add one account for each provider. Saved details are private to your account.
                 </p>
               </div>
@@ -522,56 +558,190 @@ export const MeTab: React.FC<MeTabProps> = ({
               </div>
             ) : (
               <>
-                <div className="space-y-2">
-                  {(['gcash', 'maya', 'gotyme'] as const).map((provider) => {
-                    const account = payoutAccounts.find((item) => item.provider === provider);
-                    return (
-                      <div key={provider} className="rounded-2xl border border-[#1E3A78] bg-[#0D204A] p-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex min-h-9 flex-1 items-center">
-                            {renderProviderLogo(provider, true)}
+                {!selectedPayoutProvider && !isChoosingPayoutBank && (
+                  <div className="space-y-2">
+                    {primaryPayoutProviders.map(({ code: provider, label }) => {
+                      const account = getProviderAccount(provider);
+                      return (
+                        <div key={provider} className="rounded-xl border border-[#1E3A78] bg-[#0D204A] px-2.5 py-2">
+                          <div className="flex items-center gap-3">
+                            <div className="flex min-h-8 flex-1 items-center">
+                              {renderProviderLogo(provider, true, label)}
+                            </div>
+                            {account ? (
+                              <>
+                                <div className="min-w-0 flex-1 text-right">
+                                  <p className="truncate text-xs font-semibold text-white">{account.accountHolder}</p>
+                                  <p className="text-[10px] text-blue-100/60">•••• {account.accountNumber.slice(-4)}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleDeletePayoutAccount(provider)}
+                                  disabled={deletingPayoutProvider === provider}
+                                  aria-label={`Remove ${label} account`}
+                                  className="rounded-lg p-2 text-red-300 hover:bg-red-500/10 disabled:opacity-50"
+                                >
+                                  {deletingPayoutProvider === provider
+                                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                                    : <Trash2 className="h-4 w-4" />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openPayoutAccountForm(provider)}
+                                  className="rounded-lg bg-[#17366F] px-3 py-2 text-xs font-bold text-white hover:bg-[#2459C4]"
+                                >
+                                  Edit
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => openPayoutAccountForm(provider)}
+                                className="flex items-center gap-1 rounded-lg bg-[#D8FD2F] px-3 py-2 text-xs font-extrabold text-[#08132B]"
+                              >
+                                <Plus className="h-3.5 w-3.5" /> Add
+                              </button>
+                            )}
                           </div>
-                          {account ? (
-                            <>
-                              <div className="min-w-0 flex-1 text-right">
-                                <p className="truncate text-xs font-semibold text-white">{account.accountHolder}</p>
-                                <p className="text-[11px] text-blue-100/60">
-                                  •••• {account.accountNumber.slice(-4)}
-                                </p>
+                        </div>
+                      );
+                    })}
+                    <div className="rounded-xl border border-[#1E3A78] bg-[#0D204A] px-2.5 py-2">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          aria-expanded={isBankTransferExpanded}
+                          aria-controls="saved-bank-transfer-accounts"
+                          onClick={() => setIsBankTransferExpanded((expanded) => !expanded)}
+                          className="flex min-h-8 min-w-0 flex-1 items-center gap-3 text-left"
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10">
+                              <img src="/images/payment/banktransfer.png" alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
+                            </span>
+                            <span className="text-sm font-semibold text-white">Bank Transfer</span>
+                          </span>
+                          <ChevronDown className={`h-4 w-4 flex-shrink-0 text-blue-100/60 transition-transform ${isBankTransferExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {additionalPayoutAccounts.length > 0 && (
+                          <span className="text-[10px] text-blue-100/60">
+                            {additionalPayoutAccounts.length} saved
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsChoosingPayoutBank(true);
+                            setPayoutBankSearch('');
+                          }}
+                          className="flex items-center gap-1 rounded-lg bg-[#D8FD2F] px-3 py-2 text-xs font-extrabold text-[#08132B]"
+                        >
+                          <Plus className="h-3.5 w-3.5" /> Add
+                        </button>
+                      </div>
+                    </div>
+                    {isBankTransferExpanded && (
+                      <div id="saved-bank-transfer-accounts" className="space-y-2">
+                        {additionalPayoutAccounts.map((account) => (
+                          <div key={account.bankCode} className="rounded-xl border border-[#1E3A78] bg-[#0D204A] px-2.5 py-2">
+                            <div className="flex items-center gap-3">
+                              <div className="flex min-w-0 flex-1 items-center">
+                                <div className="min-w-0">
+                                  <p className="truncate text-xs font-semibold text-white">{account.bankName}</p>
+                                  <p className="truncate text-[10px] text-blue-100/60">
+                                    {account.accountHolder} · •••• {account.accountNumber.slice(-4)}
+                                  </p>
+                                </div>
                               </div>
                               <button
                                 type="button"
-                                onClick={() => void handleDeletePayoutAccount(provider)}
-                                disabled={deletingPayoutProvider === provider}
-                                aria-label={`Remove ${providerLabels[provider]} account`}
+                                onClick={() => void handleDeletePayoutAccount(account.provider)}
+                                disabled={deletingPayoutProvider === account.provider}
+                                aria-label={`Remove ${providerLabel(account.provider)} account`}
                                 className="rounded-lg p-2 text-red-300 hover:bg-red-500/10 disabled:opacity-50"
                               >
-                                {deletingPayoutProvider === provider
+                                {deletingPayoutProvider === account.provider
                                   ? <Loader2 className="h-4 w-4 animate-spin" />
                                   : <Trash2 className="h-4 w-4" />}
                               </button>
                               <button
                                 type="button"
-                                onClick={() => openPayoutAccountForm(provider)}
+                                onClick={() => openPayoutAccountForm(account.provider)}
                                 className="rounded-lg bg-[#17366F] px-3 py-2 text-xs font-bold text-white hover:bg-[#2459C4]"
                               >
                                 Edit
                               </button>
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => openPayoutAccountForm(provider)}
-                              className="flex items-center gap-1 rounded-lg bg-[#D8FD2F] px-3 py-2 text-xs font-extrabold text-[#08132B]"
-                            >
-                              <Plus className="h-3.5 w-3.5" /> Add
-                            </button>
-                          )}
-                        </div>
+                            </div>
+                          </div>
+                        ))}
+                        {additionalPayoutAccounts.length === 0 && (
+                          <p className="px-2 py-3 text-center text-[11px] text-blue-100/60">
+                            No bank transfer accounts saved yet.
+                          </p>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
+                    )}
+                  </div>
+                )}
+
+                {isChoosingPayoutBank && !selectedPayoutProvider && (
+                  <div className="mt-4 overflow-hidden rounded-2xl border border-[#1E3A78] bg-[#0D204A]">
+                    <div className="sticky top-0 border-b border-[#1E3A78] bg-[#0D204A] p-3">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <p className="text-xs font-bold text-white">Bank Transfer</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsChoosingPayoutBank(false);
+                            setPayoutBankSearch('');
+                          }}
+                          className="text-[10px] font-semibold text-cyan-300 hover:text-white"
+                        >
+                          Back
+                        </button>
+                      </div>
+                      <label className="flex items-center gap-2 rounded-xl border border-[#1E3A78] bg-[#08132B] px-3">
+                        <Search className="h-4 w-4 flex-shrink-0 text-cyan-300" />
+                        <input
+                          type="search"
+                          value={payoutBankSearch}
+                          onChange={(event) => setPayoutBankSearch(event.target.value)}
+                          placeholder="Search for a bank or wallet"
+                          aria-label="Search available banks and wallets"
+                          className="min-h-11 min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-blue-100/40"
+                        />
+                      </label>
+                      <p className="mt-3 px-1 text-[10px] font-bold uppercase tracking-wider text-blue-200/60">
+                        All banks and wallets
+                      </p>
+                    </div>
+                    <div className="max-h-[42vh] overflow-y-auto px-2 pb-2">
+                      {filteredPayoutBanks.map((bank) => {
+                        const alreadySaved = payoutAccounts.some((account) => account.bankCode === bank.code);
+                        return (
+                          <button
+                            key={bank.code}
+                            type="button"
+                            disabled={alreadySaved}
+                            onClick={() => openPayoutAccountForm(bank.code)}
+                            className="flex min-h-14 w-full items-center gap-3 border-b border-white/5 px-2 text-left text-sm text-white last:border-0 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            <span className="min-w-0 flex-1 truncate">{bank.name}</span>
+                            <span className="rounded bg-white/5 px-1.5 py-1 font-mono text-[10px] text-blue-100/55">{bank.code}</span>
+                            {alreadySaved ? (
+                              <Check className="h-4 w-4 flex-shrink-0 text-emerald-300" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 flex-shrink-0 text-blue-100/50" />
+                            )}
+                          </button>
+                        );
+                      })}
+                      {filteredPayoutBanks.length === 0 && (
+                        <p className="px-3 py-6 text-center text-xs text-blue-100/60">No matching bank or wallet.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {selectedPayoutProvider && (
                   <form onSubmit={handleSavePayoutAccount} className="mt-4 space-y-3 rounded-2xl border border-[#2459C4]/50 bg-[#0D204A] p-4">
@@ -593,17 +763,17 @@ export const MeTab: React.FC<MeTabProps> = ({
                       />
                     </label>
                     <label className="block text-xs font-semibold text-blue-100/80">
-                      Account Number
+                      Account number or wallet address
                       <input
-                        type="tel"
-                        inputMode="numeric"
+                        type="text"
+                        inputMode="text"
                         autoComplete="off"
-                        maxLength={20}
+                        maxLength={80}
                         value={payoutAccountNumber}
-                        onChange={(event) => setPayoutAccountNumber(event.target.value.replace(/[^\d -]/g, ''))}
+                        onChange={(event) => setPayoutAccountNumber(event.target.value.replace(/[^A-Za-z0-9 ._/-]/g, ''))}
                         required
                         className="mt-1.5 w-full rounded-xl border border-[#1E3A78] bg-[#08132B] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400"
-                        placeholder="7 to 20 digits"
+                        placeholder="Enter account number or wallet address"
                       />
                     </label>
                     {payoutAccountError && (
@@ -612,7 +782,10 @@ export const MeTab: React.FC<MeTabProps> = ({
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => setSelectedPayoutProvider(null)}
+                        onClick={() => {
+                          setSelectedPayoutProvider(null);
+                          setIsChoosingPayoutBank(false);
+                        }}
                         className="flex-1 rounded-xl border border-[#1E3A78] px-3 py-2.5 text-xs font-bold text-blue-100"
                       >
                         Cancel
@@ -632,9 +805,12 @@ export const MeTab: React.FC<MeTabProps> = ({
                 {payoutAccountError && !selectedPayoutProvider && (
                   <p role="alert" className="mt-3 text-xs font-semibold text-red-300">{payoutAccountError}</p>
                 )}
-                <p className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 text-[11px] leading-5 text-amber-100/80">
-                  Payout account setup is available, but withdrawals are not integrated yet. Adding an account does not submit a withdrawal or move funds.
-                </p>
+                <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-2.5 text-[10px] leading-4 text-amber-100/85">
+                  <p className="mb-1 font-extrabold">⚠️ WARNING: ACCOUNT DETAILS</p>
+                  <p>
+                    The saved account details will be used for all withdrawals. Please ensure that your information is accurate and up to date. The management and merchants shall not be held responsible for any failed, delayed, or misdirected withdrawals resulting from incorrect or mismatched account details provided or saved by the user.
+                  </p>
+                </div>
               </>
             )}
           </section>

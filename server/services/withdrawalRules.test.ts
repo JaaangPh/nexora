@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   amountToCents,
   calculateWithdrawalAmounts,
+  getMinimumPayoutCents,
   MINIMUM_PAYOUT_CENTS,
 } from './withdrawalRules.js';
 
@@ -31,4 +32,11 @@ test('withdrawal amounts are calculated in integer cents', () => {
   });
   assert.equal(amountToCents('100.00'), 10_000);
   assert.equal(amountToCents('100.001'), null);
+});
+
+test('USDT-TRC withdrawal codes require an 800 minimum payout', () => {
+  assert.equal(getMinimumPayoutCents('usdt-trc'), 80_000);
+  assert.equal(getMinimumPayoutCents('usdt-trc20'), 80_000);
+  assert.equal(getMinimumPayoutCents('gcash'), MINIMUM_PAYOUT_CENTS);
+  assert.equal(getMinimumPayoutCents('bpi'), MINIMUM_PAYOUT_CENTS);
 });

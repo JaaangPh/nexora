@@ -15,7 +15,7 @@ import {
   Compass
 } from 'lucide-react';
 import { User } from '../types/auth';
-import { api } from '../services/api';
+import { api, RunnerRules } from '../services/api';
 import { RunnerPrice } from '../services/api';
 import { getOwnedRunnerInstances } from '../services/runnerInventory';
 
@@ -72,8 +72,8 @@ export const RUNNER_CATALOG: RunnerItem[] = [
     earningRate: 10.20,
     efficiency: 10.20,
     comfort: 7,
-    healthLimit: 13,
-    resilience: 13,
+    healthLimit: 10,
+    resilience: 10,
     kmLimitPerDay: 10,
     description: 'Eco-composite responsive trainer offering enhanced rebound, 10KM daily limits, and higher step yields.',
     accentColor: '#76FF03'
@@ -90,8 +90,8 @@ export const RUNNER_CATALOG: RunnerItem[] = [
     earningRate: 20.10,
     efficiency: 20.10,
     comfort: 8,
-    healthLimit: 20,
-    resilience: 20,
+    healthLimit: 10,
+    resilience: 10,
     kmLimitPerDay: 20,
     description: 'High-end performance jogger engineered for endurance athletes with a 20KM daily limit and high yield.',
     accentColor: '#2979FF'
@@ -108,8 +108,8 @@ export const RUNNER_CATALOG: RunnerItem[] = [
     earningRate: 40.00,
     efficiency: 40.00,
     comfort: 10,
-    healthLimit: 25,
-    resilience: 25,
+    healthLimit: 10,
+    resilience: 10,
     kmLimitPerDay: 35,
     description: 'Flagship elite racing runner delivering maximum token yields of ₱40/km, 10/10 comfort, and 35KM daily limit.',
     accentColor: '#FF6D00'
@@ -148,6 +148,8 @@ export const MarketTab: React.FC<MarketTabProps> = ({
   const [runnerPrices, setRunnerPrices] = useState<Record<string, RunnerPrice>>({});
   const [isLoadingPrices, setIsLoadingPrices] = useState(true);
   const [priceLoadError, setPriceLoadError] = useState('');
+  const [runnerRules, setRunnerRules] = useState<RunnerRules | null>(null);
+  const [runnerRulesError, setRunnerRulesError] = useState('');
 
   useEffect(() => {
     let isCurrent = true;
@@ -166,12 +168,25 @@ export const MarketTab: React.FC<MarketTabProps> = ({
     return () => { isCurrent = false; };
   }, []);
 
+  useEffect(() => {
+    let isCurrent = true;
+    api.getRunnerRules()
+      .then((rules) => {
+        if (isCurrent) setRunnerRules(rules);
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) setRunnerRulesError(error instanceof Error ? error.message : 'Could not load current Runner settings.');
+      });
+    return () => { isCurrent = false; };
+  }, []);
+
   const ownedRunnerInstances = getOwnedRunnerInstances(user?.ownedRunners);
   const equippedId = user?.equippedRunnerId || equippedSneakerId || '';
   const catalogWithPrices = RUNNER_CATALOG.map((runner) => {
     const price = runnerPrices[runner.id];
     return {
       ...runner,
+      ...(runnerRules?.[runner.id as keyof RunnerRules] ?? {}),
       originalPrice: price?.originalPrice ?? runner.pricePhp,
       pricePhp: price?.newPrice ?? runner.pricePhp,
       discountPercentage: price?.discountPercentage ?? 0,
@@ -248,6 +263,11 @@ export const MarketTab: React.FC<MarketTabProps> = ({
       {priceLoadError && (
         <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
           Runner prices could not be refreshed. {priceLoadError}
+        </p>
+      )}
+      {runnerRulesError && (
+        <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+          Runner settings could not be refreshed. {runnerRulesError}
         </p>
       )}
       <div className="space-y-2.5">

@@ -19,19 +19,20 @@ import {
   RefreshCw,
   Search,
   ShoppingBag,
+  Footprints,
   ShieldCheck,
   UserPlus,
   UserRound,
   Users,
 } from 'lucide-react';
 import { getApiBaseUrl } from '../services/api';
-import type { RunnerPrice } from '../services/api';
+import type { RunnerPrice, RunnerRules } from '../services/api';
 
 type AdminScreen = 'login' | 'setup' | 'verify' | 'dashboard';
 type TransactionType = 'deposit' | 'withdrawal';
 type DateRange = '24h' | '7d' | '30d' | 'all';
 type AdminRole = 'admin' | 'staff';
-type AdminView = 'overview' | TransactionType | 'runner-purchases' | 'profile' | 'security' | 'staff-team' | 'runner-pricing';
+type AdminView = 'overview' | TransactionType | 'runner-purchases' | 'profile' | 'security' | 'staff-team' | 'runner-pricing' | 'runner';
 
 interface AdminTransaction {
   id: string;
@@ -248,6 +249,7 @@ export const Admin: React.FC = () => {
   const [manualEntryKey, setManualEntryKey] = useState('');
   const [transactions, setTransactions] = useState<AdminTransaction[]>([]);
   const [runnerPurchases, setRunnerPurchases] = useState<AdminRunnerPurchase[]>([]);
+  const [registeredUsers, setRegisteredUsers] = useState<number | null>(null);
   const [teamMembers, setTeamMembers] = useState<AdminTeamMember[]>([]);
   const [isLoadingTeam, setIsLoadingTeam] = useState(false);
   const [teamRefreshKey, setTeamRefreshKey] = useState(0);
@@ -290,11 +292,28 @@ export const Admin: React.FC = () => {
   const [discountInput, setDiscountInput] = useState('0');
   const [isLoadingRunnerPrices, setIsLoadingRunnerPrices] = useState(false);
   const [isSavingRunnerPrice, setIsSavingRunnerPrice] = useState(false);
+  const [runnerRules, setRunnerRules] = useState<RunnerRules | null>(null);
+  const [selectedRuleRunner, setSelectedRuleRunner] = useState('snk-1');
+  const [runnerEarningInput, setRunnerEarningInput] = useState('8.4');
+  const [runnerKmLimitInput, setRunnerKmLimitInput] = useState('6');
+  const [runnerHealthLimitInput, setRunnerHealthLimitInput] = useState('10');
+  const [isLoadingRunnerRules, setIsLoadingRunnerRules] = useState(false);
+  const [isSavingRunnerRule, setIsSavingRunnerRule] = useState(false);
+  const [grantRunnerUserId, setGrantRunnerUserId] = useState('');
+  const [grantRunnerType, setGrantRunnerType] = useState('snk-1');
+  const [isGrantingRunner, setIsGrantingRunner] = useState(false);
 
   const loadTransactions = async (token: string) => {
-    const result = await adminRequest<{ transactions: AdminTransaction[]; runnerPurchases: AdminRunnerPurchase[]; email: string; role: AdminRole }>('/api/admin/transactions', { method: 'GET' }, token);
+    const result = await adminRequest<{
+      transactions: AdminTransaction[];
+      runnerPurchases: AdminRunnerPurchase[];
+      registeredUsers: number;
+      email: string;
+      role: AdminRole;
+    }>('/api/admin/transactions', { method: 'GET' }, token);
     setTransactions(result.transactions);
     setRunnerPurchases(result.runnerPurchases);
+    setRegisteredUsers(result.registeredUsers);
     setEmail(result.email);
     setRole(result.role);
   };
@@ -303,11 +322,18 @@ export const Admin: React.FC = () => {
     if (!sessionToken) return;
     let isCurrent = true;
     setIsLoading(true);
-    adminRequest<{ transactions: AdminTransaction[]; runnerPurchases: AdminRunnerPurchase[]; email: string; role: AdminRole }>('/api/admin/transactions', { method: 'GET' }, sessionToken)
+    adminRequest<{
+      transactions: AdminTransaction[];
+      runnerPurchases: AdminRunnerPurchase[];
+      registeredUsers: number;
+      email: string;
+      role: AdminRole;
+    }>('/api/admin/transactions', { method: 'GET' }, sessionToken)
       .then((result) => {
         if (isCurrent) {
           setTransactions(result.transactions);
           setRunnerPurchases(result.runnerPurchases);
+          setRegisteredUsers(result.registeredUsers);
           setEmail(result.email);
           setRole(result.role);
         }
@@ -360,6 +386,27 @@ export const Admin: React.FC = () => {
       })
       .finally(() => {
         if (isCurrent) setIsLoadingRunnerPrices(false);
+      });
+    return () => { isCurrent = false; };
+  }, [activeView, role, sessionToken]);
+
+  useEffect(() => {
+    if (!sessionToken || role !== 'admin' || activeView !== 'runner') return;
+    let isCurrent = true;
+    setIsLoadingRunnerRules(true);
+    adminRequest<{ rules: RunnerRules }>('/api/admin/runner-rules', { method: 'GET' }, sessionToken)
+      .then((result) => {
+        if (!isCurrent) return;
+        setRunnerRules(result.rules);
+        setRunnerEarningInput(String(result.rules[selectedRuleRunner as keyof RunnerRules].earningRate));
+        setRunnerKmLimitInput(String(result.rules[selectedRuleRunner as keyof RunnerRules].kmLimitPerDay));
+        setRunnerHealthLimitInput(String(result.rules[selectedRuleRunner as keyof RunnerRules].healthLimit));
+      })
+      .catch((loadError: unknown) => {
+        if (isCurrent) setError(loadError instanceof Error ? loadError.message : 'Could not load Runner settings.');
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingRunnerRules(false);
       });
     return () => { isCurrent = false; };
   }, [activeView, role, sessionToken]);
@@ -696,12 +743,64 @@ export const Admin: React.FC = () => {
     }
   };
 
+  const saveRunnerRule = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    const earningRate = Number(runnerEarningInput);
+    const kmLimitPerDay = Number(runnerKmLimitInput);
+    const healthLimit = Number(runnerHealthLimitInput);
+    if (!Number.isFinite(earningRate) || earningRate < 0 || !Number.isFinite(kmLimitPerDay) || kmLimitPerDay <= 0 ||
+      !Number.isInteger(healthLimit) || healthLimit < 1 || healthLimit > 1000) {
+      setError('Enter a valid earning rate, positive daily distance limit, and whole-number health limit.');
+      return;
+    }
+    setIsSavingRunnerRule(true);
+    try {
+      const result = await adminRequest<{ rules: RunnerRules; message?: string }>('/api/admin/runner-rules', {
+        method: 'PUT',
+        body: JSON.stringify({ runnerId: selectedRuleRunner, earningRate, kmLimitPerDay, healthLimit }),
+      }, sessionToken);
+      setRunnerRules(result.rules);
+      setNotice(result.message || 'Runner settings updated successfully.');
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not update Runner settings.');
+    } finally {
+      setIsSavingRunnerRule(false);
+    }
+  };
+
+  const grantRunner = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    const userId = grantRunnerUserId.trim();
+    if (!userId) {
+      setError('Enter the user account ID.');
+      return;
+    }
+    setIsGrantingRunner(true);
+    try {
+      const result = await adminRequest<{ message: string }>('/api/admin/runners/grant', {
+        method: 'POST',
+        body: JSON.stringify({ steporaId: userId, runnerId: grantRunnerType }),
+      }, sessionToken);
+      setNotice(result.message);
+      setGrantRunnerUserId('');
+    } catch (grantError) {
+      setError(grantError instanceof Error ? grantError.message : 'Could not give this Runner to the user.');
+    } finally {
+      setIsGrantingRunner(false);
+    }
+  };
+
   const logout = () => {
     sessionStorage.removeItem(SESSION_KEY);
     setSessionToken('');
     setStageToken('');
     setTransactions([]);
     setRunnerPurchases([]);
+    setRegisteredUsers(null);
     setUserProfile(null);
     setProfileLookupId('');
     setActiveWorkouts([]);
@@ -869,6 +968,14 @@ export const Admin: React.FC = () => {
             <>
               <div className="mt-3 h-px w-8 bg-[#24466f]" />
               <button
+                title="Runner"
+                aria-label="Runner"
+                onClick={() => { setActiveView('runner'); setMobileNavOpen(false); }}
+                className={`grid h-11 w-11 place-items-center rounded-xl border-l-[3px] transition ${activeView === 'runner' ? 'border-cyan-300 bg-[#142b5b] text-cyan-200' : 'border-transparent text-[#c5bfbb] hover:bg-[#10234a]'}`}
+              >
+                <Footprints className="h-5 w-5" />
+              </button>
+              <button
                 title="Runner prices"
                 aria-label="Runner prices"
                 onClick={() => { setActiveView('runner-pricing'); setMobileNavOpen(false); }}
@@ -916,8 +1023,8 @@ export const Admin: React.FC = () => {
               <Menu className="h-4 w-4" />
             </button>
             <div className="flex items-center gap-2 text-sm font-semibold">
-              {activeView === 'overview' ? <LayoutDashboard className="h-4 w-4 text-[#f15408]" /> : activeView === 'security' ? <ShieldCheck className="h-4 w-4 text-[#f15408]" /> : activeView === 'staff-team' ? <Users className="h-4 w-4 text-cyan-300" /> : activeView === 'runner-purchases' ? <ShoppingBag className="h-4 w-4 text-[#f15408]" /> : activeView === 'runner-pricing' ? <Percent className="h-4 w-4 text-cyan-300" /> : activeView === 'profile' ? <UserRound className="h-4 w-4 text-[#f15408]" /> : <ArrowLeftRight className="h-4 w-4 text-[#f15408]" />}
-              {activeView === 'overview' ? 'Dashboard' : activeView === 'security' ? 'Security & accounts' : activeView === 'staff-team' ? 'Staff team' : activeView === 'deposit' ? 'Deposits' : activeView === 'withdrawal' ? 'Withdrawals' : activeView === 'runner-purchases' ? 'Runner purchases' : activeView === 'runner-pricing' ? 'Runner prices' : 'User profile'}
+              {activeView === 'overview' ? <LayoutDashboard className="h-4 w-4 text-[#f15408]" /> : activeView === 'security' ? <ShieldCheck className="h-4 w-4 text-[#f15408]" /> : activeView === 'staff-team' ? <Users className="h-4 w-4 text-cyan-300" /> : activeView === 'runner-purchases' ? <ShoppingBag className="h-4 w-4 text-[#f15408]" /> : activeView === 'runner' ? <Footprints className="h-4 w-4 text-cyan-300" /> : activeView === 'runner-pricing' ? <Percent className="h-4 w-4 text-cyan-300" /> : activeView === 'profile' ? <UserRound className="h-4 w-4 text-[#f15408]" /> : <ArrowLeftRight className="h-4 w-4 text-[#f15408]" />}
+              {activeView === 'overview' ? 'Dashboard' : activeView === 'security' ? 'Security & accounts' : activeView === 'staff-team' ? 'Staff team' : activeView === 'deposit' ? 'Deposits' : activeView === 'withdrawal' ? 'Withdrawals' : activeView === 'runner-purchases' ? 'Runner purchases' : activeView === 'runner' ? 'Runner' : activeView === 'runner-pricing' ? 'Runner prices' : 'User profile'}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -952,7 +1059,7 @@ export const Admin: React.FC = () => {
             </div>
           )}
 
-          {activeView !== 'security' && activeView !== 'staff-team' && activeView !== 'profile' && activeView !== 'runner-pricing' && <div className="flex flex-wrap items-center justify-between gap-3">
+          {activeView !== 'security' && activeView !== 'staff-team' && activeView !== 'profile' && activeView !== 'runner-pricing' && activeView !== 'runner' && <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
               {rangeLabels.map(({ id, label }) => (
                 <button
@@ -1079,6 +1186,135 @@ export const Admin: React.FC = () => {
             </section>
           )}
 
+          {activeView === 'runner' && role === 'admin' && (
+            <section className="grid gap-5 xl:grid-cols-2">
+              <div className="rounded-xl border border-[#1e3a78] bg-[#081b3d] p-5 sm:p-6">
+                <div className="mb-5">
+                  <h2 className="text-base font-bold text-white">Runner settings</h2>
+                  <p className="mt-1 text-xs leading-5 text-[#99908b]">Changes to earning, daily distance, and health apply to every Runner of the selected type.</p>
+                </div>
+                {isLoadingRunnerRules ? (
+                  <p className="py-8 text-center text-xs text-[#8f9fba]">
+                    <LoaderCircle className="mx-auto mb-2 h-4 w-4 animate-spin text-cyan-300" />
+                    Loading Runner settings…
+                  </p>
+                ) : (
+                  <form onSubmit={saveRunnerRule} className="space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="runner-rule-type">Runner type</label>
+                      <select
+                        id="runner-rule-type"
+                        value={selectedRuleRunner}
+                        onChange={(event) => {
+                          const runnerId = event.target.value;
+                          const rule = runnerRules?.[runnerId as keyof RunnerRules];
+                          setSelectedRuleRunner(runnerId);
+                          setRunnerEarningInput(String(rule?.earningRate ?? 0));
+                          setRunnerKmLimitInput(String(rule?.kmLimitPerDay ?? 1));
+                          setRunnerHealthLimitInput(String(rule?.healthLimit ?? 10));
+                        }}
+                        className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+                      >
+                        {Object.entries(runnerNames).map(([runnerId, name]) => <option key={runnerId} value={runnerId}>{name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="runner-earning-rate">Earnings per km (₱)</label>
+                      <input
+                        id="runner-earning-rate"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
+                        value={runnerEarningInput}
+                        onChange={(event) => setRunnerEarningInput(event.target.value)}
+                        className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+                      />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="runner-km-limit">Max km/day</label>
+                        <input
+                          id="runner-km-limit"
+                          type="number"
+                          min="0.1"
+                          step="0.1"
+                          required
+                          value={runnerKmLimitInput}
+                          onChange={(event) => setRunnerKmLimitInput(event.target.value)}
+                          className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="runner-health-limit">Health limit</label>
+                        <input
+                          id="runner-health-limit"
+                          type="number"
+                          min="1"
+                          max="1000"
+                          step="1"
+                          required
+                          value={runnerHealthLimitInput}
+                          onChange={(event) => setRunnerHealthLimitInput(event.target.value)}
+                          className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      disabled={isSavingRunnerRule || !runnerRules}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#e94f08] px-4 py-3 text-sm font-bold text-white hover:bg-[#ff6418] disabled:opacity-50"
+                    >
+                      {isSavingRunnerRule && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                      Save Runner settings
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-[#1e3a78] bg-[#081b3d] p-5 sm:p-6">
+                <div className="mb-5">
+                  <h2 className="text-base font-bold text-white">Give a Runner to a user</h2>
+                  <p className="mt-1 text-xs leading-5 text-[#99908b]">Enter the user’s five-digit Stepora ID. The Runner is added to their inventory without a balance charge.</p>
+                </div>
+                <form onSubmit={grantRunner} className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="grant-runner-user-id">Stepora ID</label>
+                    <input
+                      id="grant-runner-user-id"
+                      type="text"
+                      required
+                      inputMode="numeric"
+                      pattern="[0-9]{5}"
+                      maxLength={5}
+                      value={grantRunnerUserId}
+                      onChange={(event) => setGrantRunnerUserId(event.target.value)}
+                      placeholder="12345"
+                      className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="grant-runner-type">Runner type</label>
+                    <select
+                      id="grant-runner-type"
+                      value={grantRunnerType}
+                      onChange={(event) => setGrantRunnerType(event.target.value)}
+                      className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+                    >
+                      {Object.entries(runnerNames).map(([runnerId, name]) => <option key={runnerId} value={runnerId}>{name}</option>)}
+                    </select>
+                  </div>
+                  <button
+                    disabled={isGrantingRunner}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#27508d] bg-[#10234a] px-4 py-3 text-sm font-bold text-cyan-100 hover:bg-[#142b5b] disabled:opacity-50"
+                  >
+                    {isGrantingRunner && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                    Give Runner
+                  </button>
+                </form>
+              </div>
+            </section>
+          )}
+
           {activeView === 'runner-pricing' && role === 'admin' && (
             <section className="max-w-2xl rounded-xl border border-[#1e3a78] bg-[#081b3d] p-5 sm:p-6">
               <div className="mb-5">
@@ -1201,7 +1437,14 @@ export const Admin: React.FC = () => {
 
           {activeView === 'overview' && (
             <>
-              <div className="grid gap-4 lg:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <SummaryCard
+                  title="Registered users"
+                  value={registeredUsers === null ? '—' : registeredUsers.toLocaleString()}
+                  detail="Total accounts registered"
+                  icon={Users}
+                  accent="emerald"
+                />
                 <SummaryCard
                   title="Total deposit amount"
                   value={currency.format(depositTotal)}

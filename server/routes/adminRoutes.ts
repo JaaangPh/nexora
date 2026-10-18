@@ -8,10 +8,13 @@ import {
   getAdminActiveWorkouts,
   getAdminTransactions,
   getAdminRunnerPrices,
+  getAdminRunnerRules,
   getAdminUserProfile,
   reviewWithdrawal,
   startAdminLogin,
   updateAdminRunnerPrice,
+  updateAdminRunnerRule,
+  grantAdminRunner,
   verifyAdminTotp,
   adminSessionMiddleware,
 } from '../controllers/adminController.js';
@@ -31,6 +34,9 @@ router.post('/auth/totp/verify', adminAuthLimiter, verifyAdminTotp);
 router.get('/transactions', adminSessionMiddleware, getAdminTransactions);
 router.get('/runner-prices', adminSessionMiddleware, getAdminRunnerPrices);
 router.put('/runner-prices', adminSessionMiddleware, updateAdminRunnerPrice);
+router.get('/runner-rules', adminSessionMiddleware, getAdminRunnerRules);
+router.put('/runner-rules', adminSessionMiddleware, updateAdminRunnerRule);
+router.post('/runners/grant', adminSessionMiddleware, grantAdminRunner);
 router.get('/active-workouts', adminSessionMiddleware, getAdminActiveWorkouts);
 router.get('/users/:userId', adminSessionMiddleware, getAdminUserProfile);
 router.put('/withdrawals/:orderId/review', adminSessionMiddleware, reviewWithdrawal);

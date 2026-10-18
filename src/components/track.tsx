@@ -33,7 +33,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { User } from '../types/auth';
 import { RUNNER_CATALOG, RunnerItem } from './market';
-import { api, getApiBaseUrl } from '../services/api';
+import { api, getApiBaseUrl, RunnerRules } from '../services/api';
 import {
   getActiveWorkoutStorageKey,
   getPausedWorkoutTiming,
@@ -46,10 +46,11 @@ import { getOwnedRunnerInstances } from '../services/runnerInventory';
 interface TrackTabProps {
   user?: User;
   isActiveTab?: boolean;
-  onNavigateTab?: (tab: 'home' | 'market' | 'track' | 'team' | 'me') => void;
+  onNavigateTab?: (tab: 'home' | 'market' | 'track' | 'team' | 'me' | 'myrunners') => void;
   equippedSneakerName?: string;
   onEquipSneaker?: (runner: RunnerItem) => void;
   onWorkoutFinish?: (earned: number, runnerIds: string[], balance: number) => void;
+  onUpdateUser?: (user: User) => void;
 }
 
 type WorkoutMode = 'running' | 'cycling' | 'transit';
@@ -77,25 +78,39 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   isActiveTab = true,
   onNavigateTab,
   onWorkoutFinish,
+  onUpdateUser,
 }) => {
   const activeWorkoutStorageKey = getActiveWorkoutStorageKey(user?.id);
 
   // Activity Mode
   const [selectedMode, setSelectedMode] = useState<WorkoutMode>('running');
+  const [runnerRules, setRunnerRules] = useState<RunnerRules | null>(null);
 
   // Owned runners detection
   const runnerInstances = getOwnedRunnerInstances(user?.ownedRunners);
   const ownedRunners = runnerInstances.flatMap((instance) => {
     const catalogRunner = RUNNER_CATALOG.find((runner) => runner.id === instance.runnerId);
+    const rule = runnerRules?.[instance.runnerId as keyof RunnerRules];
+    const healthLimit = rule?.healthLimit ?? catalogRunner?.healthLimit ?? 10;
     return catalogRunner
-      ? [{ ...catalogRunner, id: instance.id, serial: `#${instance.serial}` }]
+      ? [{
+        ...catalogRunner,
+        ...rule,
+        id: instance.id,
+        serial: `#${instance.serial}`,
+        health: typeof instance.health === 'number' && Number.isFinite(instance.health)
+          ? Math.max(0, Math.min(Math.floor(instance.health), healthLimit))
+          : healthLimit,
+        healthLimit,
+      }]
       : [];
   });
-  const runnerInventoryKey = runnerInstances.map((runner) => `${runner.id}:${runner.serial}`).join(',');
+  const runnerInventoryKey = runnerInstances.map((runner) => `${runner.id}:${runner.serial}:${runner.health ?? ''}`).join(',');
   const normalizeRunnerIds = (runnerIds: string[]) => runnerIds.map((runnerId) =>
     runnerInstances.find((runner) => runner.id === runnerId || runner.runnerId === runnerId)?.id || runnerId
   );
-  const eligibleOwnedRunners = ownedRunners.filter((runner) => (user?.runnerCooldowns?.[runner.id] || 0) <= Date.now());
+  const availableOwnedRunners = ownedRunners.filter((runner) => runner.health > 0);
+  const eligibleOwnedRunners = availableOwnedRunners.filter((runner) => (user?.runnerCooldowns?.[runner.id] || 0) <= Date.now());
 
   // Determine initial selected runner
   const [selectedRunnerIds, setSelectedRunnerIds] = useState<string[]>(() => {
@@ -113,6 +128,18 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const [workoutSyncError, setWorkoutSyncError] = useState('');
   const [isWorkoutHydrated, setIsWorkoutHydrated] = useState(false);
 
+  useEffect(() => {
+    let isCurrent = true;
+    api.getRunnerRules()
+      .then((rules) => {
+        if (isCurrent) setRunnerRules(rules);
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) setWorkoutSyncError(error instanceof Error ? error.message : 'Could not load Runner settings.');
+      });
+    return () => { isCurrent = false; };
+  }, []);
+
   // Keep the selection limited to owned runners when account data changes.
   useEffect(() => {
     if (isTrackingRef.current || showFinishModal) return;
@@ -124,7 +151,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         : eligibleOwnedRunners[0]?.id;
       return fallbackId ? [fallbackId] : [];
     });
-  }, [user?.equippedRunnerId, user?.runnerCooldowns, runnerInventoryKey, showFinishModal]);
+  }, [user?.equippedRunnerId, user?.runnerCooldowns, user?.ownedRunners, runnerInventoryKey, runnerRules, showFinishModal]);
 
   const selectedRunners = ownedRunners.filter((runner) => selectedRunnerIds.includes(runner.id));
   const selectedRunnerNames = selectedRunners.map((runner) => `${runner.name} ${runner.serial}`).join(' + ');
@@ -246,7 +273,10 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         let lastError: unknown;
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
-            await api.saveWorkoutSnapshot(snapshot);
+            const response = await api.saveWorkoutSnapshot(snapshot);
+            if (response.ownedRunners && user) {
+              onUpdateUser?.({ ...user, ownedRunners: response.ownedRunners });
+            }
             return;
           } catch (error) {
             lastError = error;
@@ -259,6 +289,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       })
       .then(() => undefined)
       .catch((error) => {
+        setWorkoutSyncError(error instanceof Error ? error.message : 'Could not sync workout progress.');
         console.warn('[Workout Snapshot Sync] Failed to save workout progress to the account.', error);
       });
     remoteWorkoutSyncChainRef.current = nextSync;
@@ -1351,7 +1382,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs px-1">
                   <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                    Choose Runners ({ownedRunners.length} Owned)
+                    Choose Runners ({availableOwnedRunners.length} Available)
                   </span>
                   {selectedRunners.length > 0 && (
                     <span className="text-cyan-400 font-extrabold text-[10px]">
@@ -1360,8 +1391,20 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                   )}
                 </div>
 
+                {availableOwnedRunners.length === 0 ? (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-center">
+                    <p className="text-[11px] font-bold text-amber-200">All your Runners need repairs.</p>
+                    <button
+                      type="button"
+                      onClick={() => onNavigateTab?.('myrunners')}
+                      className="mt-2 rounded-lg bg-[#D8FD2F] px-3 py-1.5 text-[10px] font-black uppercase text-black"
+                    >
+                      Repair in My Runners
+                    </button>
+                  </div>
+                ) : (
                 <div className="grid grid-cols-2 gap-2">
-                  {ownedRunners.map((runner) => {
+                  {availableOwnedRunners.map((runner) => {
                     const isSelected = selectedRunnerIds.includes(runner.id);
                     const cdInfo = getRunnerCooldown(runner.id);
 
@@ -1405,6 +1448,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                           <span className="text-slate-400">
                             Max {runner.kmLimitPerDay}KM
                           </span>
+                          <span className={runner.health < 5 ? 'text-amber-300' : 'text-rose-300'}>
+                            {runner.health}/{runner.healthLimit} HP
+                          </span>
                           {cdInfo.isCooling ? (
                             <span className="text-red-400 flex items-center gap-0.5 font-mono">
                               <Hourglass className="w-2.5 h-2.5" />
@@ -1424,6 +1470,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
                     );
                   })}
                 </div>
+                )}
               </div>
             )}
           </div>

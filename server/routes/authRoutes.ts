@@ -6,6 +6,7 @@ import {
   logout,
   getMe,
   getPublicRunnerPrices,
+  getPublicRunnerRules,
   getReferralStats,
   updateUsername,
   updateProfileImage,
@@ -13,6 +14,7 @@ import {
   savePayoutAccount,
   deletePayoutAccount,
   updateRunners,
+  repairRunner,
   purchaseRunner,
   getWorkoutSnapshot,
   saveWorkoutSnapshot,
@@ -52,6 +54,7 @@ router.post('/logout', authMiddleware, logout);
 // Protected endpoints
 router.get('/me', authMiddleware, getMe);
 router.get('/runner-prices', getPublicRunnerPrices);
+router.get('/runner-rules', getPublicRunnerRules);
 router.get('/referrals', authMiddleware, getReferralStats);
 router.get('/workout', authMiddleware, getWorkoutSnapshot);
 router.put('/workout', authMiddleware, saveWorkoutSnapshot);
@@ -68,5 +71,6 @@ router.post('/withdrawals', authMiddleware, withdrawalCodeLimiter, createWithdra
 router.get('/withdrawals', authMiddleware, getWithdrawalHistory);
 router.post('/runners/purchase', authMiddleware, purchaseRunner);
 router.put('/runners', authMiddleware, updateRunners);
+router.post('/runners/repair', authMiddleware, repairRunner);
 
 export default router;

@@ -14,30 +14,57 @@ import {
 import {
   amountToCents,
   calculateWithdrawalAmounts,
-  MINIMUM_PAYOUT_CENTS,
+  getMinimumPayoutCents,
 } from '../services/withdrawalRules.js';
+import {
+  getTurboPayPayoutBank,
+  isTurboPayPayoutBankCode,
+  TurboPayPayoutBankCode,
+} from '../../shared/turbopayBanks.js';
 
 const TOTP_SETUP_EXPIRY_MS = 10 * 60 * 1000;
-const PAYOUT_PROVIDERS = new Set(['gcash', 'maya', 'gotyme']);
 
-function getAccountPayout(accounts: unknown, provider: string): {
-  provider: string;
+function getAccountPayout(accounts: unknown, bankCode: string): {
+  provider: TurboPayPayoutBankCode;
+  bankCode: TurboPayPayoutBankCode;
+  bankName: string;
   accountNumber: string;
   accountHolder: string;
 } | null {
   if (!Array.isArray(accounts)) return null;
-  const account = accounts.find((item) =>
-    item &&
-    typeof item === 'object' &&
-    (item as Record<string, unknown>).provider === provider &&
-    typeof (item as Record<string, unknown>).accountNumber === 'string' &&
-    typeof (item as Record<string, unknown>).accountHolder === 'string'
-  ) as Record<string, string> | undefined;
+  const legacyProviderCodes: Record<string, TurboPayPayoutBankCode> = {
+    maya: 'PMP',
+    gotyme: 'GOT',
+  };
+  const account = accounts.find((item) => {
+    if (!item || typeof item !== 'object') return false;
+    const record = item as Record<string, unknown>;
+    const storedBankCode = isTurboPayPayoutBankCode(record.bankCode)
+      ? record.bankCode
+      : typeof record.provider === 'string' && isTurboPayPayoutBankCode(record.provider)
+        ? record.provider
+        : typeof record.provider === 'string'
+          ? legacyProviderCodes[record.provider]
+          : undefined;
+    return storedBankCode === bankCode &&
+      typeof record.accountNumber === 'string' &&
+      typeof record.accountHolder === 'string';
+  }) as Record<string, unknown> | undefined;
   if (!account) return null;
+  const normalizedBankCode = isTurboPayPayoutBankCode(account.bankCode)
+    ? account.bankCode
+    : isTurboPayPayoutBankCode(account.provider)
+      ? account.provider
+      : legacyProviderCodes[String(account.provider)];
+  if (!normalizedBankCode) return null;
+  const bank = getTurboPayPayoutBank(normalizedBankCode);
+  if (!bank) return null;
   return {
-    provider,
-    accountNumber: account.accountNumber,
-    accountHolder: account.accountHolder,
+    provider: normalizedBankCode,
+    bankCode: normalizedBankCode,
+    bankName: bank.name,
+    accountNumber: String(account.accountNumber),
+    accountHolder: String(account.accountHolder),
   };
 }
 
@@ -166,19 +193,24 @@ export async function createWithdrawal(req: AuthRequest, res: Response): Promise
   const payoutAmountCents = amountToCents(req.body?.amount);
   const provider = req.body?.provider;
   const code = req.body?.code;
+  const minimumPayoutCents = typeof provider === 'string' && isTurboPayPayoutBankCode(provider)
+    ? getMinimumPayoutCents(provider)
+    : null;
   const amounts = payoutAmountCents === null
     ? null
     : calculateWithdrawalAmounts(payoutAmountCents);
   if (
     payoutAmountCents === null ||
-    payoutAmountCents < MINIMUM_PAYOUT_CENTS ||
+    minimumPayoutCents === null ||
+    payoutAmountCents < minimumPayoutCents ||
     !amounts ||
     typeof provider !== 'string' ||
-    !PAYOUT_PROVIDERS.has(provider) ||
+    !isTurboPayPayoutBankCode(provider) ||
     typeof code !== 'string' ||
     !/^\d{6}$/.test(code)
   ) {
-    res.status(400).json({ success: false, message: 'Enter a payout amount of at least ₱100, choose a payout account, and enter a six-digit authenticator code.' });
+    const minimumLabel = minimumPayoutCents === null ? 'the required minimum' : `₱${minimumPayoutCents / 100}`;
+    res.status(400).json({ success: false, message: `Enter a payout amount of at least ${minimumLabel}, choose a payout account, and enter a six-digit authenticator code.` });
     return;
   }
 
@@ -223,6 +255,7 @@ export async function createWithdrawal(req: AuthRequest, res: Response): Promise
         payoutAmount: payoutAmountCents / 100,
         payoutAmountCents,
         bankCode: payoutAccount.provider,
+        bankName: payoutAccount.bankName,
         accountHolder: payoutAccount.accountHolder,
         accountNumber: payoutAccount.accountNumber,
         createdAt: now,

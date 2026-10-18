@@ -12,6 +12,11 @@ import {
   isEligibleForReferralReward,
   MAX_REFERRAL_REWARD_GENERATION,
 } from '../services/referralRules.js';
+import {
+  getTurboPayPayoutBank,
+  isTurboPayPayoutBankCode,
+  TurboPayPayoutBankCode,
+} from '../../shared/turbopayBanks.js';
 
 dotenv.config();
 
@@ -93,12 +98,15 @@ export interface OwnedRunner {
   runnerId: string;
   serial: string;
   purchasedAt: number;
+  health?: number;
 }
 
-export type PayoutProvider = 'gcash' | 'maya' | 'gotyme';
+export type PayoutProvider = TurboPayPayoutBankCode;
 
 export interface PayoutAccount {
   provider: PayoutProvider;
+  bankCode: PayoutProvider;
+  bankName: string;
   accountNumber: string;
   accountHolder: string;
 }
@@ -298,19 +306,35 @@ function readPayoutAccounts(value: unknown): PayoutAccount[] {
   if (!Array.isArray(value)) return [];
 
   const providers = new Set<PayoutProvider>();
-  return value.filter((account): account is PayoutAccount => {
-    if (
-      !account ||
-      typeof account !== 'object' ||
-      !['gcash', 'maya', 'gotyme'].includes((account as PayoutAccount).provider) ||
-      typeof (account as PayoutAccount).accountNumber !== 'string' ||
-      typeof (account as PayoutAccount).accountHolder !== 'string'
-    ) return false;
+  return value.flatMap((account): PayoutAccount[] => {
+    if (!account || typeof account !== 'object') return [];
 
-    const payoutAccount = account as PayoutAccount;
-    if (providers.has(payoutAccount.provider)) return false;
-    providers.add(payoutAccount.provider);
-    return true;
+    const record = account as Record<string, unknown>;
+    if (typeof record.accountNumber !== 'string' || typeof record.accountHolder !== 'string') return [];
+    const legacyProviderCodes: Record<string, TurboPayPayoutBankCode> = {
+      gcash: 'gcash',
+      maya: 'PMP',
+      gotyme: 'GOT',
+    };
+    const bankCode = isTurboPayPayoutBankCode(record.bankCode)
+      ? record.bankCode
+      : typeof record.provider === 'string' && isTurboPayPayoutBankCode(record.provider)
+        ? record.provider
+        : typeof record.provider === 'string'
+          ? legacyProviderCodes[record.provider]
+          : undefined;
+    if (!bankCode || providers.has(bankCode)) return [];
+    const bank = getTurboPayPayoutBank(bankCode);
+    if (!bank) return [];
+
+    providers.add(bankCode);
+    return [{
+      provider: bankCode,
+      bankCode,
+      bankName: bank.name,
+      accountNumber: record.accountNumber,
+      accountHolder: record.accountHolder,
+    }];
   });
 }
 
@@ -359,7 +383,8 @@ export async function updateUserRunners(
 export async function purchaseUserRunner(
   id: string,
   runnerId: string,
-  price: number
+  price: number,
+  healthLimit: number
 ): Promise<{ balance: number; ownedRunners: OwnedRunner[]; purchasedRunner: OwnedRunner; referralRewardGranted: boolean }> {
   const userRef = firestore.collection('users').doc(id);
 
@@ -435,6 +460,7 @@ export async function purchaseUserRunner(
       runnerId,
       serial: createSerial(),
       purchasedAt: Date.now(),
+      health: healthLimit,
     };
     ownedRunners.push(purchasedRunner);
 
@@ -487,6 +513,119 @@ export async function purchaseUserRunner(
   });
 }
 
+export async function repairUserRunner(
+  id: string,
+  runnerInstanceId: string,
+  quantity: number,
+  healthLimit: number,
+): Promise<{ balance: number; ownedRunners: OwnedRunner[]; repairedHealth: number }> {
+  const userRef = firestore.collection('users').doc(id);
+  const repairCost = 10 * quantity;
+
+  return firestore.runTransaction(async (transaction) => {
+    const userDocument = await transaction.get(userRef);
+    const user = userDocument.data() as FirestoreUser | undefined;
+    if (!userDocument.exists || !user) throw new Error('ACCOUNT_NOT_FOUND');
+
+    const ownedRunners = (Array.isArray(user.ownedRunners) ? user.ownedRunners : [])
+      .flatMap((runner): OwnedRunner[] => {
+        if (typeof runner === 'string') {
+          return [{ id: runner, runnerId: runner, serial: '', purchasedAt: 0 }];
+        }
+        if (!runner || typeof runner !== 'object' || typeof runner.id !== 'string' || typeof runner.runnerId !== 'string') {
+          return [];
+        }
+        return [{
+          id: runner.id,
+          runnerId: runner.runnerId,
+          serial: typeof runner.serial === 'string' ? runner.serial : '',
+          purchasedAt: Number.isFinite(Number(runner.purchasedAt)) ? Number(runner.purchasedAt) : 0,
+          ...(typeof runner.health === 'number' ? { health: runner.health } : {}),
+        }];
+      });
+    const runnerIndex = ownedRunners.findIndex((runner) => runner.id === runnerInstanceId);
+    if (runnerIndex === -1) throw new Error('RUNNER_NOT_OWNED');
+
+    const runner = ownedRunners[runnerIndex];
+    const currentHealth = typeof runner.health === 'number' && Number.isFinite(runner.health)
+      ? Math.max(0, Math.min(healthLimit, Math.floor(runner.health)))
+      : healthLimit;
+    const missingHealth = healthLimit - currentHealth;
+    if (missingHealth <= 0) throw new Error('RUNNER_FULLY_REPAIRED');
+    if (quantity > missingHealth) throw new Error('REPAIR_EXCEEDS_MISSING_HEALTH');
+
+    const balance = Number(user.balance || 0);
+    if (balance < repairCost) throw new Error('INSUFFICIENT_BALANCE');
+
+    ownedRunners[runnerIndex] = { ...runner, health: currentHealth + quantity };
+    const nextBalance = Math.round((balance - repairCost) * 100) / 100;
+    const transactionId = `runner_repair_${runnerInstanceId}_${Date.now()}_${crypto.randomUUID()}`;
+    transaction.update(userRef, { balance: nextBalance, ownedRunners });
+    transaction.create(firestore.collection('wallet_transactions').doc(transactionId), {
+      id: transactionId,
+      userId: id,
+      type: 'runner_repair',
+      runnerId: runner.runnerId,
+      runnerInstanceId,
+      healthRestored: quantity,
+      amountCents: -repairCost * 100,
+      amount: -repairCost,
+      createdAt: Date.now(),
+    });
+
+    return { balance: nextBalance, ownedRunners, repairedHealth: quantity };
+  });
+}
+
+export async function grantUserRunner(
+  id: string,
+  runnerId: string,
+  healthLimit: number,
+): Promise<{ ownedRunners: OwnedRunner[]; grantedRunner: OwnedRunner }> {
+  const userRef = firestore.collection('users').doc(id);
+  return firestore.runTransaction(async (transaction) => {
+    const userDocument = await transaction.get(userRef);
+    const user = userDocument.data() as FirestoreUser | undefined;
+    if (!userDocument.exists || !user) throw new Error('ACCOUNT_NOT_FOUND');
+
+    const ownedRunners = (Array.isArray(user.ownedRunners) ? user.ownedRunners : [])
+      .flatMap((runner): OwnedRunner[] => {
+        if (typeof runner === 'string') {
+          return [{ id: runner, runnerId: runner, serial: '', purchasedAt: 0 }];
+        }
+        if (!runner || typeof runner !== 'object' || typeof runner.runnerId !== 'string') return [];
+        return [{
+          id: typeof runner.id === 'string' ? runner.id : runner.runnerId,
+          runnerId: runner.runnerId,
+          serial: typeof runner.serial === 'string' ? runner.serial : '',
+          purchasedAt: Number.isFinite(Number(runner.purchasedAt)) ? Number(runner.purchasedAt) : 0,
+          ...(typeof runner.health === 'number' ? { health: runner.health } : {}),
+        }];
+      });
+    const usedSerials = new Set(ownedRunners.map((runner) => runner.serial).filter((serial) => /^\d{4}$/.test(serial)));
+    let serial = '';
+    for (let attempt = 0; attempt < 9000; attempt += 1) {
+      const candidate = String(crypto.randomInt(1000, 10000));
+      if (!usedSerials.has(candidate)) {
+        serial = candidate;
+        break;
+      }
+    }
+    if (!serial) throw new Error('RUNNER_SERIALS_EXHAUSTED');
+
+    const grantedRunner: OwnedRunner = {
+      id: crypto.randomUUID(),
+      runnerId,
+      serial,
+      purchasedAt: Date.now(),
+      health: healthLimit,
+    };
+    ownedRunners.push(grantedRunner);
+    transaction.update(userRef, { ownedRunners });
+    return { ownedRunners, grantedRunner };
+  });
+}
+
 export async function getUserWorkoutSnapshot(id: string): Promise<Record<string, unknown> | null> {
   const user = await findUserById(id);
   return user?.workoutSnapshot || null;
@@ -496,8 +635,9 @@ export async function updateUserWorkoutSnapshot(
   id: string,
   snapshot: Record<string, unknown>,
   sessionId: string
-): Promise<Record<string, unknown>> {
+): Promise<{ workoutSnapshot: Record<string, unknown>; ownedRunners?: (OwnedRunner | string)[] }> {
   const userRef = firestore.collection('users').doc(id);
+  const { readRunnerRules } = await import('../services/runnerRules.js');
   return firestore.runTransaction(async (transaction) => {
     const userDocument = await transaction.get(userRef);
     const user = userDocument.data() as FirestoreUser | undefined;
@@ -508,12 +648,46 @@ export async function updateUserWorkoutSnapshot(
     const currentLastUpdated = Number(currentSnapshot?.lastUpdated || 0);
     const incomingLastUpdated = Number(snapshot.lastUpdated);
     if (!canReplaceWorkoutSnapshot(currentSnapshot, snapshot)) {
-      return currentSnapshot;
+      if (!currentSnapshot) throw new Error('WORKOUT_SNAPSHOT_REPLACED');
+      return { workoutSnapshot: currentSnapshot };
     }
     if (currentSnapshot && currentLastUpdated > incomingLastUpdated) {
-      return currentSnapshot;
+      return { workoutSnapshot: currentSnapshot };
     }
     const sameWorkout = Number(currentSnapshot?.workoutStartTime) === Number(snapshot.workoutStartTime);
+    let ownedRunners = Array.isArray(user.ownedRunners) ? user.ownedRunners : [];
+    const shouldChargeRunnerUse = !sameWorkout && (snapshot.isTracking === true || snapshot.pendingFinish === true);
+    if (shouldChargeRunnerUse) {
+      const runnerRules = await readRunnerRules(transaction);
+      const runnerIds = Array.isArray(snapshot.runnerIds)
+        ? [...new Set(snapshot.runnerIds.filter((runnerId): runnerId is string => typeof runnerId === 'string'))]
+        : [];
+      if (runnerIds.length === 0) throw new Error('NO_RUNNERS_SELECTED');
+      const instances = ownedRunners.flatMap((runner): OwnedRunner[] => {
+        if (typeof runner === 'string') return [{ id: runner, runnerId: runner, serial: '', purchasedAt: 0 }];
+        return runner && typeof runner.id === 'string' && typeof runner.runnerId === 'string'
+          ? [runner]
+          : [];
+      });
+      const selected = runnerIds.map((runnerId) =>
+        instances.find((runner) => runner.id === runnerId || runner.runnerId === runnerId)
+      );
+      if (selected.some((runner) => !runner)) throw new Error('RUNNER_NOT_OWNED');
+      const healthById = new Map<string, number>();
+      for (const runner of selected) {
+        if (!runner) continue;
+        const rule = runnerRules[runner.runnerId as keyof typeof runnerRules];
+        const healthLimit = rule?.healthLimit ?? 10;
+        const health = typeof runner.health === 'number' && Number.isFinite(runner.health)
+          ? Math.max(0, Math.min(healthLimit, Math.floor(runner.health)))
+          : healthLimit;
+        if (health <= 0) throw new Error('RUNNER_NEEDS_REPAIR');
+        healthById.set(runner.id, health - 1);
+      }
+      ownedRunners = instances.map((runner) => healthById.has(runner.id)
+        ? { ...runner, health: healthById.get(runner.id) }
+        : runner);
+    }
     const serverStartedAt = sameWorkout
       ? Number(currentSnapshot?.serverStartedAt || Date.now())
       : Date.now();
@@ -521,8 +695,14 @@ export async function updateUserWorkoutSnapshot(
       ...mergeWorkoutSnapshotProgress(currentSnapshot, snapshot),
       serverStartedAt,
     };
-    transaction.update(userRef, { workoutSnapshot: savedSnapshot });
-    return savedSnapshot;
+    transaction.update(userRef, {
+      workoutSnapshot: savedSnapshot,
+      ...(shouldChargeRunnerUse ? { ownedRunners } : {}),
+    });
+    return {
+      workoutSnapshot: savedSnapshot,
+      ...(shouldChargeRunnerUse ? { ownedRunners } : {}),
+    };
   });
 }
 

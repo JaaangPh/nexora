@@ -7,6 +7,10 @@ import {
   TurboPayPayoutConfigError,
   TurboPayPayoutRejectedError,
 } from './turbopay.js';
+import {
+  isTurboPayPayoutBankCode,
+  TURBOPAY_PAYOUT_BANKS,
+} from '../../shared/turbopayBanks.js';
 
 const payoutEnvironmentKeys = [
   'TURBOPAY_ENABLED',
@@ -38,7 +42,17 @@ test('maps supported payout providers to TurboPay bank codes', () => {
   assert.equal(getTurboPayPayoutBankCode('gcash'), 'gcash');
   assert.equal(getTurboPayPayoutBankCode('maya'), 'PMP');
   assert.equal(getTurboPayPayoutBankCode('gotyme'), 'GOT');
+  assert.equal(getTurboPayPayoutBankCode('bpi'), 'bpi');
+  assert.equal(getTurboPayPayoutBankCode('ALIPAY'), 'ALIPAY');
   assert.equal(getTurboPayPayoutBankCode('unknown'), null);
+});
+
+test('validates every bank code in the shared payout directory', () => {
+  assert.equal(TURBOPAY_PAYOUT_BANKS.length, 89);
+  for (const bank of TURBOPAY_PAYOUT_BANKS) {
+    assert.equal(isTurboPayPayoutBankCode(bank.code), true, bank.name);
+  }
+  assert.equal(isTurboPayPayoutBankCode('not-a-bank'), false);
 });
 
 test('retains TurboPay rejection status and message for admin diagnostics', async () => {

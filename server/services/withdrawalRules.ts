@@ -1,4 +1,6 @@
-export const MINIMUM_PAYOUT_CENTS = 10_000;
+import { getMinimumPayoutCents, MINIMUM_PAYOUT_CENTS } from '../../shared/withdrawalRules.js';
+
+export { getMinimumPayoutCents, MINIMUM_PAYOUT_CENTS };
 const WITHDRAWAL_FEE_BASIS_POINTS = 200;
 
 export interface WithdrawalAmounts {

@@ -71,6 +71,12 @@ test('workout rewards use server rates and each selected runner limit', () => {
   assert.equal(calculateWorkoutRewardCents(-1, ['snk-1']), 0);
 });
 
+test('workout rewards use the current configured earning rate and daily limit', () => {
+  assert.equal(calculateWorkoutRewardCents(3_000, ['snk-1'], {
+    'snk-1': { earningRate: 12.5, kmLimitPerDay: 2 },
+  }), 2_500);
+});
+
 test('motion-sensor reward distance must match plausible steps and elapsed time', () => {
   assert.equal(isPlausibleSensorWorkout(6_000, 8_000, 1_800), true);
   assert.equal(isPlausibleSensorWorkout(6_000, 0, 1_800), false);

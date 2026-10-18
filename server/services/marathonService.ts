@@ -11,11 +11,11 @@ import {
   isBeforeMarathonDeadline,
   marathonWorkoutInProgress,
   MARATHON_PACKAGES,
-  MARATHON_RUNNER_LIMITS_KM,
   isPlausibleSensorWorkout,
   ownsRequiredMarathonRunners,
   toCents,
 } from './marathonRules.js';
+import { readRunnerRules, type RunnerRules } from './runnerRules.js';
 
 const MIN_TEAM_SIZE = 5;
 const MAX_TEAM_SIZE = 10;
@@ -876,7 +876,12 @@ export async function cancelMarathonLobby(userIdInput: string | undefined, teamI
   return { success: true };
 }
 
-function validCompletedWorkout(snapshot: Record<string, unknown>, user: FirestoreUser, completedAt: number) {
+function validCompletedWorkout(
+  snapshot: Record<string, unknown>,
+  user: FirestoreUser,
+  completedAt: number,
+  runnerRules: RunnerRules,
+) {
   const points = snapshot.routePoints;
   const routeMeters = haversineDistanceMeters(points);
   const reportedMeters = Number(snapshot.distanceKm || 0) * 1000;
@@ -901,7 +906,7 @@ function validCompletedWorkout(snapshot: Record<string, unknown>, user: Firestor
   }
   const selectedRunners = [...selectedRunnersById.values()];
   const limitKm = selectedRunners.reduce(
-    (sum, runner) => sum + (MARATHON_RUNNER_LIMITS_KM[runner.runnerId || ''] || 0),
+    (sum, runner) => sum + (runnerRules[runner.runnerId as keyof RunnerRules]?.kmLimitPerDay || 0),
     0,
   );
   const serverStartedAt = Number(snapshot.serverStartedAt || 0);
@@ -940,6 +945,7 @@ export async function completeWorkoutAndClearSnapshot(
   expectedWorkoutStartTime?: number,
 ) {
   const userId = requireUserId(userIdInput);
+  const runnerRules = await readRunnerRules();
   const userRef = getDb().collection('users').doc(userId);
   let creditedMeters = 0;
   let creditedRewardCents = 0;
@@ -978,10 +984,10 @@ export async function completeWorkoutAndClearSnapshot(
     const workoutSnapshot = await transaction.get(workoutRef);
     const rewardSnapshot = await transaction.get(rewardRef);
     const now = Date.now();
-    const verification = validCompletedWorkout(snapshot, user, now);
+    const verification = validCompletedWorkout(snapshot, user, now, runnerRules);
     workoutVerified = verification.rewardEligible;
     const rewardCents = verification.rewardEligible
-      ? calculateWorkoutRewardCents(verification.rewardMeters, verification.selectedRunnerIds)
+      ? calculateWorkoutRewardCents(verification.rewardMeters, verification.selectedRunnerIds, runnerRules)
       : 0;
     const currentBalanceCents = toCents(user.balance);
     const shouldCreditReward = !workoutSnapshot.exists && !rewardSnapshot.exists && rewardCents > 0;

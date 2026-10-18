@@ -457,6 +457,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
               user={user}
               isActiveTab={activeTab === 'track'}
               onNavigateTab={handleTabSelect}
+              onUpdateUser={onUpdateUser}
               equippedSneakerName={equippedSneaker}
               onWorkoutFinish={(_earned, runnerIds, settledBalance) => {
                 const cooldownUntil = Date.now() + 12 * 60 * 60 * 1000;

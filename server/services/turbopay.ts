@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { isTurboPayPayoutBankCode, TurboPayPayoutBankCode } from '../../shared/turbopayBanks.js';
 
 export type TurboPayPayload = Record<string, string | number>;
 
@@ -19,12 +20,11 @@ export interface TurboPayPayoutConfig {
 
 export class TurboPayPayoutConfigError extends Error {}
 
-export function getTurboPayPayoutBankCode(provider: string): 'gcash' | 'MYA' | 'GOT' | null {
+export function getTurboPayPayoutBankCode(provider: string): TurboPayPayoutBankCode | null {
   switch (provider) {
-    case 'gcash': return 'gcash';
     case 'maya': return 'PMP';
     case 'gotyme': return 'GOT';
-    default: return null;
+    default: return isTurboPayPayoutBankCode(provider) ? provider : null;
   }
 }
 
@@ -33,7 +33,7 @@ export function getTurboPayCredentials(): Pick<TurboPayConfig, 'merchantId' | 'm
   const merchantKey = process.env.TURBOPAY_MERCHANT_KEY;
 
   if (!merchantId || !merchantKey) {
-    throw new Error('TurboPay merchant credentials are not configured.');
+    throw new Error('Merchant credentials are not configured.');
   }
   return { merchantId, merchantKey };
 }
@@ -45,10 +45,10 @@ export function getTurboPayConfig(): TurboPayConfig {
   const returnUrl = process.env.TURBOPAY_RETURN_URL;
 
   if (process.env.TURBOPAY_ENABLED !== 'true') {
-    throw new Error('TurboPay deposits are disabled.');
+    throw new Error('Merchant deposits are disabled.');
   }
   if (!apiUrl || !callbackUrl || !returnUrl) {
-    throw new Error('TurboPay API, callback, and return URLs are not configured.');
+    throw new Error('Merchant API, callback, and return URLs are not configured.');
   }
 
   let parsedApiUrl: URL;
@@ -59,7 +59,7 @@ export function getTurboPayConfig(): TurboPayConfig {
     parsedCallbackUrl = new URL(callbackUrl);
     parsedReturnUrl = new URL(returnUrl);
   } catch {
-    throw new Error('TurboPay API, callback, and return URLs must be valid absolute URLs.');
+    throw new Error('Merchant API, callback, and return URLs must be valid absolute URLs.');
   }
 
   if (
@@ -68,7 +68,7 @@ export function getTurboPayConfig(): TurboPayConfig {
     parsedCallbackUrl.protocol !== 'https:' ||
     parsedReturnUrl.protocol !== 'https:'
   ) {
-    throw new Error('TurboPay API must use the official HTTPS host; callback and return URLs must use HTTPS.');
+    throw new Error('Merchant API must use the official HTTPS host; callback and return URLs must use HTTPS.');
   }
 
   return {
@@ -91,7 +91,7 @@ export function getTurboPayPayoutConfig(): TurboPayPayoutConfig {
 
   if (missingSettings.length > 0) {
     throw new TurboPayPayoutConfigError(
-      `TurboPay payouts are not configured. Set ${missingSettings.join(', ')} in the backend environment and restart the server.`
+      `Merchant payouts are not configured. Set ${missingSettings.join(', ')} in the backend environment and restart the server.`
     );
   }
 
@@ -99,7 +99,7 @@ export function getTurboPayPayoutConfig(): TurboPayPayoutConfig {
   const apiUrl = process.env.TURBOPAY_API_URL;
   const callbackUrl = process.env.TURBOPAY_WITHDRAWAL_CALLBACK_URL;
 
-  if (!apiUrl || !callbackUrl) throw new TurboPayPayoutConfigError('TurboPay payout configuration is incomplete.');
+  if (!apiUrl || !callbackUrl) throw new TurboPayPayoutConfigError('Merchant payout configuration is incomplete.');
 
   let parsedApiUrl: URL;
   let parsedCallbackUrl: URL;
@@ -141,8 +141,8 @@ export class TurboPayPayoutRejectedError extends Error {
       .trim();
     super(
       safeMessage
-        ? `TurboPay rejected the payout (HTTP ${httpStatus}, status ${providerStatus}): ${safeMessage}`
-        : `TurboPay rejected the payout (HTTP ${httpStatus}, status ${providerStatus}).`,
+        ? `Merchant rejected the payout (HTTP ${httpStatus}, status ${providerStatus}): ${safeMessage}`
+        : `Merchant rejected the payout (HTTP ${httpStatus}, status ${providerStatus}).`,
     );
   }
 }
@@ -185,14 +185,14 @@ export async function createTurboPayTransfer(
       signal: controller.signal,
     });
 
-    const result: unknown = await response.json().catch(() => null);
+    const result: unknown = await response.json().catch((): null => null);
     if (!result || typeof result !== 'object' || Array.isArray(result)) {
-      throw new Error('TurboPay returned an invalid response.');
+      throw new Error('Merchant returned an invalid response.');
     }
 
     const data = result as Record<string, unknown>;
     if (!response.ok || String(data.status) !== '1') {
-      throw new TurboPayTransferRejectedError('TurboPay rejected this payment request.');
+      throw new TurboPayTransferRejectedError('Merchant rejected this payment request.');
     }
     return data;
   } finally {
@@ -215,9 +215,9 @@ export async function createTurboPayPayout(
       signal: controller.signal,
     });
 
-    const result: unknown = await response.json().catch(() => null);
+    const result: unknown = await response.json().catch((): null => null);
     if (!result || typeof result !== 'object' || Array.isArray(result)) {
-      throw new Error('TurboPay returned an invalid payout response.');
+      throw new Error('Merchant returned an invalid payout response.');
     }
 
     const data = result as Record<string, unknown>;

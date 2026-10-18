@@ -1,15 +1,70 @@
 import { Capacitor } from '@capacitor/core';
 import { AuthResponse, InviteValidationResponse, InviteCodeItem, OwnedRunner, User } from '../types/auth';
 import { WorkoutSnapshot } from '../types/workout';
+import {
+  getTurboPayPayoutBank,
+  isTurboPayPayoutBankCode,
+  TurboPayPayoutBankCode,
+} from '../../shared/turbopayBanks';
 
 export type DepositBankCode = 'gcash' | 'PMP' | 'GOT' | 'qrph' | 'usdt-trc20';
 export type DepositStatus = 'pending' | 'paid' | 'failed' | 'expired';
-export type PayoutProvider = 'gcash' | 'maya' | 'gotyme';
+export type PayoutProvider = TurboPayPayoutBankCode;
 
 export interface PayoutAccount {
   provider: PayoutProvider;
+  bankCode: PayoutProvider;
+  bankName: string;
   accountNumber: string;
   accountHolder: string;
+}
+
+const legacyPayoutProviderCodes: Record<string, PayoutProvider> = {
+  gcash: 'gcash',
+  maya: 'PMP',
+  gotyme: 'GOT',
+};
+
+function normalizePayoutAccounts(value: unknown): PayoutAccount[] {
+  if (!Array.isArray(value)) throw new Error('Server returned an invalid payout accounts response.');
+
+  return value.map((item): PayoutAccount => {
+    if (!item || typeof item !== 'object') {
+      throw new Error('Server returned an invalid payout account.');
+    }
+
+    const record = item as Record<string, unknown>;
+    const provider = typeof record.provider === 'string' && isTurboPayPayoutBankCode(record.provider)
+      ? record.provider
+      : typeof record.provider === 'string'
+        ? legacyPayoutProviderCodes[record.provider]
+        : undefined;
+    const bankCode = isTurboPayPayoutBankCode(record.bankCode)
+      ? record.bankCode
+      : provider;
+    if (!bankCode || (provider && provider !== bankCode)) {
+      throw new Error('Server returned an unsupported payout account provider.');
+    }
+    if (typeof record.accountNumber !== 'string' || typeof record.accountHolder !== 'string') {
+      throw new Error('Server returned incomplete payout account details.');
+    }
+
+    return {
+      provider: bankCode,
+      bankCode,
+      bankName: typeof record.bankName === 'string'
+        ? record.bankName
+        : getTurboPayPayoutBank(bankCode)?.name || bankCode,
+      accountNumber: record.accountNumber,
+      accountHolder: record.accountHolder,
+    };
+  });
+}
+
+function legacyPayoutProvider(provider: PayoutProvider): string {
+  if (provider === 'PMP') return 'maya';
+  if (provider === 'GOT') return 'gotyme';
+  return provider;
 }
 
 export interface RunnerPrice {
@@ -17,6 +72,14 @@ export interface RunnerPrice {
   discountPercentage: number;
   newPrice: number;
 }
+
+export interface RunnerRule {
+  earningRate: number;
+  kmLimitPerDay: number;
+  healthLimit: number;
+}
+
+export type RunnerRules = Record<'snk-1' | 'snk-2' | 'snk-3' | 'snk-4', RunnerRule>;
 
 export type WithdrawalStatus = 'pending' | 'processing' | 'accepted' | 'paid' | 'failed';
 
@@ -31,6 +94,7 @@ export interface WithdrawalRecord {
   totalDeducted?: number;
   referenceNo?: string;
   bankCode: PayoutProvider;
+  bankName?: string;
   accountHolder: string;
   accountNumber: string;
   createdAt: string;
@@ -237,6 +301,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 }
 
 export const api = {
+  async getRunnerRules(): Promise<RunnerRules> {
+    const result = await request<{ success: boolean; rules: RunnerRules }>('/api/auth/runner-rules', {
+      method: 'GET',
+    });
+    return result.rules;
+  },
+
   async getRunnerPrices(): Promise<Record<string, RunnerPrice>> {
     const result = await request<{ success: boolean; prices: Record<string, RunnerPrice> }>('/api/auth/runner-prices', {
       method: 'GET',
@@ -301,8 +372,12 @@ export const api = {
     });
   },
 
-  async saveWorkoutSnapshot(snapshot: WorkoutSnapshot): Promise<{ success: boolean; workoutSnapshot: WorkoutSnapshot }> {
-    return request<{ success: boolean; workoutSnapshot: WorkoutSnapshot }>('/api/auth/workout', {
+  async saveWorkoutSnapshot(snapshot: WorkoutSnapshot): Promise<{
+    success: boolean;
+    workoutSnapshot: WorkoutSnapshot;
+    ownedRunners?: (OwnedRunner | string)[];
+  }> {
+    return request<{ success: boolean; workoutSnapshot: WorkoutSnapshot; ownedRunners?: (OwnedRunner | string)[] }>('/api/auth/workout', {
       method: 'PUT',
       body: JSON.stringify(snapshot),
     });
@@ -446,26 +521,26 @@ export const api = {
   },
 
   async getPayoutAccounts(): Promise<PayoutAccount[]> {
-    const res = await request<{ success: boolean; accounts: PayoutAccount[] }>('/api/auth/payout-accounts', {
+    const res = await request<{ success: boolean; accounts: unknown }>('/api/auth/payout-accounts', {
       method: 'GET',
     });
-    return res.accounts;
+    return normalizePayoutAccounts(res.accounts);
   },
 
   async savePayoutAccount(account: PayoutAccount): Promise<PayoutAccount[]> {
-    const res = await request<{ success: boolean; accounts: PayoutAccount[] }>('/api/auth/payout-accounts', {
+    const res = await request<{ success: boolean; accounts: unknown }>('/api/auth/payout-accounts', {
       method: 'POST',
-      body: JSON.stringify(account),
+      body: JSON.stringify({ ...account, provider: legacyPayoutProvider(account.bankCode) }),
     });
-    return res.accounts;
+    return normalizePayoutAccounts(res.accounts);
   },
 
   async deletePayoutAccount(provider: PayoutProvider): Promise<PayoutAccount[]> {
-    const res = await request<{ success: boolean; accounts: PayoutAccount[] }>(
-      `/api/auth/payout-accounts/${encodeURIComponent(provider)}`,
+    const res = await request<{ success: boolean; accounts: unknown }>(
+      `/api/auth/payout-accounts/${encodeURIComponent(legacyPayoutProvider(provider))}`,
       { method: 'DELETE' },
     );
-    return res.accounts;
+    return normalizePayoutAccounts(res.accounts);
   },
 
   async getWithdrawalTotpStatus(): Promise<{ configured: boolean }> {
@@ -514,6 +589,22 @@ export const api = {
       if (currentStored) {
         setStoredSession(getStoredToken() || '', { ...currentStored, ...res.user });
       }
+    }
+    return res;
+  },
+
+  async repairRunner(runnerInstanceId: string, quantity: number): Promise<{
+    success: boolean;
+    message: string;
+    user?: Partial<User>;
+  }> {
+    const res = await request<{ success: boolean; message: string; user?: Partial<User> }>('/api/auth/runners/repair', {
+      method: 'POST',
+      body: JSON.stringify({ runnerInstanceId, quantity }),
+    });
+    if (res.user) {
+      const currentStored = getStoredUser();
+      if (currentStored) setStoredSession(getStoredToken() || '', { ...currentStored, ...res.user });
     }
     return res;
   },

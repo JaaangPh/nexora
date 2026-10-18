@@ -12,6 +12,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { api, DepositHistoryItem, DepositStatus, PayoutProvider, WithdrawalRecord, WithdrawalStatus } from '../services/api';
+import { getTurboPayPayoutBank } from '../../shared/turbopayBanks';
 
 type StatusFilter = 'all' | 'pending' | 'success' | 'failed' | 'expired';
 type MemberTransaction =
@@ -74,12 +75,9 @@ function getPaymentMethodLabel(bankCode: DepositHistoryItem['bankCode']): string
 }
 
 function getPayoutProviderLabel(provider: PayoutProvider | string): string {
-  switch (provider) {
-    case 'gcash': return 'GCash';
-    case 'maya': return 'Maya';
-    case 'gotyme': return 'GoTyme';
-    default: return provider;
-  }
+  if (provider === 'maya') return 'PayMaya Philippines';
+  if (provider === 'gotyme') return 'GoTyme Bank';
+  return getTurboPayPayoutBank(provider)?.name || provider;
 }
 
 function formatCreatedAt(value: string): string {
