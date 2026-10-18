@@ -806,7 +806,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                 className="w-full p-3 rounded-xl bg-[#142B5B] hover:bg-[#1E3A78] border border-[#2459C4]/40 flex items-center justify-between text-xs font-bold text-cyan-300 no-underline transition-all"
               >
                 <div className="flex items-center gap-2.5">
-                  <HelpCircle className="w-4 h-4 text-cyan-400" />
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 24 24"
+                    className="w-4 h-4 shrink-0"
+                  >
+                    <circle cx="12" cy="12" r="12" fill="#1877F2" />
+                    <path
+                      fill="white"
+                      d="M13.5 8.5h2V5.2c-.35-.05-1.55-.15-2.95-.15-2.9 0-4.9 1.77-4.9 5.02v2.98H4.4v3.68h3.25V24h3.99v-7.27h3.31l.52-3.68h-3.83v-2.6c0-1.06.29-1.78 1.86-1.78z"
+                      transform="translate(1 -1)"
+                    />
+                  </svg>
                   <span>Official Facebook Support</span>
                 </div>
                 <ChevronRight className="w-4 h-4 text-cyan-400" />
