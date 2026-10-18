@@ -30,6 +30,7 @@ import {
 } from '../database/firebase.js';
 import { completeWorkoutAndClearSnapshot, MarathonError } from '../services/marathonService.js';
 import { displayedNexoraId } from '../services/marathonRules.js';
+import { sendMarketplacePurchaseTelegramNotification } from '../services/marketplaceTelegramNotifications.js';
 import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES } from '../services/runnerPricing.js';
 import { sendSignupTelegramNotification } from '../services/telegramNotifications.js';
 
@@ -816,7 +817,22 @@ export async function purchaseRunner(req: AuthRequest, res: Response): Promise<v
 
     const pricing = await readRunnerPricing();
     const price = getRunnerPrices(pricing.discounts, pricing.originalPrices, pricing.newPrices)[runnerId].newPrice;
+    const member = await findUserById(req.user.id);
+    if (!member) {
+      res.status(404).json({ success: false, message: 'Account not found.' });
+      return;
+    }
+
     const purchase = await purchaseUserRunner(req.user.id, runnerId, price);
+    await sendMarketplacePurchaseTelegramNotification({
+      userId: req.user.id,
+      referralCode: member.referralCode,
+      runnerId,
+      serial: purchase.purchasedRunner.serial,
+      price,
+      purchasedAt: purchase.purchasedRunner.purchasedAt,
+    });
+
     res.json({
       success: true,
       message: 'Runner purchased successfully.',
