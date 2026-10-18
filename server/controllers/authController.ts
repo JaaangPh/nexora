@@ -30,6 +30,7 @@ import {
 } from '../database/firebase.js';
 import { completeWorkoutAndClearSnapshot, MarathonError } from '../services/marathonService.js';
 import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES } from '../services/runnerPricing.js';
+import { sendSignupTelegramNotification } from '../services/telegramNotifications.js';
 
 const MAX_WORKOUT_ROUTE_POINTS = 1000;
 const MAX_PROFILE_IMAGE_DATA_URL_LENGTH = 84 * 1024;
@@ -247,6 +248,12 @@ export async function register(req: Request, res: Response): Promise<void> {
       inviteCodeUsed: usedCode,
       referralCode: myReferralCode,
       ...(referrer ? { referredByUserId: referrer.id } : {}),
+    });
+
+    await sendSignupTelegramNotification({
+      phoneNumber: cleanPhone,
+      createdAt: newUser.createdAt,
+      referralCode: myReferralCode,
     });
 
     const userPayload = {

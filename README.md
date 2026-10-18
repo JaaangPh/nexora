@@ -142,6 +142,17 @@ Configure these backend-only environment variables in the deployment hosting the
 
 The minimum deposit is ₱100 for GCash, Maya, GoTyme, and QRPh; successful callbacks credit the exact PHP amount in the order (for example, a ₱150 payment credits ₱150). TurboPay's documentation requires a minimum of ₱800 for USDT-TRC20. The QRPh UI choice is sent using `bank_code=gcash` per the merchant's instructions; confirm this with TurboPay because its bank-code directory lists `qrph` separately. The hosting provider must expose the callback route publicly and allow the backend's static outbound IP to be registered with TurboPay if their account requires IP whitelisting. `34.143.182.198` is identified in TurboPay's documentation as TurboPay's API IP; it is not Nexora's outbound IP. Withdrawals are member-requested and recorded in `payment_withdrawals` for review; workout rewards are credited after successful server verification.
 
+## 🤖 Telegram Signup Notifications
+
+After a member account is created, the backend can post a welcome message to a Telegram group. The post includes the phone number masked to its last four digits, the account creation time in Asia/Manila, and the new member's referral code. Telegram delivery is best-effort: an unavailable or unconfigured bot does not prevent signup.
+
+Create a bot with Telegram's `@BotFather`, add it to the target group, and allow it to send messages. Configure these backend-only environment variables in the Express API deployment and local `.env` when testing:
+
+* `TELEGRAM_BOT_TOKEN` — the secret token issued by `@BotFather`; do not commit or expose it in client-side `VITE_` variables.
+* `TELEGRAM_GROUP_CHAT_ID` — the target group's chat ID (supergroup IDs commonly start with `-100`).
+
+Both variables must be set for notifications to be sent.
+
 ## 🔐 Administrator Portal
 
 Open `/admin` to use the separate administrator dashboard. Configure `ADMIN_EMAIL=admin@stepora.xyz`, set `ADMIN_PASSWORD` to the chosen backend-only password, and set `ADMIN_AUTH_SECRET` to a unique random value at least 32 characters long before signing in. Keep the auth secret stable so the stored authenticator key remains decryptable. Do not put administrator credentials in client-side `VITE_` variables or source code. After password verification, the first sign-in displays a QR code for Google Authenticator; the setup is only complete after submitting a valid six-digit code. The TOTP secret is encrypted before it is stored in Firestore, and admin sessions expire after eight hours. Admins can change their password and create admin or read-only staff accounts from **Security & accounts**. The admin-only **Staff team** view lists registered account emails, roles, and statuses. Password changes and account creation require the current admin's fresh authenticator code. New accounts are prompted to enroll Google Authenticator and scan their own QR code at first sign-in. Staff accounts can view deposits and withdrawals but cannot change account security, create accounts, or view the staff team.
