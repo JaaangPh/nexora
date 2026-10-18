@@ -258,7 +258,7 @@ export const AboutWhitepaper: React.FC = () => {
                   ['Track', 'Selects available owned Runners, captures a session, and displays the calculated reward before collection.'],
                   ['Team', 'Copies a referral code or link, shows the direct referral count and earned referral rewards, and retains Team Volume as a placeholder.'],
                   ['Me', 'Shows the account balance and deposit total, and provides quick actions for Team Marathon, My Runners, Bank Account, Customer Service, My Records, and Download App. Profile details, username editing, Nexora ID copying, and sign-out remain available below.'],
-                  ['Support', 'Dashboard shortcuts include email and Telegram links. The Telegram link currently opens the Telegram homepage.'],
+                  ['Support', 'Dashboard shortcuts open the official Stepora Telegram support and Facebook page.'],
                 ].map(([title, description]) => (
                   <div key={title} className="rounded-lg border border-slate-200 p-4">
                     <h3 className="text-sm font-semibold text-slate-900">{title}</h3>

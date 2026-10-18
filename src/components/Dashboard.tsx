@@ -787,7 +787,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
 
             <div className="space-y-2.5">
               <a
-                href="https://t.me"
+                href="https://t.me/stepm_fun"
                 target="_blank"
                 rel="noreferrer"
                 className="w-full p-3 rounded-xl bg-[#142B5B] hover:bg-[#1E3A78] border border-[#2459C4]/40 flex items-center justify-between text-xs font-bold text-cyan-300 no-underline transition-all"
@@ -800,12 +800,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
               </a>
 
               <a
-                href="mailto:support@nexoratech.live"
+                href="https://www.facebook.com/steporamovement"
+                target="_blank"
+                rel="noreferrer"
                 className="w-full p-3 rounded-xl bg-[#142B5B] hover:bg-[#1E3A78] border border-[#2459C4]/40 flex items-center justify-between text-xs font-bold text-cyan-300 no-underline transition-all"
               >
                 <div className="flex items-center gap-2.5">
                   <HelpCircle className="w-4 h-4 text-cyan-400" />
-                  <span>Email Support Desk</span>
+                  <span>Official Facebook Support</span>
                 </div>
                 <ChevronRight className="w-4 h-4 text-cyan-400" />
               </a>
