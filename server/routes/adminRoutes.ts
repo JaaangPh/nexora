@@ -5,7 +5,9 @@ import {
   changeAdminPassword,
   createAdminAccount,
   getAdminAccounts,
+  getAdminActiveWorkouts,
   getAdminTransactions,
+  getAdminUserProfile,
   reviewWithdrawal,
   startAdminLogin,
   verifyAdminTotp,
@@ -25,6 +27,8 @@ router.post('/auth/login', adminAuthLimiter, startAdminLogin);
 router.post('/auth/totp/setup', adminAuthLimiter, beginAdminTotpSetup);
 router.post('/auth/totp/verify', adminAuthLimiter, verifyAdminTotp);
 router.get('/transactions', adminSessionMiddleware, getAdminTransactions);
+router.get('/active-workouts', adminSessionMiddleware, getAdminActiveWorkouts);
+router.get('/users/:userId', adminSessionMiddleware, getAdminUserProfile);
 router.put('/withdrawals/:orderId/review', adminSessionMiddleware, reviewWithdrawal);
 router.put('/auth/password', adminAuthLimiter, adminSessionMiddleware, changeAdminPassword);
 router.get('/accounts', adminSessionMiddleware, getAdminAccounts);

@@ -501,10 +501,206 @@ export async function getAdminAccounts(req: AdminRequest, res: Response): Promis
 
 function toIsoDate(value: unknown): string {
   if (typeof value === 'string') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return new Date(value).toISOString();
   if (value && typeof value === 'object' && 'toDate' in value && typeof value.toDate === 'function') {
     return value.toDate().toISOString();
   }
   return '';
+}
+
+export async function getAdminUserProfile(req: AdminRequest, res: Response): Promise<void> {
+  if (req.adminRole !== 'admin') {
+    res.status(403).json({ success: false, message: 'Only administrators can view user profiles.' });
+    return;
+  }
+
+  const searchId = typeof req.params.userId === 'string' ? req.params.userId.trim() : '';
+  if (!searchId || searchId.length > 128) {
+    res.status(400).json({ success: false, message: 'Enter a valid user ID.' });
+    return;
+  }
+
+  try {
+    let userSnapshot = await firestore.collection('users').doc(searchId).get();
+    if (!userSnapshot.exists) {
+      const referralMatches = await firestore.collection('users')
+        .where('referralCode', '==', searchId)
+        .limit(2)
+        .get();
+      if (referralMatches.size === 1) {
+        userSnapshot = referralMatches.docs[0];
+      } else if (referralMatches.size > 1) {
+        res.status(409).json({ success: false, message: 'This ID matches multiple accounts. Search using the full account ID.' });
+        return;
+      } else if (/^\d{5}$/.test(searchId)) {
+        const users = await firestore.collection('users').get();
+        const publicIdMatches = users.docs.filter((document) => {
+          const user = document.data();
+          return displayedNexoraId(
+            typeof user.referralCode === 'string' ? user.referralCode : undefined,
+            document.id,
+          ) === searchId;
+        });
+        if (publicIdMatches.length > 1) {
+          res.status(409).json({ success: false, message: 'This Stepora ID matches multiple accounts. Search using the full account ID.' });
+          return;
+        }
+        if (publicIdMatches.length === 1) userSnapshot = publicIdMatches[0];
+      }
+    }
+
+    if (!userSnapshot.exists) {
+      res.status(404).json({ success: false, message: 'No user was found for that ID.' });
+      return;
+    }
+
+    const user = userSnapshot.data();
+    if (!user) {
+      res.status(404).json({ success: false, message: 'No user was found for that ID.' });
+      return;
+    }
+
+    const userId = userSnapshot.id;
+    const [depositSnapshot, withdrawalSnapshot, workoutSnapshot] = await Promise.all([
+      firestore.collection('payment_deposits').where('userId', '==', userId).get(),
+      firestore.collection('payment_withdrawals').where('userId', '==', userId).get(),
+      firestore.collection('completed_workouts').where('userId', '==', userId).get(),
+    ]);
+    const transactions = [
+      ...depositSnapshot.docs.map((document) => ({ document, type: 'deposit' as const })),
+      ...withdrawalSnapshot.docs.map((document) => ({ document, type: 'withdrawal' as const })),
+    ].map(({ document, type }) => {
+      const record = document.data();
+      return {
+        id: String(record.orderId || record.id || document.id),
+        type,
+        status: typeof record.status === 'string' ? record.status : 'unknown',
+        amount: type === 'withdrawal'
+          ? Number.isFinite(Number(record.payoutAmount)) ? Number(record.payoutAmount) : Number(record.amount) || 0
+          : Number(record.amount) || 0,
+        createdAt: toIsoDate(record.createdAt),
+        method: typeof record.bankCode === 'string' ? record.bankCode : typeof record.method === 'string' ? record.method : '—',
+      };
+    }).sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
+
+    const ownedRunners = (Array.isArray(user.ownedRunners) ? user.ownedRunners : [])
+      .flatMap((runner: unknown) => {
+        if (typeof runner === 'string') {
+          return [{ id: runner, runnerId: runner, serial: '', purchasedAt: 0 }];
+        }
+        if (!runner || typeof runner !== 'object') return [];
+        const item = runner as Record<string, unknown>;
+        if (typeof item.runnerId !== 'string') return [];
+        return [{
+          id: typeof item.id === 'string' ? item.id : item.runnerId,
+          runnerId: item.runnerId,
+          serial: typeof item.serial === 'string' ? item.serial : '',
+          purchasedAt: Number.isFinite(Number(item.purchasedAt)) ? Number(item.purchasedAt) : 0,
+        }];
+      });
+
+    const rawWorkout = user.workoutSnapshot && typeof user.workoutSnapshot === 'object'
+      ? user.workoutSnapshot as Record<string, unknown>
+      : null;
+    const workoutActive = Boolean(
+      rawWorkout &&
+      (rawWorkout.isTracking === true || rawWorkout.isPaused === true || rawWorkout.pendingFinish === true)
+    );
+    const activeWorkout = workoutActive && rawWorkout ? {
+      status: rawWorkout.pendingFinish === true
+        ? 'Pending claim'
+        : rawWorkout.isPaused === true ? 'Paused' : 'Active',
+      isTracking: rawWorkout.isTracking === true,
+      isPaused: rawWorkout.isPaused === true,
+      pendingFinish: rawWorkout.pendingFinish === true,
+      distanceKm: Number.isFinite(Number(rawWorkout.distanceKm)) ? Number(rawWorkout.distanceKm) : 0,
+      elapsedSeconds: Number.isFinite(Number(rawWorkout.elapsedSeconds)) ? Number(rawWorkout.elapsedSeconds) : 0,
+      tokensEarned: Number.isFinite(Number(rawWorkout.tokensEarned)) ? Number(rawWorkout.tokensEarned) : 0,
+      lastUpdated: Number.isFinite(Number(rawWorkout.lastUpdated)) ? Number(rawWorkout.lastUpdated) : 0,
+    } : null;
+
+    const pastTracks = workoutSnapshot.docs.map((document) => {
+      const workout = document.data();
+      return {
+        id: String(workout.id || document.id),
+        startedAt: toIsoDate(workout.startedAt),
+        completedAt: toIsoDate(workout.completedAt),
+        distanceKm: Number.isFinite(Number(workout.verifiedMeters)) ? Number(workout.verifiedMeters) / 1000 : 0,
+        earned: Number.isFinite(Number(workout.rewardCents)) ? Number(workout.rewardCents) / 100 : 0,
+        claimed: workout.rewardVerified === true && Number(workout.rewardCents) > 0,
+      };
+    }).sort((first, second) => Date.parse(second.completedAt) - Date.parse(first.completedAt));
+
+    res.json({
+      success: true,
+      profile: {
+        username: typeof user.username === 'string' ? user.username : 'Member',
+        userId,
+        steporaId: displayedNexoraId(
+          typeof user.referralCode === 'string' ? user.referralCode : undefined,
+          userId,
+        ),
+        status: typeof user.status === 'string' ? user.status : 'unknown',
+        ownedRunners,
+        transactions,
+        activeWorkout,
+        pastTracks,
+      },
+    });
+  } catch (error) {
+    console.error('[Admin User Profile Error]', error);
+    res.status(500).json({ success: false, message: 'Could not load this user profile.' });
+  }
+}
+
+export async function getAdminActiveWorkouts(req: AdminRequest, res: Response): Promise<void> {
+  if (req.adminRole !== 'admin') {
+    res.status(403).json({ success: false, message: 'Only administrators can view active workouts.' });
+    return;
+  }
+
+  try {
+    const [trackingUsers, pendingFinishUsers] = await Promise.all([
+      firestore.collection('users').where('workoutSnapshot.isTracking', '==', true).get(),
+      firestore.collection('users').where('workoutSnapshot.pendingFinish', '==', true).get(),
+    ]);
+    const users = new Map([
+      ...trackingUsers.docs.map((document) => [document.id, document] as const),
+      ...pendingFinishUsers.docs.map((document) => [document.id, document] as const),
+    ]);
+
+    const activeWorkouts = [...users.values()].flatMap((document) => {
+      const user = document.data();
+      const workout = user.workoutSnapshot;
+      if (!workout || typeof workout !== 'object') return [];
+      const snapshot = workout as Record<string, unknown>;
+      if (snapshot.isTracking !== true && snapshot.isPaused !== true && snapshot.pendingFinish !== true) return [];
+
+      return [{
+        userId: document.id,
+        username: typeof user.username === 'string' ? user.username : 'Member',
+        steporaId: displayedNexoraId(
+          typeof user.referralCode === 'string' ? user.referralCode : undefined,
+          document.id,
+        ),
+        status: snapshot.pendingFinish === true
+          ? 'Pending claim'
+          : snapshot.isPaused === true ? 'Paused' : 'Active',
+        isTracking: snapshot.isTracking === true,
+        isPaused: snapshot.isPaused === true,
+        pendingFinish: snapshot.pendingFinish === true,
+        distanceKm: Number.isFinite(Number(snapshot.distanceKm)) ? Number(snapshot.distanceKm) : 0,
+        elapsedSeconds: Number.isFinite(Number(snapshot.elapsedSeconds)) ? Number(snapshot.elapsedSeconds) : 0,
+        tokensEarned: Number.isFinite(Number(snapshot.tokensEarned)) ? Number(snapshot.tokensEarned) : 0,
+        lastUpdated: Number.isFinite(Number(snapshot.lastUpdated)) ? Number(snapshot.lastUpdated) : 0,
+      }];
+    }).sort((first, second) => second.lastUpdated - first.lastUpdated);
+
+    res.json({ success: true, activeWorkouts });
+  } catch (error) {
+    console.error('[Admin Active Workouts Error]', error);
+    res.status(500).json({ success: false, message: 'Could not load active workouts.' });
+  }
 }
 
 export async function reviewWithdrawal(req: AdminRequest, res: Response): Promise<void> {
@@ -591,17 +787,21 @@ export async function reviewWithdrawal(req: AdminRequest, res: Response): Promis
 
 export async function getAdminTransactions(req: AdminRequest, res: Response): Promise<void> {
   try {
-    const [depositSnapshot, withdrawalSnapshot] = await Promise.all([
+    const [depositSnapshot, withdrawalSnapshot, runnerPurchaseSnapshot] = await Promise.all([
       firestore.collection('payment_deposits').get(),
       firestore.collection('payment_withdrawals').get(),
+      firestore.collection('wallet_transactions').where('type', '==', 'runner_purchase').get(),
     ]);
 
     const allRecords = [
       ...depositSnapshot.docs.map((document) => ({ document, type: 'deposit' as const })),
       ...withdrawalSnapshot.docs.map((document) => ({ document, type: 'withdrawal' as const })),
     ];
-    const userIds = [...new Set(allRecords
-      .map(({ document }) => document.data().userId)
+    const runnerPurchases = runnerPurchaseSnapshot.docs.map((document) => document.data());
+    const userIds = [...new Set([
+      ...allRecords.map(({ document }) => document.data().userId),
+      ...runnerPurchases.map((record) => record.userId),
+    ]
       .filter((id): id is string => typeof id === 'string'))];
     const userSnapshots = await Promise.all(userIds.map((id) => firestore.collection('users').doc(id).get()));
     const users = new Map(userSnapshots.map((snapshot) => {
@@ -648,11 +848,38 @@ export async function getAdminTransactions(req: AdminRequest, res: Response): Pr
       };
     }).sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
 
+    const runnerNames: Record<string, string> = {
+        'snk-1': 'Cyber Aero Walker',
+        'snk-2': 'Bio Surge Trainer',
+        'snk-3': 'Cobalt Aero Jogger',
+        'snk-4': 'Vortex Blaze Sprint',
+    };
+    const purchases = runnerPurchaseSnapshot.docs.map((document) => {
+        const record = document.data();
+        const userId = typeof record.userId === 'string' ? record.userId : '';
+        const user = users.get(userId);
+        const amount = Number.isFinite(Number(record.amount))
+          ? Math.abs(Number(record.amount))
+          : Math.abs(Number(record.amountCents) / 100);
+        const runnerId = typeof record.runnerId === 'string' ? record.runnerId : '';
+        return {
+          id: String(record.id || document.id),
+          runnerName: runnerNames[runnerId] || `Runner (${runnerId || 'unknown'})`,
+          serial: typeof record.serial === 'string' ? record.serial : '',
+          createdAt: toIsoDate(record.createdAt),
+          amount: Number.isFinite(amount) ? amount : 0,
+          username: user?.username || 'Member',
+          phoneNumber: user?.phoneNumber || '',
+          steporaId: user?.steporaId || displayedNexoraId(undefined, userId),
+        };
+    }).sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
+
     res.json({
-      success: true,
-      transactions,
-      email: req.adminEmail,
-      role: req.adminRole,
+        success: true,
+        transactions,
+        runnerPurchases: purchases,
+        email: req.adminEmail,
+        role: req.adminRole,
     });
   } catch (error) {
     console.error('[Admin Transaction Listing Error]', error);

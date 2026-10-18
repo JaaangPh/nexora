@@ -3,6 +3,7 @@ import {
   ArrowDownLeft,
   ArrowLeftRight,
   ArrowUpRight,
+  Activity,
   BadgeCheck,
   CalendarDays,
   ChartNoAxesCombined,
@@ -15,8 +16,11 @@ import {
   LogOut,
   Menu,
   RefreshCw,
+  Search,
+  ShoppingBag,
   ShieldCheck,
   UserPlus,
+  UserRound,
   Users,
 } from 'lucide-react';
 import { getApiBaseUrl } from '../services/api';
@@ -25,7 +29,7 @@ type AdminScreen = 'login' | 'setup' | 'verify' | 'dashboard';
 type TransactionType = 'deposit' | 'withdrawal';
 type DateRange = '24h' | '7d' | '30d' | 'all';
 type AdminRole = 'admin' | 'staff';
-type AdminView = 'overview' | TransactionType | 'security' | 'staff-team';
+type AdminView = 'overview' | TransactionType | 'runner-purchases' | 'profile' | 'security' | 'staff-team';
 
 interface AdminTransaction {
   id: string;
@@ -53,6 +57,65 @@ interface AdminTeamMember {
   createdAt: string;
 }
 
+interface AdminRunnerPurchase {
+  id: string;
+  runnerName: string;
+  serial: string;
+  createdAt: string;
+  amount: number;
+  username: string;
+  phoneNumber: string;
+  steporaId: string;
+}
+
+interface AdminUserProfile {
+  username: string;
+  userId: string;
+  steporaId: string;
+  status: string;
+  ownedRunners: Array<{ id: string; runnerId: string; serial: string; purchasedAt: number }>;
+  transactions: Array<{
+    id: string;
+    type: 'deposit' | 'withdrawal';
+    status: string;
+    amount: number;
+    createdAt: string;
+    method: string;
+  }>;
+  activeWorkout: {
+    status: string;
+    isTracking: boolean;
+    isPaused: boolean;
+    pendingFinish: boolean;
+    distanceKm: number;
+    elapsedSeconds: number;
+    tokensEarned: number;
+    lastUpdated: number;
+  } | null;
+  pastTracks: Array<{
+    id: string;
+    startedAt: string;
+    completedAt: string;
+    distanceKm: number;
+    earned: number;
+    claimed: boolean;
+  }>;
+}
+
+interface AdminActiveWorkout {
+  userId: string;
+  username: string;
+  steporaId: string;
+  status: string;
+  isTracking: boolean;
+  isPaused: boolean;
+  pendingFinish: boolean;
+  distanceKm: number;
+  elapsedSeconds: number;
+  tokensEarned: number;
+  lastUpdated: number;
+}
+
 interface AdminApiResponse {
   success: boolean;
   message?: string;
@@ -60,6 +123,12 @@ interface AdminApiResponse {
 
 const SESSION_KEY = 'stepora_admin_session';
 const currency = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
+const runnerNames: Record<string, string> = {
+  'snk-1': 'Cyber Aero Walker',
+  'snk-2': 'Bio Surge Trainer',
+  'snk-3': 'Cobalt Aero Jogger',
+  'snk-4': 'Vortex Blaze Sprint',
+};
 
 async function adminRequest<T>(
   endpoint: string,
@@ -176,11 +245,24 @@ export const Admin: React.FC = () => {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [manualEntryKey, setManualEntryKey] = useState('');
   const [transactions, setTransactions] = useState<AdminTransaction[]>([]);
+  const [runnerPurchases, setRunnerPurchases] = useState<AdminRunnerPurchase[]>([]);
   const [teamMembers, setTeamMembers] = useState<AdminTeamMember[]>([]);
   const [isLoadingTeam, setIsLoadingTeam] = useState(false);
   const [teamRefreshKey, setTeamRefreshKey] = useState(0);
   const [activeView, setActiveView] = useState<AdminView>('overview');
   const [dateRange, setDateRange] = useState<DateRange>('7d');
+  const [depositUserIdSearch, setDepositUserIdSearch] = useState('');
+  const [withdrawalUserIdSearch, setWithdrawalUserIdSearch] = useState('');
+  const [runnerPurchaseUserIdSearch, setRunnerPurchaseUserIdSearch] = useState('');
+  const [profileSearchInput, setProfileSearchInput] = useState('');
+  const [profileLookupId, setProfileLookupId] = useState('');
+  const [userProfile, setUserProfile] = useState<AdminUserProfile | null>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [activeWorkouts, setActiveWorkouts] = useState<AdminActiveWorkout[]>([]);
+  const [isLoadingActiveWorkouts, setIsLoadingActiveWorkouts] = useState(false);
+  const [activeWorkoutsError, setActiveWorkoutsError] = useState('');
+  const [profileRefreshKey, setProfileRefreshKey] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -201,8 +283,9 @@ export const Admin: React.FC = () => {
   const [withdrawalReferenceNumbers, setWithdrawalReferenceNumbers] = useState<Record<string, string>>({});
 
   const loadTransactions = async (token: string) => {
-    const result = await adminRequest<{ transactions: AdminTransaction[]; email: string; role: AdminRole }>('/api/admin/transactions', { method: 'GET' }, token);
+    const result = await adminRequest<{ transactions: AdminTransaction[]; runnerPurchases: AdminRunnerPurchase[]; email: string; role: AdminRole }>('/api/admin/transactions', { method: 'GET' }, token);
     setTransactions(result.transactions);
+    setRunnerPurchases(result.runnerPurchases);
     setEmail(result.email);
     setRole(result.role);
   };
@@ -211,10 +294,11 @@ export const Admin: React.FC = () => {
     if (!sessionToken) return;
     let isCurrent = true;
     setIsLoading(true);
-    adminRequest<{ transactions: AdminTransaction[]; email: string; role: AdminRole }>('/api/admin/transactions', { method: 'GET' }, sessionToken)
+    adminRequest<{ transactions: AdminTransaction[]; runnerPurchases: AdminRunnerPurchase[]; email: string; role: AdminRole }>('/api/admin/transactions', { method: 'GET' }, sessionToken)
       .then((result) => {
         if (isCurrent) {
           setTransactions(result.transactions);
+          setRunnerPurchases(result.runnerPurchases);
           setEmail(result.email);
           setRole(result.role);
         }
@@ -249,6 +333,72 @@ export const Admin: React.FC = () => {
     return () => { isCurrent = false; };
   }, [activeView, role, sessionToken, teamRefreshKey]);
 
+  useEffect(() => {
+    if (!sessionToken || activeView !== 'profile' || !profileLookupId) return;
+    let isCurrent = true;
+    const loadProfile = async (showLoading: boolean) => {
+      if (showLoading) setIsLoadingProfile(true);
+      try {
+        const result = await adminRequest<{ profile: AdminUserProfile }>(
+          `/api/admin/users/${encodeURIComponent(profileLookupId)}`,
+          { method: 'GET' },
+          sessionToken,
+        );
+        if (isCurrent) {
+          setUserProfile(result.profile);
+          setProfileError('');
+        }
+      } catch (loadError: unknown) {
+        if (isCurrent) {
+          setProfileError(loadError instanceof Error ? loadError.message : 'Could not load this user profile.');
+        }
+      } finally {
+        if (isCurrent && showLoading) setIsLoadingProfile(false);
+      }
+    };
+
+    setUserProfile(null);
+    setProfileError('');
+    void loadProfile(true);
+    const intervalId = window.setInterval(() => void loadProfile(false), 5000);
+    return () => {
+      isCurrent = false;
+      window.clearInterval(intervalId);
+    };
+  }, [activeView, profileLookupId, profileRefreshKey, sessionToken]);
+
+  useEffect(() => {
+    if (!sessionToken || role !== 'admin' || activeView !== 'profile') return;
+    let isCurrent = true;
+    const loadActiveWorkouts = async (showLoading: boolean) => {
+      if (showLoading) setIsLoadingActiveWorkouts(true);
+      try {
+        const result = await adminRequest<{ activeWorkouts: AdminActiveWorkout[] }>(
+          '/api/admin/active-workouts',
+          { method: 'GET' },
+          sessionToken,
+        );
+        if (isCurrent) {
+          setActiveWorkouts(result.activeWorkouts);
+          setActiveWorkoutsError('');
+        }
+      } catch (loadError: unknown) {
+        if (isCurrent) {
+          setActiveWorkoutsError(loadError instanceof Error ? loadError.message : 'Could not load active workouts.');
+        }
+      } finally {
+        if (isCurrent && showLoading) setIsLoadingActiveWorkouts(false);
+      }
+    };
+
+    void loadActiveWorkouts(true);
+    const intervalId = window.setInterval(() => void loadActiveWorkouts(false), 5000);
+    return () => {
+      isCurrent = false;
+      window.clearInterval(intervalId);
+    };
+  }, [activeView, role, sessionToken]);
+
   const filteredTransactions = useMemo(() => {
     const now = Date.now();
     const rangeMs: Record<Exclude<DateRange, 'all'>, number> = {
@@ -257,15 +407,38 @@ export const Admin: React.FC = () => {
       '30d': 30 * 24 * 60 * 60 * 1000,
     };
     return transactions.filter((transaction) => {
-      if (activeView !== 'overview' && activeView !== 'security' && activeView !== 'staff-team' && transaction.type !== activeView) return false;
+      if (activeView !== 'overview' && activeView !== 'security' && activeView !== 'staff-team' && activeView !== 'runner-purchases' && transaction.type !== activeView) return false;
       if (dateRange === 'all') return true;
       const timestamp = Date.parse(transaction.createdAt);
       return Number.isFinite(timestamp) && timestamp >= now - rangeMs[dateRange];
     });
   }, [activeView, dateRange, transactions]);
 
+  const filteredRunnerPurchases = useMemo(() => {
+    if (dateRange === 'all') return runnerPurchases;
+    const now = Date.now();
+    const rangeMs: Record<Exclude<DateRange, 'all'>, number> = {
+      '24h': 24 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000,
+    };
+    return runnerPurchases.filter((purchase) => {
+      const timestamp = Date.parse(purchase.createdAt);
+      return Number.isFinite(timestamp) && timestamp >= now - rangeMs[dateRange];
+    });
+  }, [dateRange, runnerPurchases]);
+
   const deposits = filteredTransactions.filter((transaction) => transaction.type === 'deposit');
   const withdrawals = filteredTransactions.filter((transaction) => transaction.type === 'withdrawal');
+  const visibleDeposits = deposits.filter((transaction) =>
+    transaction.steporaId.toLowerCase().includes(depositUserIdSearch.trim().toLowerCase()),
+  );
+  const visibleWithdrawals = withdrawals.filter((transaction) =>
+    transaction.steporaId.toLowerCase().includes(withdrawalUserIdSearch.trim().toLowerCase()),
+  );
+  const visibleRunnerPurchases = filteredRunnerPurchases.filter((purchase) =>
+    purchase.steporaId.toLowerCase().includes(runnerPurchaseUserIdSearch.trim().toLowerCase()),
+  );
   const paidDeposits = deposits.filter((transaction) => isSuccessfulStatus(transaction.status));
   const successfulWithdrawals = withdrawals.filter((transaction) => isSuccessfulStatus(transaction.status));
   const depositTotal = paidDeposits.reduce((sum, transaction) => sum + transaction.amount, 0);
@@ -432,6 +605,10 @@ export const Admin: React.FC = () => {
     setSessionToken('');
     setStageToken('');
     setTransactions([]);
+    setRunnerPurchases([]);
+    setUserProfile(null);
+    setProfileLookupId('');
+    setActiveWorkouts([]);
     setEmail('');
     setActiveView('overview');
     setRole(null);
@@ -580,6 +757,7 @@ export const Admin: React.FC = () => {
             { id: 'overview' as const, label: 'Overview', icon: LayoutDashboard },
             { id: 'deposit' as const, label: 'Deposits', icon: ArrowDownLeft },
             { id: 'withdrawal' as const, label: 'Withdrawals', icon: ArrowUpRight },
+            { id: 'runner-purchases' as const, label: 'Runner purchases', icon: ShoppingBag },
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -594,6 +772,14 @@ export const Admin: React.FC = () => {
           {role === 'admin' && (
             <>
               <div className="mt-3 h-px w-8 bg-[#24466f]" />
+              <button
+                title="User profile"
+                aria-label="User profile"
+                onClick={() => { setActiveView('profile'); setMobileNavOpen(false); }}
+                className={`grid h-11 w-11 place-items-center rounded-xl border-l-[3px] transition ${activeView === 'profile' ? 'border-cyan-300 bg-[#142b5b] text-cyan-200' : 'border-transparent text-[#c5bfbb] hover:bg-[#10234a]'}`}
+              >
+                <UserRound className="h-5 w-5" />
+              </button>
               <button
                 title="Staff team"
                 aria-label="Staff team"
@@ -626,8 +812,8 @@ export const Admin: React.FC = () => {
               <Menu className="h-4 w-4" />
             </button>
             <div className="flex items-center gap-2 text-sm font-semibold">
-              {activeView === 'overview' ? <LayoutDashboard className="h-4 w-4 text-[#f15408]" /> : activeView === 'security' ? <ShieldCheck className="h-4 w-4 text-[#f15408]" /> : activeView === 'staff-team' ? <Users className="h-4 w-4 text-cyan-300" /> : <ArrowLeftRight className="h-4 w-4 text-[#f15408]" />}
-              {activeView === 'overview' ? 'Dashboard' : activeView === 'security' ? 'Security & accounts' : activeView === 'staff-team' ? 'Staff team' : activeView === 'deposit' ? 'Deposits' : 'Withdrawals'}
+              {activeView === 'overview' ? <LayoutDashboard className="h-4 w-4 text-[#f15408]" /> : activeView === 'security' ? <ShieldCheck className="h-4 w-4 text-[#f15408]" /> : activeView === 'staff-team' ? <Users className="h-4 w-4 text-cyan-300" /> : activeView === 'runner-purchases' ? <ShoppingBag className="h-4 w-4 text-[#f15408]" /> : activeView === 'profile' ? <UserRound className="h-4 w-4 text-[#f15408]" /> : <ArrowLeftRight className="h-4 w-4 text-[#f15408]" />}
+              {activeView === 'overview' ? 'Dashboard' : activeView === 'security' ? 'Security & accounts' : activeView === 'staff-team' ? 'Staff team' : activeView === 'deposit' ? 'Deposits' : activeView === 'withdrawal' ? 'Withdrawals' : activeView === 'runner-purchases' ? 'Runner purchases' : 'User profile'}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -662,7 +848,7 @@ export const Admin: React.FC = () => {
             </div>
           )}
 
-          {activeView !== 'security' && activeView !== 'staff-team' && <div className="flex flex-wrap items-center justify-between gap-3">
+          {activeView !== 'security' && activeView !== 'staff-team' && activeView !== 'profile' && <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
               {rangeLabels.map(({ id, label }) => (
                 <button
@@ -855,14 +1041,22 @@ export const Admin: React.FC = () => {
           )}
 
           {activeView === 'deposit' && (
-            <TransactionTable transactions={filteredTransactions} isLoading={isLoading} title="Deposits" />
+            <TransactionTable
+              transactions={visibleDeposits}
+              isLoading={isLoading}
+              title="Deposits"
+              userIdSearch={depositUserIdSearch}
+              onUserIdSearchChange={setDepositUserIdSearch}
+            />
           )}
           {activeView === 'withdrawal' && (
             <>
               <TransactionTable
-                transactions={filteredTransactions}
+                transactions={visibleWithdrawals}
                 isLoading={isLoading}
                 title="Withdrawals"
+                userIdSearch={withdrawalUserIdSearch}
+                onUserIdSearchChange={setWithdrawalUserIdSearch}
                 onReviewWithdrawal={handleReviewWithdrawal}
                 reviewingWithdrawalId={reviewingWithdrawalId}
                 withdrawalReferenceNumbers={withdrawalReferenceNumbers}
@@ -877,11 +1071,419 @@ export const Admin: React.FC = () => {
               )}
             </>
           )}
+          {activeView === 'runner-purchases' && (
+            <RunnerPurchaseTable
+              purchases={visibleRunnerPurchases}
+              isLoading={isLoading}
+              userIdSearch={runnerPurchaseUserIdSearch}
+              onUserIdSearchChange={setRunnerPurchaseUserIdSearch}
+            />
+          )}
+          {activeView === 'profile' && (
+            <UserProfileSection
+              searchInput={profileSearchInput}
+              onSearchInputChange={setProfileSearchInput}
+              onSearch={(event) => {
+                event.preventDefault();
+                const searchId = profileSearchInput.trim();
+                if (!searchId) {
+                  setProfileError('Enter a Stepora ID or full account ID.');
+                  setUserProfile(null);
+                  return;
+                }
+                setProfileLookupId(searchId);
+              }}
+              profile={userProfile}
+              isLoading={isLoadingProfile}
+              error={profileError}
+              activeWorkouts={activeWorkouts}
+              isLoadingActiveWorkouts={isLoadingActiveWorkouts}
+              activeWorkoutsError={activeWorkoutsError}
+              onSelectActiveWorkout={(workout) => {
+                setProfileSearchInput(workout.steporaId);
+                setProfileLookupId(workout.userId);
+                setUserProfile(null);
+                setProfileRefreshKey((key) => key + 1);
+              }}
+            />
+          )}
         </div>
       </main>
     </div>
   );
 };
+
+function UserProfileSection({
+  searchInput,
+  onSearchInputChange,
+  onSearch,
+  profile,
+  isLoading,
+  error,
+  activeWorkouts,
+  isLoadingActiveWorkouts,
+  activeWorkoutsError,
+  onSelectActiveWorkout,
+}: {
+  searchInput: string;
+  onSearchInputChange: (value: string) => void;
+  onSearch: (event: FormEvent<HTMLFormElement>) => void;
+  profile: AdminUserProfile | null;
+  isLoading: boolean;
+  error: string;
+  activeWorkouts: AdminActiveWorkout[];
+  isLoadingActiveWorkouts: boolean;
+  activeWorkoutsError: string;
+  onSelectActiveWorkout: (workout: AdminActiveWorkout) => void;
+}) {
+  const [clock, setClock] = useState(Date.now());
+  useEffect(() => {
+    if (!profile?.activeWorkout && activeWorkouts.length === 0) return;
+    const intervalId = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [activeWorkouts.length, profile?.activeWorkout]);
+
+  const activeWorkout = profile?.activeWorkout;
+  const elapsedSeconds = activeWorkout
+    ? activeWorkout.elapsedSeconds + (
+      activeWorkout.isTracking &&
+      !activeWorkout.isPaused &&
+      !activeWorkout.pendingFinish &&
+      activeWorkout.lastUpdated > 0
+        ? Math.floor(Math.max(0, clock - activeWorkout.lastUpdated) / 1000)
+        : 0
+    )
+    : 0;
+  const pendingCount = profile?.transactions.filter((transaction) => transaction.status.toLowerCase() === 'pending').length || 0;
+  const deposits = profile?.transactions.filter((transaction) => transaction.type === 'deposit') || [];
+  const withdrawals = profile?.transactions.filter((transaction) => transaction.type === 'withdrawal') || [];
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-xl border border-[#1e3a78] bg-[#081b3d] p-4 sm:p-5">
+        <div className="mb-4">
+          <h2 className="text-sm font-semibold text-white">Find a user</h2>
+          <p className="mt-1 text-[11px] text-[#8f9fba]">Search by Stepora ID or full account ID.</p>
+        </div>
+        <form onSubmit={onSearch} className="flex flex-col gap-2 sm:flex-row">
+          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 focus-within:border-cyan-300">
+            <Search className="h-4 w-4 shrink-0 text-[#8f9fba]" />
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(event) => onSearchInputChange(event.target.value)}
+              placeholder="Enter user ID"
+              aria-label="Search user by ID"
+              className="w-full bg-transparent text-sm text-white outline-none placeholder:text-[#64748b]"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="flex items-center justify-center gap-2 rounded-lg bg-[#e94f08] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#ff6418] disabled:opacity-60"
+          >
+            {isLoading && <LoaderCircle className="h-4 w-4 animate-spin" />}
+            Search
+          </button>
+        </form>
+        {error && <p role="alert" className="mt-3 text-xs text-rose-300">{error}</p>}
+
+        <section className="mt-5 border-t border-[#1e3a78] pt-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-white">
+                <Activity className="h-4 w-4 text-cyan-300" />
+                Users with active workouts
+              </h3>
+              <p className="mt-1 text-[10px] text-[#8f9fba]">Updates automatically every 5 seconds.</p>
+            </div>
+            <span className="rounded-full bg-cyan-500/10 px-2.5 py-1 text-[10px] font-bold text-cyan-200">
+              {activeWorkouts.length} active
+            </span>
+          </div>
+          {activeWorkoutsError && <p role="alert" className="mb-3 text-xs text-rose-300">{activeWorkoutsError}</p>}
+          {isLoadingActiveWorkouts ? (
+            <p className="py-5 text-center text-xs text-[#8f9fba]"><LoaderCircle className="mx-auto mb-2 h-4 w-4 animate-spin text-cyan-300" />Loading active workouts…</p>
+          ) : activeWorkouts.length === 0 ? (
+            <p className="rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-5 text-center text-xs text-[#8f9fba]">No users are currently tracking a workout.</p>
+          ) : (
+            <ul className="grid gap-2 lg:grid-cols-2">
+              {activeWorkouts.map((workout) => {
+                const liveElapsed = workout.elapsedSeconds + (
+                  workout.isTracking &&
+                  !workout.isPaused &&
+                  !workout.pendingFinish &&
+                  workout.lastUpdated > 0
+                    ? Math.floor(Math.max(0, clock - workout.lastUpdated) / 1000)
+                    : 0
+                );
+                return (
+                  <li key={workout.userId}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectActiveWorkout(workout)}
+                      className="w-full rounded-lg border border-[#24466f] bg-[#06132e] p-3 text-left transition hover:border-cyan-300 hover:bg-[#10234a] focus:outline-none focus:ring-2 focus:ring-cyan-300"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <span>
+                          <span className="block text-xs font-semibold text-white">{workout.username}</span>
+                          <span className="mt-1 block font-mono text-[10px] text-cyan-200">ID {workout.steporaId}</span>
+                        </span>
+                        <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[9px] font-bold uppercase text-cyan-200">{workout.status}</span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-[10px]">
+                        <span className="text-[#8f9fba]">KM <strong className="block mt-1 text-xs text-white">{workout.distanceKm.toFixed(2)}</strong></span>
+                        <span className="text-[#8f9fba]">Time <strong className="block mt-1 text-xs text-white">{formatWorkoutDuration(liveElapsed)}</strong></span>
+                        <span className="text-[#8f9fba]">Earned <strong className="block mt-1 text-xs text-white">{currency.format(workout.tokensEarned)}</strong></span>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </section>
+
+      {isLoading && !profile && (
+        <div className="rounded-xl border border-[#1e3a78] bg-[#081b3d] px-4 py-12 text-center text-sm text-[#8f9fba]">
+          <LoaderCircle className="mx-auto mb-2 h-5 w-5 animate-spin text-cyan-300" />
+          Loading user profile…
+        </div>
+      )}
+
+      {profile && (
+        <>
+          <section className="rounded-xl border border-[#1e3a78] bg-[#081b3d] p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="grid h-12 w-12 place-items-center rounded-xl bg-[#142b5b] text-cyan-200"><UserRound className="h-6 w-6" /></span>
+                <div>
+                  <h2 className="text-lg font-bold text-white">{profile.username}</h2>
+                  <p className="mt-1 font-mono text-xs text-cyan-200">ID {profile.steporaId}</p>
+                  <p className="mt-1 text-[10px] text-[#8f9fba]">Account ID: {profile.userId}</p>
+                </div>
+              </div>
+              <span className={`rounded-full border px-3 py-1.5 text-[10px] font-bold uppercase ${profile.status.toLowerCase() === 'active' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-rose-500/30 bg-rose-500/10 text-rose-300'}`}>
+                {profile.status}
+              </span>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-[#1e3a78] bg-[#081b3d]">
+            <div className="border-b border-[#1e3a78] px-4 py-4 sm:px-5">
+              <h2 className="text-sm font-semibold text-white">Runner Inventory</h2>
+              <p className="mt-1 text-[11px] text-[#817c79]">{profile.ownedRunners.length} runners owned</p>
+            </div>
+            {profile.ownedRunners.length === 0 ? (
+              <p className="px-5 py-6 text-xs text-[#8f9fba]">No runners in this user’s inventory.</p>
+            ) : (
+              <ul className="divide-y divide-[#1e3a78]">
+                {profile.ownedRunners.map((runner) => (
+                  <li key={runner.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-5">
+                    <span className="text-xs font-semibold text-white">{runnerNames[runner.runnerId] || `Runner (${runner.runnerId})`}</span>
+                    <span className="font-mono text-[10px] text-[#8f9fba]">
+                      {runner.serial ? `Serial #${runner.serial}` : 'Serial unavailable'}
+                      {runner.purchasedAt > 0 ? ` · Purchased ${new Date(runner.purchasedAt).toLocaleDateString()}` : ''}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold text-white">Transactions</h2>
+              <p className="mt-1 text-[11px] text-[#8f9fba]">Deposits, withdrawals, and pending requests</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <ProfileCountCard title="Deposits" count={deposits.length} accent="emerald" />
+              <ProfileCountCard title="Withdrawals" count={withdrawals.length} accent="orange" />
+              <ProfileCountCard title="Pending" count={pendingCount} accent="amber" />
+            </div>
+            <div className="overflow-hidden rounded-xl border border-[#1e3a78] bg-[#081b3d]">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[650px] text-left">
+                  <thead className="bg-[#06132e] text-[10px] uppercase tracking-wider text-[#8f9fba]">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Type / ID</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 text-right font-semibold">Amount</th>
+                      <th className="px-4 py-3 font-semibold">Time / Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1e3a78] text-xs">
+                    {profile.transactions.length === 0 ? (
+                      <tr><td colSpan={4} className="px-4 py-8 text-center text-[#8f9fba]">No deposit or withdrawal records found.</td></tr>
+                    ) : profile.transactions.map((transaction) => (
+                      <tr key={`${transaction.type}:${transaction.id}`} className="hover:bg-[#10234a]">
+                        <td className="px-4 py-3">
+                          <span className="font-semibold capitalize text-white">{transaction.type}</span>
+                          <span className="mt-1 block font-mono text-[10px] text-[#8f9fba]">{transaction.id}</span>
+                        </td>
+                        <td className="px-4 py-3"><StatusPill status={transaction.status} /></td>
+                        <td className="px-4 py-3 text-right font-semibold text-white">{currency.format(transaction.amount)}</td>
+                        <td className="px-4 py-3 text-[#a39b96]">{transaction.createdAt ? new Date(transaction.createdAt).toLocaleString() : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold text-white">Track Status</h2>
+              <p className="mt-1 text-[11px] text-[#8f9fba]">Ongoing workout progress and past claimed tracks</p>
+            </div>
+            {activeWorkout ? (
+              <div className="rounded-xl border border-cyan-500/30 bg-[#081b3d] p-4 sm:p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-cyan-300" />
+                    <h3 className="text-sm font-bold text-white">Ongoing workout</h3>
+                  </div>
+                  <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-[10px] font-bold uppercase text-cyan-200">{activeWorkout.status}</span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <ProfileMetric label="KM" value={`${activeWorkout.distanceKm.toFixed(2)} km`} />
+                  <ProfileMetric label="Time" value={formatWorkoutDuration(elapsedSeconds)} />
+                  <ProfileMetric label="Earned" value={currency.format(activeWorkout.tokensEarned)} />
+                </div>
+                <p className="mt-3 text-[10px] text-[#8f9fba]">Live updates every 5 seconds.</p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-[#1e3a78] bg-[#081b3d] px-4 py-5 text-xs text-[#8f9fba]">No active workout.</div>
+            )}
+
+            <div className="overflow-hidden rounded-xl border border-[#1e3a78] bg-[#081b3d]">
+              <div className="border-b border-[#1e3a78] px-4 py-4 sm:px-5">
+                <h3 className="text-sm font-semibold text-white">Past Track</h3>
+                <p className="mt-1 text-[11px] text-[#817c79]">{profile.pastTracks.length} completed tracks</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[600px] text-left">
+                  <thead className="bg-[#06132e] text-[10px] uppercase tracking-wider text-[#8f9fba]">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Time / Date</th>
+                      <th className="px-4 py-3 text-right font-semibold">KM</th>
+                      <th className="px-4 py-3 text-right font-semibold">Earned</th>
+                      <th className="px-4 py-3 font-semibold">Claimed</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1e3a78] text-xs">
+                    {profile.pastTracks.length === 0 ? (
+                      <tr><td colSpan={4} className="px-4 py-8 text-center text-[#8f9fba]">No past tracks found.</td></tr>
+                    ) : profile.pastTracks.map((track) => (
+                      <tr key={track.id} className="hover:bg-[#10234a]">
+                        <td className="px-4 py-3 text-[#a39b96]">{track.completedAt ? new Date(track.completedAt).toLocaleString() : track.startedAt ? new Date(track.startedAt).toLocaleString() : '—'}</td>
+                        <td className="px-4 py-3 text-right font-mono text-white">{track.distanceKm.toFixed(2)} km</td>
+                        <td className="px-4 py-3 text-right font-semibold text-white">{currency.format(track.earned)}</td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${track.claimed ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-700/60 text-slate-300'}`}>
+                            {track.claimed ? 'Claimed' : 'Not claimed'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ProfileCountCard({ title, count, accent }: { title: string; count: number; accent: 'emerald' | 'orange' | 'amber' }) {
+  const color = accent === 'emerald' ? 'text-emerald-300' : accent === 'orange' ? 'text-orange-300' : 'text-amber-200';
+  return (
+    <div className="rounded-xl border border-[#1e3a78] bg-[#081b3d] p-4">
+      <p className="text-xs text-[#8f9fba]">{title}</p>
+      <p className={`mt-2 text-2xl font-semibold ${color}`}>{count}</p>
+    </div>
+  );
+}
+
+function ProfileMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-[#24466f] bg-[#06132e] p-3">
+      <p className="text-[10px] uppercase tracking-wide text-[#8f9fba]">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-white">{value}</p>
+    </div>
+  );
+}
+
+function formatWorkoutDuration(seconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return [hours, minutes, remainingSeconds].map((part) => String(part).padStart(2, '0')).join(':');
+}
+
+function RunnerPurchaseTable({
+  purchases,
+  isLoading,
+  userIdSearch,
+  onUserIdSearchChange,
+}: {
+  purchases: AdminRunnerPurchase[];
+  isLoading: boolean;
+  userIdSearch: string;
+  onUserIdSearchChange: (value: string) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#1e3a78] bg-[#081b3d]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1e3a78] px-4 py-4 sm:px-5">
+        <h2 className="text-sm font-semibold text-white">Runner purchases</h2>
+        <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto">
+          <p className="text-[11px] text-[#817c79]">{purchases.length} records</p>
+          <UserIdSearch value={userIdSearch} onChange={onUserIdSearchChange} />
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[700px] border-collapse text-left">
+          <thead className="bg-[#06132e] text-[10px] uppercase tracking-wider text-[#8f9fba]">
+            <tr>
+              <th className="px-5 py-3 font-semibold">ID</th>
+              <th className="px-5 py-3 font-semibold">What Runner buy</th>
+              <th className="px-5 py-3 font-semibold">Time / Date</th>
+              <th className="px-5 py-3 text-right font-semibold">How much</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#1e3a78] text-xs">
+            {isLoading ? (
+              <tr><td colSpan={4} className="px-5 py-12 text-center text-[#948c87]"><LoaderCircle className="mx-auto mb-2 h-5 w-5 animate-spin text-[#f15408]" />Loading runner purchases…</td></tr>
+            ) : purchases.length === 0 ? (
+              <tr><td colSpan={4} className="px-5 py-12 text-center text-[#948c87]">No runner purchases found for this date range.</td></tr>
+            ) : purchases.map((purchase) => (
+              <tr key={purchase.id} className="hover:bg-[#10234a]">
+                <td className="px-5 py-3.5">
+                  <div className="font-mono text-[11px] text-cyan-200">{purchase.steporaId}</div>
+                  <div className="mt-1 font-semibold text-[#e3dedb]">{purchase.username}</div>
+                  {purchase.phoneNumber && <div className="mt-1 text-[10px] text-[#817c79]">{purchase.phoneNumber}</div>}
+                </td>
+                <td className="px-5 py-3.5">
+                  <div className="font-semibold text-white">{purchase.runnerName}</div>
+                  {purchase.serial && <div className="mt-1 font-mono text-[10px] text-[#8f9fba]">Serial #{purchase.serial}</div>}
+                </td>
+                <td className="px-5 py-3.5 text-[#a39b96]">
+                  {purchase.createdAt ? new Date(purchase.createdAt).toLocaleString() : '—'}
+                </td>
+                <td className="px-5 py-3.5 text-right font-semibold text-white">{currency.format(purchase.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
 
 function SummaryCard({
   title,
@@ -980,6 +1582,8 @@ function TransactionTable({
   reviewingWithdrawalId,
   withdrawalReferenceNumbers,
   onWithdrawalReferenceNoChange,
+  userIdSearch,
+  onUserIdSearchChange,
 }: {
   transactions: AdminTransaction[];
   isLoading: boolean;
@@ -989,19 +1593,26 @@ function TransactionTable({
   reviewingWithdrawalId?: string;
   withdrawalReferenceNumbers?: Record<string, string>;
   onWithdrawalReferenceNoChange?: (orderId: string, value: string) => void;
+  userIdSearch?: string;
+  onUserIdSearchChange?: (value: string) => void;
 }) {
   const withdrawalTable = Boolean(onReviewWithdrawal);
   const columnCount = withdrawalTable ? 9 : 7;
   return (
     <section className="overflow-hidden rounded-xl border border-[#1e3a78] bg-[#081b3d]">
-      <div className="flex items-center justify-between border-b border-[#1e3a78] px-4 py-4 sm:px-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1e3a78] px-4 py-4 sm:px-5">
         <div>
           <h2 className="text-sm font-semibold text-white">{title}</h2>
           <p className="mt-1 text-[11px] text-[#817c79]">{transactions.length} records</p>
         </div>
-        {onShowDeposits && (
-          <button onClick={onShowDeposits} className="text-xs font-semibold text-orange-400 hover:text-orange-300">View deposits</button>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {onShowDeposits && (
+            <button onClick={onShowDeposits} className="text-xs font-semibold text-orange-400 hover:text-orange-300">View deposits</button>
+          )}
+          {userIdSearch !== undefined && onUserIdSearchChange && (
+            <UserIdSearch value={userIdSearch} onChange={onUserIdSearchChange} />
+          )}
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1100px] border-collapse text-left">
@@ -1111,6 +1722,22 @@ function TransactionTable({
         </table>
       </div>
     </section>
+  );
+}
+
+function UserIdSearch({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="flex items-center gap-2 rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2 focus-within:border-cyan-300">
+      <Search className="h-3.5 w-3.5 shrink-0 text-[#8f9fba]" />
+      <input
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Search user ID"
+        aria-label="Search table by user ID"
+        className="w-40 bg-transparent text-xs text-white outline-none placeholder:text-[#64748b]"
+      />
+    </label>
   );
 }
 

@@ -445,6 +445,18 @@ export async function purchaseUserRunner(
       ...(referralRewards.length > 0 ? { referralRewardClaimed: true } : {}),
     });
 
+    const purchaseTransactionId = `runner_purchase_${purchasedRunner.id}`;
+    transaction.create(firestore.collection('wallet_transactions').doc(purchaseTransactionId), {
+      id: purchaseTransactionId,
+      userId: id,
+      type: 'runner_purchase',
+      runnerId,
+      serial: purchasedRunner.serial,
+      amountCents: -Math.round(price * 100),
+      amount: -price,
+      createdAt: new Date(purchasedRunner.purchasedAt).toISOString(),
+    });
+
     for (const reward of referralRewards) {
       const referrerDocument = referrerDocuments.get(reward.referrerId);
       if (!referrerDocument) continue;
