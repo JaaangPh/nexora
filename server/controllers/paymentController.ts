@@ -139,7 +139,7 @@ export async function createDeposit(req: AuthRequest, res: Response): Promise<vo
     payment_type: '1',
     amount,
     order_id: orderId,
-    bank_code: bankCode === 'qrph' ? 'gcash' : bankCode,
+    bank_code: bankCode,
     callback_url: config.callbackUrl,
     return_url: config.returnUrl,
   };
