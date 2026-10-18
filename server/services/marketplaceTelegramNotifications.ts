@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { displayedNexoraId } from './marathonRules.js';
 
 interface RunnerPurchaseNotification {
@@ -80,15 +82,20 @@ export async function sendMarketplacePurchaseTelegramNotification(
   }
 
   try {
+    const imageBytes = await readFile(path.resolve(process.cwd(), 'public', 'images', runner.image));
+    const formData = new FormData();
+    formData.append('chat_id', groupChatId);
+    formData.append('message_thread_id', String(topicId));
+    formData.append('caption', formatRunnerPurchaseNotification(purchase));
+    formData.append(
+      'photo',
+      new Blob([new Uint8Array(imageBytes)], { type: 'image/jpeg' }),
+      runner.image,
+    );
+
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendPhoto`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: groupChatId,
-        message_thread_id: topicId,
-        photo: `https://stepm.fun/images/${runner.image}`,
-        caption: formatRunnerPurchaseNotification(purchase),
-      }),
+      body: formData,
       signal: AbortSignal.timeout(10000),
     });
 
