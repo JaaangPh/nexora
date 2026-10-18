@@ -144,14 +144,15 @@ The minimum deposit is ₱100 for GCash, Maya, GoTyme, and QRPh; successful call
 
 ## 🤖 Telegram Signup Notifications
 
-After a member account is created, the backend can post a welcome message to a Telegram group. The post includes the phone number masked to its last four digits, the account creation time in Asia/Manila, and the new member's referral code. Telegram delivery is best-effort: an unavailable or unconfigured bot does not prevent signup.
+After a member account is created, the backend can post a welcome message to a specific Telegram group topic. The post includes the phone number masked to its last four digits, the account creation time in Asia/Manila, and the new member's referral code. Telegram delivery is best-effort: an unavailable or unconfigured bot does not prevent signup.
 
 Create a bot with Telegram's `@BotFather`, add it to the target group, and allow it to send messages. Configure these backend-only environment variables in the Express API deployment and local `.env` when testing:
 
 * `TELEGRAM_BOT_TOKEN` — the secret token issued by `@BotFather`; do not commit or expose it in client-side `VITE_` variables.
 * `TELEGRAM_GROUP_CHAT_ID` — the target group's chat ID (supergroup IDs commonly start with `-100`).
+* `TELEGRAM_SIGNUP_TOPIC_ID` — the numeric `message_thread_id` for the group's **Signup** topic. To find it, send `/start@YourBotUsername` inside that topic, call Telegram's `getUpdates`, and read `message.message_thread_id` from that topic's update. Do not use the group's `chat.id` as the topic ID.
 
-Both variables must be set for notifications to be sent.
+All three variables must be set for notifications to be sent; if the topic ID is missing or invalid, notifications are not sent to the general chat.
 
 ## 🔐 Administrator Portal
 

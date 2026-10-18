@@ -45,11 +45,15 @@ export async function sendSignupTelegramNotification(
 ): Promise<void> {
   const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
   const groupChatId = process.env.TELEGRAM_GROUP_CHAT_ID?.trim();
+  const topicIdValue = process.env.TELEGRAM_SIGNUP_TOPIC_ID?.trim();
+  const topicId = topicIdValue && /^\d+$/.test(topicIdValue)
+    ? Number(topicIdValue)
+    : null;
 
-  if (!botToken || !groupChatId) {
+  if (!botToken || !groupChatId || !topicId || !Number.isSafeInteger(topicId)) {
     if (!configurationWarningLogged) {
-      const message = 'Set TELEGRAM_BOT_TOKEN and TELEGRAM_GROUP_CHAT_ID to enable signup notifications.';
-      if (botToken || groupChatId) {
+      const message = 'Set TELEGRAM_BOT_TOKEN, TELEGRAM_GROUP_CHAT_ID, and a valid TELEGRAM_SIGNUP_TOPIC_ID to enable signup notifications.';
+      if (botToken || groupChatId || topicIdValue) {
         console.error(`[Telegram] Incomplete signup notification configuration. ${message}`);
       } else {
         console.warn(`[Telegram] Signup notifications are disabled. ${message}`);
@@ -65,6 +69,7 @@ export async function sendSignupTelegramNotification(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: groupChatId,
+        message_thread_id: topicId,
         text: formatSignupNotification(signup),
         disable_web_page_preview: true,
       }),
