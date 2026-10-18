@@ -8,7 +8,6 @@ import { RegisterForm } from './components/RegisterForm';
 import { Dashboard } from './components/Dashboard';
 import { AboutWhitepaper } from './components/about';
 import { InviteCodeHelper } from './components/InviteCodeHelper';
-import { Admin } from './components/admin';
 import { User } from './types/auth';
 import { getStoredUser, getStoredToken, setStoredSession, api } from './services/api';
 import { hasWorkoutInProgressInStorage } from './services/workoutStorage';
@@ -278,7 +277,22 @@ export const App: React.FC = () => {
   }
 
   if (window.location.pathname.replace(/\/+$/, '') === '/admin') {
-    return <Admin />;
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#07142e] px-6 text-white">
+        <section className="w-full max-w-md rounded-2xl border border-[#24466f] bg-[#0b1d3b] p-8 text-center shadow-2xl">
+          <h1 className="text-2xl font-bold">Admin portal disabled</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-300">
+            The admin page is currently unavailable.
+          </p>
+          <a
+            href="/"
+            className="mt-6 inline-flex rounded-lg bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
+          >
+            Return to Stepora
+          </a>
+        </section>
+      </main>
+    );
   }
 
   if (isInitializing) {
