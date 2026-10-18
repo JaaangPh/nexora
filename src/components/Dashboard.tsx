@@ -48,7 +48,7 @@ type NavTab = 'home' | 'market' | 'track' | 'team' | 'marathon' | 'me' | 'myrunn
 
 interface WithdrawalStatusNotification {
   orderId: string;
-  status: 'accepted' | 'failed';
+  status: 'paid' | 'failed';
 }
 
 function getTabFromUrl(): NavTab {
@@ -194,8 +194,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
           const previousStatus = previousStatuses.get(withdrawal.orderId);
           if (
             hasBaseline &&
-            previousStatus === 'pending' &&
-            (withdrawal.status === 'accepted' || withdrawal.status === 'failed')
+            (previousStatus === 'pending' || previousStatus === 'processing' || previousStatus === 'accepted') &&
+            (withdrawal.status === 'paid' || withdrawal.status === 'failed')
           ) {
             changedWithdrawals.push({ orderId: withdrawal.orderId, status: withdrawal.status });
           }
@@ -205,11 +205,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
 
         if (changedWithdrawals.length > 0) {
           setWithdrawalNotifications((current) => {
-            const knownOrderIds = new Set(current.map(({ orderId }) => orderId));
-            return [
-              ...current,
-              ...changedWithdrawals.filter(({ orderId }) => !knownOrderIds.has(orderId)),
-            ];
+            const changedByOrderId = new Map(changedWithdrawals.map((notification) => [notification.orderId, notification]));
+            const updated = current.map((notification) => {
+              const latest = changedByOrderId.get(notification.orderId);
+              if (!latest) return notification;
+              changedByOrderId.delete(notification.orderId);
+              return latest;
+            });
+            return [...updated, ...changedByOrderId.values()];
           });
           const notificationSound = new Audio('/notif.mp3');
           void notificationSound.play().catch((error: unknown) => {
@@ -520,12 +523,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-white">
-                    Withdrawal {notification.status === 'accepted' ? 'successful' : 'failed'}
+                    Withdrawal {notification.status === 'paid' ? 'successful' : 'failed'}
                   </p>
                   <p className="mt-1 text-xs leading-5 text-blue-100/75">
-                    {notification.status === 'accepted'
+                    {notification.status === 'paid'
                       ? 'Your withdrawal has been processed.'
-                      : 'Your withdrawal was rejected and the balance has been refunded.'}
+                      : 'Your withdrawal was not completed and the balance has been refunded.'}
                   </p>
                   <button
                     type="button"

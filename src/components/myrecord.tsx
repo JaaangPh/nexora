@@ -36,12 +36,17 @@ const STATUS_STYLES: Record<DepositStatus | WithdrawalStatus, { label: string; c
     className: 'border-amber-300/20 bg-amber-300/10 text-amber-200',
     Icon: Clock3,
   },
-  paid: {
-    label: 'Success',
-    className: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-300',
-    Icon: CheckCircle2,
+  processing: {
+    label: 'Processing',
+    className: 'border-amber-300/20 bg-amber-300/10 text-amber-200',
+    Icon: Clock3,
   },
   accepted: {
+    label: 'Processing',
+    className: 'border-amber-300/20 bg-amber-300/10 text-amber-200',
+    Icon: Clock3,
+  },
+  paid: {
     label: 'Success',
     className: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-300',
     Icon: CheckCircle2,
@@ -127,7 +132,7 @@ export const MyRecordTab: React.FC<MyRecordTabProps> = ({ onBack }) => {
     return transactions
       .filter(({ record }) =>
         filter === 'all' ||
-        (filter === 'success' ? record.status === 'paid' || record.status === 'accepted' : record.status === filter)
+        (filter === 'success' ? record.status === 'paid' : record.status === filter)
       )
       .sort((first, second) => Date.parse(second.record.createdAt) - Date.parse(first.record.createdAt));
   },

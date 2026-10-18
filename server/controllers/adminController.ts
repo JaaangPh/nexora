@@ -15,6 +15,13 @@ import {
 } from '../services/totp.js';
 import { displayedNexoraId } from '../services/marathonRules.js';
 import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES, saveRunnerPricing } from '../services/runnerPricing.js';
+import {
+  createTurboPayPayout,
+  createTurboPaySignature,
+  getTurboPayPayoutConfig,
+  TurboPayPayoutRejectedError,
+  TurboPayPayload,
+} from '../services/turbopay.js';
 
 type AdminRole = 'admin' | 'staff';
 interface AdminAccount extends AdminSecurityRecord {
@@ -772,46 +779,115 @@ export async function reviewWithdrawal(req: AdminRequest, res: Response): Promis
   }
 
   const withdrawalRef = firestore.collection('payment_withdrawals').doc(orderId);
+  let payoutClaimed = false;
   try {
-    const reviewedWithdrawal = await firestore.runTransaction(async (transaction) => {
+    if (decision === 'reject') {
+      const reviewedWithdrawal = await firestore.runTransaction(async (transaction) => {
+        const withdrawalSnapshot = await transaction.get(withdrawalRef);
+        if (!withdrawalSnapshot.exists) throw new Error('WITHDRAWAL_NOT_FOUND');
+        const withdrawal = withdrawalSnapshot.data()!;
+        if (withdrawal.status !== 'pending') throw new Error('WITHDRAWAL_ALREADY_REVIEWED');
+
+        const userRef = firestore.collection('users').doc(String(withdrawal.userId || ''));
+        const userSnapshot = await transaction.get(userRef);
+        if (!userSnapshot.exists) throw new Error('WITHDRAWAL_USER_NOT_FOUND');
+        const amountCents = Number(withdrawal.totalDeductedCents ?? withdrawal.amountCents);
+        const refundAmount = Number.isSafeInteger(amountCents) && amountCents > 0
+          ? amountCents / 100
+          : Number(withdrawal.amount);
+        if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error('WITHDRAWAL_AMOUNT_INVALID');
+
+        const reviewedAt = new Date().toISOString();
+        transaction.update(withdrawalRef, {
+          status: 'failed',
+          reviewedAt,
+          reviewedBy: req.adminEmail || 'admin',
+          updatedAt: reviewedAt,
+        });
+        transaction.update(userRef, { balance: FieldValue.increment(refundAmount) });
+        return { orderId, status: 'failed', refundAmount };
+      });
+      res.json({
+        success: true,
+        withdrawal: reviewedWithdrawal,
+        message: `Withdrawal rejected and ${new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(reviewedWithdrawal.refundAmount)} refunded.`,
+      });
+      return;
+    }
+
+    const payoutConfig = getTurboPayPayoutConfig();
+    const claimedWithdrawal = await firestore.runTransaction(async (transaction) => {
       const withdrawalSnapshot = await transaction.get(withdrawalRef);
       if (!withdrawalSnapshot.exists) throw new Error('WITHDRAWAL_NOT_FOUND');
       const withdrawal = withdrawalSnapshot.data()!;
       if (withdrawal.status !== 'pending') throw new Error('WITHDRAWAL_ALREADY_REVIEWED');
 
-      const userRef = firestore.collection('users').doc(String(withdrawal.userId || ''));
-      let userSnapshot: FirebaseFirestore.DocumentSnapshot | null = null;
-      let refundAmount = 0;
-      if (decision === 'reject') {
-        userSnapshot = await transaction.get(userRef);
-        if (!userSnapshot.exists) throw new Error('WITHDRAWAL_USER_NOT_FOUND');
-        const amountCents = Number(withdrawal.totalDeductedCents ?? withdrawal.amountCents);
-        refundAmount = Number.isSafeInteger(amountCents) && amountCents > 0
-          ? amountCents / 100
-          : Number(withdrawal.amount);
-        if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error('WITHDRAWAL_AMOUNT_INVALID');
+      const bankCode = withdrawal.bankCode === 'gcash'
+        ? 'gcash'
+        : withdrawal.bankCode === 'maya'
+          ? 'PMP'
+          : null;
+      if (!bankCode) throw new Error('WITHDRAWAL_BANK_UNSUPPORTED');
+
+      const payoutAmountCents = Number(withdrawal.payoutAmountCents ?? withdrawal.amountCents);
+      if (!Number.isSafeInteger(payoutAmountCents) || payoutAmountCents <= 0) {
+        throw new Error('WITHDRAWAL_AMOUNT_INVALID');
+      }
+      if (
+        typeof withdrawal.accountHolder !== 'string' ||
+        !withdrawal.accountHolder.trim() ||
+        typeof withdrawal.accountNumber !== 'string' ||
+        !withdrawal.accountNumber.trim()
+      ) {
+        throw new Error('WITHDRAWAL_ACCOUNT_INVALID');
       }
 
       const reviewedAt = new Date().toISOString();
-      const status = decision === 'accept' ? 'accepted' : 'failed';
       transaction.update(withdrawalRef, {
-        status,
+        status: 'processing',
         reviewedAt,
         reviewedBy: req.adminEmail || 'admin',
-        ...(decision === 'accept' ? { referenceNo: referenceNo || null } : {}),
+        ...(referenceNo ? { referenceNo } : {}),
         updatedAt: reviewedAt,
       });
-      if (decision === 'reject') {
-        transaction.update(userSnapshot!.ref, { balance: FieldValue.increment(refundAmount) });
+      return {
+        payoutAmount: (payoutAmountCents / 100).toFixed(2),
+        bankCode,
+        accountHolder: withdrawal.accountHolder.trim(),
+        accountNumber: withdrawal.accountNumber.trim(),
+      };
+    });
+    payoutClaimed = true;
+
+    const payoutPayload: TurboPayPayload = {
+      merchant: payoutConfig.merchantId,
+      total_amount: claimedWithdrawal.payoutAmount,
+      order_id: orderId,
+      bank: claimedWithdrawal.bankCode,
+      bank_card_name: claimedWithdrawal.accountHolder,
+      bank_card_account: claimedWithdrawal.accountNumber,
+      bank_card_remark: claimedWithdrawal.bankCode === 'gcash'
+        ? claimedWithdrawal.accountNumber
+        : 'no',
+      callback_url: payoutConfig.callbackUrl,
+    };
+    payoutPayload.sign = createTurboPaySignature(payoutPayload, payoutConfig.merchantKey);
+
+    const gatewayResponse = await createTurboPayPayout(payoutConfig.apiUrl, payoutPayload);
+    await firestore.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(withdrawalRef);
+      if (snapshot.exists && snapshot.data()?.status === 'processing') {
+        transaction.update(withdrawalRef, {
+          providerSubmittedAt: new Date().toISOString(),
+          providerMessage: typeof gatewayResponse.message === 'string' ? gatewayResponse.message : null,
+          updatedAt: new Date().toISOString(),
+        });
       }
-      return { orderId, status, refundAmount, referenceNo: decision === 'accept' ? referenceNo : '' };
     });
     res.json({
       success: true,
-      withdrawal: reviewedWithdrawal,
-      message: decision === 'accept'
-        ? 'Withdrawal accepted.'
-        : `Withdrawal rejected and ${new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(reviewedWithdrawal.refundAmount)} refunded.`,
+      withdrawal: { orderId, status: 'processing' },
+      message: 'Withdrawal submitted to TurboPay. It will show as successful after TurboPay confirms payment.',
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
@@ -828,12 +904,77 @@ export async function reviewWithdrawal(req: AdminRequest, res: Response): Promis
       return;
     }
     if (message === 'WITHDRAWAL_AMOUNT_INVALID') {
-      res.status(409).json({ success: false, message: 'The stored withdrawal amount is invalid; no refund was issued.' });
+      res.status(409).json({ success: false, message: 'The stored withdrawal amount is invalid.' });
       return;
     }
+    if (message === 'WITHDRAWAL_BANK_UNSUPPORTED') {
+      res.status(400).json({ success: false, message: 'TurboPay does not support the payout bank saved for this withdrawal.' });
+      return;
+    }
+    if (message === 'WITHDRAWAL_ACCOUNT_INVALID') {
+      res.status(409).json({ success: false, message: 'The saved payout account is incomplete.' });
+      return;
+    }
+    if (error instanceof TurboPayPayoutRejectedError) {
+      try {
+        await refundFailedTurboPayPayout(withdrawalRef);
+      } catch (refundError) {
+        console.error('[TurboPay Payout Rejection Refund Error]', refundError);
+        res.status(500).json({ success: false, message: 'TurboPay rejected this payout, but the refund could not be completed. Contact support.' });
+        return;
+      }
+      res.status(502).json({ success: false, message: 'TurboPay rejected the payout request; the withdrawal was marked failed and refunded.' });
+      return;
+    }
+
+    if (payoutClaimed) {
+      console.error('[TurboPay Payout Error]', error);
+      res.status(502).json({
+        success: false,
+        message: 'TurboPay submission could not be confirmed. The withdrawal remains processing while its callback is awaited; do not submit it again.',
+      });
+      return;
+    }
+    if (
+      error instanceof Error &&
+      (error.message.includes('TurboPay') || error.message.includes('TURBOPAY'))
+    ) {
+      console.error('[TurboPay Payout Config Error]', error);
+      res.status(503).json({ success: false, message: 'TurboPay payout is not configured. The withdrawal was not submitted.' });
+      return;
+    }
+
     console.error('[Admin Withdrawal Review Error]', error);
     res.status(500).json({ success: false, message: 'Could not review this withdrawal.' });
   }
+}
+
+async function refundFailedTurboPayPayout(
+  withdrawalRef: FirebaseFirestore.DocumentReference
+): Promise<void> {
+  await firestore.runTransaction(async (transaction) => {
+    const withdrawalSnapshot = await transaction.get(withdrawalRef);
+    if (!withdrawalSnapshot.exists || withdrawalSnapshot.data()?.status !== 'processing') return;
+
+    const withdrawal = withdrawalSnapshot.data()!;
+    const userRef = firestore.collection('users').doc(String(withdrawal.userId || ''));
+    const userSnapshot = await transaction.get(userRef);
+    if (!userSnapshot.exists) throw new Error('WITHDRAWAL_USER_NOT_FOUND');
+
+    const amountCents = Number(withdrawal.totalDeductedCents ?? withdrawal.amountCents);
+    const refundAmount = Number.isSafeInteger(amountCents) && amountCents > 0
+      ? amountCents / 100
+      : Number(withdrawal.amount);
+    if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error('WITHDRAWAL_AMOUNT_INVALID');
+
+    const failedAt = new Date().toISOString();
+    transaction.update(withdrawalRef, {
+      status: 'failed',
+      providerFailureAt: failedAt,
+      updatedAt: failedAt,
+    });
+    transaction.update(userRef, { balance: FieldValue.increment(refundAmount) });
+  });
 }
 
 export async function getAdminTransactions(req: AdminRequest, res: Response): Promise<void> {

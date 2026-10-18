@@ -10,6 +10,13 @@ export interface TurboPayConfig {
   returnUrl: string;
 }
 
+export interface TurboPayPayoutConfig {
+  apiUrl: string;
+  merchantId: string;
+  merchantKey: string;
+  callbackUrl: string;
+}
+
 export function getTurboPayCredentials(): Pick<TurboPayConfig, 'merchantId' | 'merchantKey'> {
   const merchantId = process.env.TURBOPAY_MERCHANT_ID;
   const merchantKey = process.env.TURBOPAY_MERCHANT_KEY;
@@ -62,7 +69,45 @@ export function getTurboPayConfig(): TurboPayConfig {
   };
 }
 
+export function getTurboPayPayoutConfig(): TurboPayPayoutConfig {
+  const { merchantId, merchantKey } = getTurboPayCredentials();
+  const apiUrl = process.env.TURBOPAY_API_URL;
+  const callbackUrl = process.env.TURBOPAY_WITHDRAWAL_CALLBACK_URL;
+
+  if (process.env.TURBOPAY_ENABLED !== 'true') {
+    throw new Error('TurboPay payouts are disabled.');
+  }
+  if (!apiUrl || !callbackUrl) {
+    throw new Error('TurboPay API and withdrawal callback URLs are not configured.');
+  }
+
+  let parsedApiUrl: URL;
+  let parsedCallbackUrl: URL;
+  try {
+    parsedApiUrl = new URL(apiUrl);
+    parsedCallbackUrl = new URL(callbackUrl);
+  } catch {
+    throw new Error('TurboPay API and withdrawal callback URLs must be valid absolute URLs.');
+  }
+
+  if (
+    parsedApiUrl.protocol !== 'https:' ||
+    parsedApiUrl.hostname !== 'merchant.turbopay.ph' ||
+    parsedCallbackUrl.protocol !== 'https:'
+  ) {
+    throw new Error('TurboPay API must use the official HTTPS host and the withdrawal callback must use HTTPS.');
+  }
+
+  return {
+    apiUrl: parsedApiUrl.origin,
+    merchantId,
+    merchantKey,
+    callbackUrl: parsedCallbackUrl.toString(),
+  };
+}
+
 export class TurboPayTransferRejectedError extends Error {}
+export class TurboPayPayoutRejectedError extends Error {}
 
 export function createTurboPaySignature(payload: TurboPayPayload, merchantKey: string): string {
   const canonicalPayload = Object.keys(payload)
@@ -110,6 +155,36 @@ export async function createTurboPayTransfer(
     const data = result as Record<string, unknown>;
     if (!response.ok || String(data.status) !== '1') {
       throw new TurboPayTransferRejectedError('TurboPay rejected this payment request.');
+    }
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function createTurboPayPayout(
+  apiUrl: string,
+  payload: TurboPayPayload
+): Promise<Record<string, unknown>> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  try {
+    const response = await fetch(`${apiUrl}/api/daifu`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    const result: unknown = await response.json().catch(() => null);
+    if (!result || typeof result !== 'object' || Array.isArray(result)) {
+      throw new Error('TurboPay returned an invalid payout response.');
+    }
+
+    const data = result as Record<string, unknown>;
+    if (!response.ok || String(data.status) !== '1') {
+      throw new TurboPayPayoutRejectedError('TurboPay rejected this payout request.');
     }
     return data;
   } finally {

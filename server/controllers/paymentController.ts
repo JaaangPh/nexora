@@ -352,3 +352,109 @@ export async function handleTurboPayCallback(req: Request, res: Response): Promi
     res.status(500).json({ success: false, message: 'Could not process the payment callback.' });
   }
 }
+
+export async function handleTurboPayWithdrawalCallback(req: Request, res: Response): Promise<void> {
+  let credentials;
+  try {
+    credentials = getTurboPayCredentials();
+  } catch (error) {
+    console.error('[TurboPay Withdrawal Callback Config Error]', error);
+    res.status(503).json({ success: false, message: 'Withdrawal callback is not configured.' });
+    return;
+  }
+
+  const payload = toSafeGatewayPayload(req.body);
+  if (!payload || !verifyTurboPaySignature(payload, credentials.merchantKey)) {
+    res.status(401).json({ success: false, message: 'Invalid withdrawal callback signature.' });
+    return;
+  }
+  if (String(payload.merchant) !== credentials.merchantId) {
+    res.status(401).json({ success: false, message: 'Withdrawal callback merchant does not match.' });
+    return;
+  }
+
+  const orderId = payload.order_id;
+  const callbackStatus = String(payload.status);
+  const callbackAmountCents = toCents(payload.amount);
+  if (
+    typeof orderId !== 'string' ||
+    !orderId ||
+    callbackAmountCents === null ||
+    !['3', '5'].includes(callbackStatus)
+  ) {
+    res.status(400).json({ success: false, message: 'Withdrawal callback fields are invalid.' });
+    return;
+  }
+
+  try {
+    const withdrawalRef = firestore.collection('payment_withdrawals').doc(orderId);
+    await firestore.runTransaction(async (transaction) => {
+      const withdrawalSnapshot = await transaction.get(withdrawalRef);
+      if (!withdrawalSnapshot.exists) throw new Error('WITHDRAWAL_NOT_FOUND');
+
+      const withdrawal = withdrawalSnapshot.data()!;
+      const payoutAmountCents = Number(withdrawal.payoutAmountCents ?? withdrawal.amountCents);
+      if (payoutAmountCents !== callbackAmountCents) throw new Error('WITHDRAWAL_AMOUNT_MISMATCH');
+
+      const targetStatus = callbackStatus === '5' ? 'paid' : 'failed';
+      if (withdrawal.status === targetStatus) return;
+      if (withdrawal.status !== 'processing') throw new Error('WITHDRAWAL_CALLBACK_CONFLICT');
+
+      const callbackAt = new Date().toISOString();
+      const callbackData = {
+        callbackMessage: typeof payload.message === 'string' ? payload.message : '',
+        callbackRemark: typeof payload.remark === 'string' ? payload.remark : '',
+        callbackReceivedAt: callbackAt,
+        updatedAt: callbackAt,
+      };
+
+      if (targetStatus === 'paid') {
+        transaction.update(withdrawalRef, { ...callbackData, status: 'paid', paidAt: callbackAt });
+        return;
+      }
+
+      const userRef = firestore.collection('users').doc(String(withdrawal.userId || ''));
+      const userSnapshot = await transaction.get(userRef);
+      if (!userSnapshot.exists) throw new Error('WITHDRAWAL_USER_NOT_FOUND');
+
+      const amountCents = Number(withdrawal.totalDeductedCents ?? withdrawal.amountCents);
+      const refundAmount = Number.isSafeInteger(amountCents) && amountCents > 0
+        ? amountCents / 100
+        : Number(withdrawal.amount);
+      if (!Number.isFinite(refundAmount) || refundAmount <= 0) throw new Error('WITHDRAWAL_AMOUNT_INVALID');
+
+      transaction.update(withdrawalRef, {
+        ...callbackData,
+        status: 'failed',
+        failedAt: callbackAt,
+      });
+      transaction.update(userRef, { balance: FieldValue.increment(refundAmount) });
+    });
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'WITHDRAWAL_NOT_FOUND') {
+      res.status(404).json({ success: false, message: 'Withdrawal order was not found.' });
+      return;
+    }
+    if (message === 'WITHDRAWAL_AMOUNT_MISMATCH') {
+      res.status(409).json({ success: false, message: 'Callback amount does not match the withdrawal order.' });
+      return;
+    }
+    if (message === 'WITHDRAWAL_CALLBACK_CONFLICT') {
+      res.status(409).json({ success: false, message: 'Withdrawal is not awaiting a TurboPay result.' });
+      return;
+    }
+    if (message === 'WITHDRAWAL_USER_NOT_FOUND') {
+      res.status(409).json({ success: false, message: 'The withdrawal member account was not found.' });
+      return;
+    }
+    if (message === 'WITHDRAWAL_AMOUNT_INVALID') {
+      res.status(409).json({ success: false, message: 'The stored withdrawal amount is invalid.' });
+      return;
+    }
+    console.error('[TurboPay Withdrawal Callback Processing Error]', error);
+    res.status(500).json({ success: false, message: 'Could not process the withdrawal callback.' });
+  }
+}

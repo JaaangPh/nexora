@@ -18,7 +18,7 @@ export interface RunnerPrice {
   newPrice: number;
 }
 
-export type WithdrawalStatus = 'pending' | 'accepted' | 'failed';
+export type WithdrawalStatus = 'pending' | 'processing' | 'accepted' | 'paid' | 'failed';
 
 export interface WithdrawalRecord {
   orderId: string;

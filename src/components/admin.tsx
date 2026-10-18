@@ -154,7 +154,7 @@ async function adminRequest<T>(
 }
 
 function isSuccessfulStatus(status: string): boolean {
-  return ['paid', 'completed', 'success', 'successful', 'accepted'].includes(status.toLowerCase());
+  return ['paid', 'completed', 'success', 'successful'].includes(status.toLowerCase());
 }
 
 function StatusPill({ status }: { status: string }) {
@@ -560,7 +560,14 @@ export const Admin: React.FC = () => {
       setNotice(result.message);
       await loadTransactions(sessionToken);
     } catch (reviewError) {
-      setError(reviewError instanceof Error ? reviewError.message : 'Could not review this withdrawal.');
+      const message = reviewError instanceof Error ? reviewError.message : 'Could not review this withdrawal.';
+      setError(message);
+      try {
+        await loadTransactions(sessionToken);
+      } catch (refreshError) {
+        const refreshMessage = refreshError instanceof Error ? refreshError.message : 'Could not refresh transactions.';
+        setError(`${message} ${refreshMessage}`);
+      }
     } finally {
       setReviewingWithdrawalId('');
     }
@@ -1241,7 +1248,7 @@ export const Admin: React.FC = () => {
                       </div>
                       <div className="col-span-2 flex items-start gap-2 rounded-lg border border-[#24466f] bg-[#06132e] p-3 text-xs leading-5 text-[#aaa3a0]">
                         <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-[#f15408]" />
-                        Pending withdrawal requests are held for manual review. Rejected requests are automatically refunded.
+                        Accepted requests stay in processing until TurboPay confirms payment. Rejected requests are automatically refunded.
                       </div>
                     </div>
                   </div>

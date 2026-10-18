@@ -133,14 +133,15 @@ Deposits are created by the Express backend and stored as pending Firestore tran
 
 Configure these backend-only environment variables in the deployment hosting the Express API:
 
-* `TURBOPAY_ENABLED` — keep `false` until TurboPay confirms the key, whitelisting, callback, and testing process; set to `true` only when ready to create live payment requests.
+* `TURBOPAY_ENABLED` — keep `false` until TurboPay confirms the key, whitelisting, callbacks, and testing process; set to `true` only when ready to create live deposit or payout requests.
 * `TURBOPAY_API_URL` — official HTTPS API origin (`https://merchant.turbopay.ph`).
 * `TURBOPAY_MERCHANT_ID`
 * `TURBOPAY_MERCHANT_KEY` — use the rotated TurboPay signing key; never use a `VITE_` prefix or commit the value.
 * `TURBOPAY_CALLBACK_URL` — public HTTPS URL ending in `/api/payments/turbopay/callback`.
+* `TURBOPAY_WITHDRAWAL_CALLBACK_URL` — public HTTPS URL ending in `/api/payments/turbopay/withdrawal-callback`.
 * `TURBOPAY_RETURN_URL` — public HTTPS URL for the user redirect after payment.
 
-The minimum deposit is ₱100 for GCash, Maya, GoTyme, and QRPh; successful callbacks credit the exact PHP amount in the order (for example, a ₱150 payment credits ₱150). TurboPay's documentation requires a minimum of ₱800 for USDT-TRC20. The QRPh UI choice is sent using `bank_code=gcash` per the merchant's instructions; confirm this with TurboPay because its bank-code directory lists `qrph` separately. The hosting provider must expose the callback route publicly and allow the backend's static outbound IP to be registered with TurboPay if their account requires IP whitelisting. `34.143.182.198` is identified in TurboPay's documentation as TurboPay's API IP; it is not Nexora's outbound IP. Withdrawals are member-requested and recorded in `payment_withdrawals` for review; workout rewards are credited after successful server verification.
+The minimum deposit is ₱100 for GCash, Maya, GoTyme, and QRPh; successful callbacks credit the exact PHP amount in the order (for example, a ₱150 payment credits ₱150). TurboPay's documentation requires a minimum of ₱800 for USDT-TRC20. The QRPh UI choice is sent using `bank_code=gcash` per the merchant's instructions; confirm this with TurboPay because its bank-code directory lists `qrph` separately. The hosting provider must expose the callback routes publicly and allow the backend's static outbound IP to be registered with TurboPay if their account requires IP whitelisting. `34.143.182.198` is identified in TurboPay's documentation as TurboPay's API IP; it is not Nexora's outbound IP. Withdrawals are member-requested and recorded in `payment_withdrawals` for review. Admin acceptance submits supported GCash and Maya withdrawals to TurboPay; the member record remains processing until the signed withdrawal callback reports status `5`, and status `3` marks it failed and refunds the deducted amount. GoTyme is not currently supported by the documented TurboPay payout bank codes and cannot be submitted. Workout rewards are credited after successful server verification.
 
 ## 🤖 Telegram Signup Notifications
 
