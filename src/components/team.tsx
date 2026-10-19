@@ -67,7 +67,7 @@ export const TeamTab: React.FC<TeamTabProps> = ({ user, onNavigateMarathon }) =>
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-3 text-xs font-black tracking-wide text-[#08132B] transition-colors hover:bg-cyan-300 active:scale-[0.99]"
       >
         <Flag className="h-4 w-4" />
-        JOIN A MARATHON
+        VIEW MARATHON PREVIEW
       </button>
 
       {/* Your Personal Referral Pass Card */}

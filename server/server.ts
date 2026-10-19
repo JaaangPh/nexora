@@ -5,7 +5,6 @@ import { config } from './config/config.js';
 import { initFirebaseDatabase } from './database/firebase.js';
 import authRoutes from './routes/authRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
-import marathonRoutes from './routes/marathonRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 
 const app = express();
@@ -60,7 +59,6 @@ app.get(['/api/health', '/health'], (req, res) => {
 // Auth Routes (support both /api/auth and /auth)
 app.use(['/api/auth', '/auth'], authRoutes);
 app.use('/api/payments/turbopay', paymentRoutes);
-app.use('/api/marathons', marathonRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Global Error Handler

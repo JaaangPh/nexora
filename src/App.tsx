@@ -6,7 +6,6 @@ import { AuthTabs, AuthMode } from './components/AuthTabs';
 import { LoginForm } from './components/LoginForm';
 import { RegisterForm } from './components/RegisterForm';
 import { Dashboard } from './components/Dashboard';
-import { AboutWhitepaper } from './components/about';
 import { InviteCodeHelper } from './components/InviteCodeHelper';
 import { User } from './types/auth';
 import { getStoredUser, getStoredToken, setStoredSession, api } from './services/api';
@@ -56,7 +55,7 @@ export const App: React.FC = () => {
       setActiveTab('login');
       setSessionExpiredNotice('You were signed out because this account was opened on another device.');
       const currentPath = window.location.pathname.replace(/\/+$/, '') || '/';
-      if (currentPath !== '/' && currentPath !== '/about') window.history.pushState({}, '', '/');
+      if (currentPath !== '/') window.history.pushState({}, '', '/');
     };
 
     window.addEventListener('nexora:session-expired', handleSessionExpired);
@@ -271,10 +270,6 @@ export const App: React.FC = () => {
     setPrefilledInviteCode(code);
     setActiveTab('register');
   };
-
-  if (window.location.pathname.replace(/\/+$/, '') === '/about') {
-    return <AboutWhitepaper />;
-  }
 
   if (window.location.pathname.replace(/\/+$/, '') === '/admin') {
     return (

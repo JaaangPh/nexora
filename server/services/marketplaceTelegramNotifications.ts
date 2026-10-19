@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { displayedNexoraId } from './marathonRules.js';
+import { displayedNexoraId } from './accountIdentity.js';
 
 interface RunnerPurchaseNotification {
   userId: string;

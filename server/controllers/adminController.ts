@@ -13,7 +13,7 @@ import {
   generateTotpSecret,
   TOTP_PERIOD_SECONDS,
 } from '../services/totp.js';
-import { displayedNexoraId } from '../services/marathonRules.js';
+import { displayedNexoraId } from '../services/accountIdentity.js';
 import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES, saveRunnerPricing } from '../services/runnerPricing.js';
 import { isRunnerId, readRunnerRules, saveRunnerRule } from '../services/runnerRules.js';
 import {

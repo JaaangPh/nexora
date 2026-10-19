@@ -29,8 +29,8 @@ import {
   PayoutAccount,
   FirestoreUser,
 } from '../database/firebase.js';
-import { completeWorkoutAndClearSnapshot, MarathonError } from '../services/marathonService.js';
-import { displayedNexoraId } from '../services/marathonRules.js';
+import { completeWorkoutAndClearSnapshot, WorkoutError } from '../services/workoutService.js';
+import { displayedNexoraId } from '../services/accountIdentity.js';
 import { sendMarketplacePurchaseTelegramNotification } from '../services/marketplaceTelegramNotifications.js';
 import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES } from '../services/runnerPricing.js';
 import { readRunnerRules } from '../services/runnerRules.js';
@@ -649,7 +649,7 @@ export async function clearWorkoutSnapshot(req: AuthRequest, res: Response): Pro
     const result = await completeWorkoutAndClearSnapshot(req.user.id, workoutStartTime);
     res.json(result);
   } catch (error: any) {
-    if (error instanceof MarathonError) {
+    if (error instanceof WorkoutError) {
       res.status(error.statusCode).json({ success: false, message: error.message });
       return;
     }

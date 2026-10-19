@@ -9,7 +9,7 @@
     "client": "vite --port 3000",
     "server": "tsx server/server.ts",
     "build": "vite build",
-    "test:marathon": "tsx --test server/services/marathonRules.test.ts",
+    "test:workout": "tsx --test server/services/workoutRules.test.ts",
     "test:totp": "tsx --test server/services/totp.test.ts",
     "test:withdrawal": "tsx --test server/services/withdrawalRules.test.ts",
     "test:turbopay": "tsx --test server/services/turbopay.test.ts",

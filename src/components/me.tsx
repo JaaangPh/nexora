@@ -133,7 +133,7 @@ export const MeTab: React.FC<MeTabProps> = ({
     .slice(-5)
     .padStart(5, '0');
   const menuItems = [
-    { label: 'TEAM MARATHON', icon: Users, onClick: () => onNavigateTab('marathon') },
+    { label: 'MARATHON PREVIEW', icon: Users, onClick: () => onNavigateTab('marathon') },
     { label: 'MY RUNNERS', icon: Footprints, onClick: () => onNavigateTab('myrunners') },
     { label: 'BANK ACCOUNT', icon: CreditCard, onClick: () => setIsManagingPayoutAccounts(true) },
     { label: 'CUSTOMER SERVICE', icon: Headphones, onClick: onOpenCustomerService },

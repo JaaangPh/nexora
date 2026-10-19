@@ -1,22 +1,22 @@
 # Stepora Movement — Web & Mobile Application
 
-A responsive web and Android fitness app for **Stepora Movement** members. It combines outdoor activity tracking, virtual runners, server-verified workout rewards, a member wallet, and cooperative team Marathons.
+A responsive web and Android fitness app for **Stepora Movement** members. It combines outdoor activity tracking, virtual runners, workout rewards, and a member wallet. Marathon is currently a design preview only.
 
 ## What Stepora is for
 
-Stepora gives members one place to record outdoor movement, understand how their selected runners affect reward calculations, manage their account balance, and join shared distance challenges. This guide starts with the member experience; developer setup and implementation notes follow.
+Stepora gives members one place to record outdoor movement, understand how their selected runners affect reward calculations, and manage their account balance. This guide starts with the member experience; developer setup and implementation notes follow.
 
 ## How it works for a member
 
 1. **Create an account or sign in.** Register with a valid invite code, phone number, and password. Use the same account on the web app or Android app.
 2. **Choose a runner.** Browse the Market, purchase a runner using the displayed price, and equip an owned runner. Each runner has a reward rate and a maximum eligible distance.
 3. **Track a workout.** Open Track, select one or more available runners, allow location access, and start an outdoor workout. The app displays active time, steps, distance, calories, and an estimated reward.
-4. **Pause, resume, or finish.** Pause when taking a break. Choose **End & Earn** when finished to submit the workout for server verification; the displayed estimate is not a confirmed reward.
-5. **Use the wallet or join a challenge.** Verified workout rewards and eligible Marathon payouts are reflected in the member balance. Members can request withdrawals or join a Marathon if they meet its eligibility and balance requirements.
+4. **Pause, resume, or finish.** Pause when taking a break. Choose **End & Earn** when finished to submit the workout for server-side plausibility checks; the displayed estimate is not a confirmed reward.
+5. **Use the wallet.** Eligible workout rewards are reflected in the member balance. Members can request withdrawals. Marathon is an inactive design preview and has no backend or payouts.
 
 ## How workout earnings work
 
-The app estimates earnings during a workout. The server calculates any final reward from eligible distance and the selected runners, and checks saved workout timing, runner ownership, and movement evidence (GPS route or plausible step-sensor data). The client-reported estimate alone does not determine the final credit.
+The app estimates earnings during a workout. The server calculates any final reward from submitted route or sensor distance and the selected runners, and checks saved workout timing, runner ownership, and plausibility. These checks cannot prove that client-reported movement is genuine.
 
 For each selected runner, the calculation is **eligible distance × reward rate**, capped at that runner's maximum eligible distance. Multiple selected runners are calculated separately and added together.
 
@@ -27,7 +27,7 @@ For each selected runner, the calculation is **eligible distance × reward rate*
 | Cobalt Aero Jogger | ₱2,000 | ₱20.10/km | 20 km |
 | Vortex Blaze Sprint | ₱3,500 | ₱40.00/km | 35 km |
 
-These are the values currently configured in the app and may change. They are not guaranteed earnings: a workout must pass verification, distance is capped per runner, and cooldowns or account rules may limit use. Each runner used in a completed workout receives a 12-hour cooldown. Rewards are credited once after a successful **End & Earn** verification.
+These are the values currently configured in the app and may change. They are not guaranteed earnings: a workout must pass plausibility checks, daily eligible distance is capped per runner, and cooldowns or account rules may limit use. Each runner used in a completed workout receives a 12-hour cooldown. Rewards are credited once after a successful **End & Earn** submission. Client-submitted GPS or step data may be fabricated despite plausibility checks.
 
 ## Pausing and using another device
 
@@ -35,11 +35,11 @@ Workout progress is stored on the device and synced to the account when a connec
 
 Changing between Wi-Fi and mobile data does not itself reset a workout. An offline device cannot sync new progress until it reconnects; progress that exists only on that offline device is not available to another device until it has synced.
 
-## Wallet, withdrawals, and Marathons
+## Wallet and withdrawals
 
 Members can request withdrawals of at least **₱100** to a saved GCash, Maya, or GoTyme account. A withdrawal requires a connected Google Authenticator and a current six-digit code. The app applies a **2% fee**, deducted in addition to the requested payout amount. A request is recorded for review; submitting it does not mean the payout is complete. Members can check the request status in the app.
 
-Marathons are optional seven-day team challenges for 5–10 accepted members. Teams select a 250 km or 500 km target and fund the corresponding bounty pool from member balances. Members must meet the runner ownership requirements before a team can start. Verified workout distance can contribute to an active team's progress. If the team reaches its target before the deadline, the pool is distributed to eligible members still on the roster. If it misses the target, contributions are refunded and no bounty is paid. Check the in-app rules before joining because participation can lock balance and apply cooldowns.
+The Marathon screen is retained as a design preview only. Team creation, invitations, progress, balance contributions, and payouts are inactive and have no backend API.
 
 ---
 
@@ -165,17 +165,9 @@ Open `/admin` to use the separate administrator dashboard. Configure `ADMIN_EMAI
 
 The dashboard reads deposits from `payment_deposits` and a member's withdrawal history from `payment_withdrawals`. Members can submit withdrawal requests in the app; requests debit the balance and are recorded with a pending status for administrator review. The app currently has no separate fee ledger.
 
-## 🏃 Marathon
+## 🏃 Marathon design preview
 
-The Marathon tab is a Firestore-backed team challenge. Teams have 5–10 accepted members, choose exactly one of **250 KM / ₱1,000** or **500 KM / ₱2,500**, and have exactly seven days from the server start time to reach the target. Users need at least one qualifying runner to participate, and every joined member must own both canonical runners (`snk-3` Cobalt Aero Jogger and `snk-4` Vortex Blaze Sprint) before the leader can start.
-
-The persisted lifecycle is `Lobby` → `Active` → `Completed` or `Failed`. A leader cancelling a Lobby permanently deletes the team document, cancels its pending invitations, notifies members and invitees, and releases current member claims; a member leaving only removes that member from the roster and preserves the Lobby. Backend transactions enforce these actions. Completed and failed marathon records remain immutable historical records with the original leader, roster, contributions, target, bounty, outcome, and timestamps.
-
-Starting a race atomically rechecks team membership, ownership of both runners, cooldowns, workout state (including paused and pending End & Earn), and each member's database balance. The start transaction reads and debits each member's user document, the same document updated transactionally by workout snapshot saves; Firestore therefore retries the start if a workout state changes before commit. The pool is debited in equal cent-based shares from member balances. When the target is reached strictly before the deadline, the pool is paid once, equally among members still on the active roster at completion; if the deadline is reached below target, the original contributions are refunded and no bounty is paid. A failed marathon's cooldown begins at the authoritative deadline timestamp; a completed marathon's cooldown begins when its target is finalized. Started-race participants, including members who leave early, receive a three-day cooldown. A Firestore membership claim keyed by user ID is read and written within transactions, preventing concurrent team creation or invitation acceptance from creating multiple current memberships.
-
-Marathon records, membership claims, invitations, notifications, verified workout records, cooldowns, and wallet transactions are stored in Firestore collections (`marathons`, `marathon_memberships`, `marathon_invitations`, `marathon_notifications`, `completed_workouts`, `marathon_cooldowns`, and `wallet_transactions`). Only an End & Earn completion can create a workout record. The backend derives eligible distance from the stored GPS route and checks the member's actual owned runner instances; it does not credit the client-reported summary distance. Marathon reads and workout completion lazily finalize races whose server deadline has passed; deployments requiring a status transition at the exact deadline must also invoke expiration settlement through a durable scheduler.
-
-Run `npm run test:marathon` to verify canonical runner eligibility, deterministic cent allocation, and server-side route-distance calculation.
+The Marathon screen is a frontend-only static design preview. The Marathon API, controllers, and lifecycle service have been removed. It does not read or write team, invitation, progress, contribution, cooldown, or payout data, and its displayed values are illustrative only. Track workout saving and Runner-based rewards continue through the separate workout service.
 
 ---
 
@@ -203,10 +195,9 @@ nexora/
 │   │   └── rateLimiter.ts     # Brute force rate limiting
 │   ├── routes/authRoutes.ts   # Authentication route definitions
 │   ├── routes/paymentRoutes.ts # TurboPay deposit routes
-│   ├── routes/marathonRoutes.ts # Authenticated Marathon API
-│   ├── controllers/marathonController.ts # Marathon API request handling
-│   ├── services/marathonService.ts # Firestore-backed Marathon lifecycle and rewards
-│   ├── services/marathonRules.ts # Canonical eligibility and payout rules
+│   ├── services/workoutService.ts # Track workout completion and reward settlement
+│   ├── services/workoutRules.ts # Runner reward and workout distance rules
+│   ├── services/accountIdentity.ts # Public account ID formatting
 │   ├── services/turbopay.ts   # Server-side request signing and TurboPay API client
 │   └── server.ts              # Server startup file (Port 5000)
 ├── src/                       # Frontend Web & Mobile Application

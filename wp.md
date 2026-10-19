@@ -3,9 +3,9 @@
 
 **Move with purpose. Track your progress. Take part in shared goals.**
 
-This whitepaper explains Stepora Movement from a member's point of view: what the system is for, how to use its features, and how activity, runners, balances, deposits, withdrawals, referrals, and Marathons fit together.
+This whitepaper explains Stepora Movement from a member's point of view: what the system is for, how to use its features, and how activity, runners, balances, deposits, withdrawals, and referrals fit together. Marathon is currently an inactive design preview.
 
-> **Important:** Runner rates, limits, fees, payment availability, and challenge terms described here reflect the current application configuration and may change. Workout rewards and Marathon payouts are conditional on eligibility and verification. They are not guaranteed income, an investment return, or a promise of profit.
+> **Important:** Runner rates, limits, fees, and payment availability described here reflect the current application configuration and may change. Workout reward checks rely on client-submitted movement data and plausibility checks; they cannot prove that a workout is genuine. Rewards are not guaranteed income, an investment return, or a promise of profit.
 
 ## 1. What Stepora is for
 
@@ -13,8 +13,8 @@ Stepora is a movement-tracking and member activity platform. It brings together:
 
 - Outdoor workout tracking, including steps, distance, active time, and estimated calories.
 - Virtual runners that members can own, select for workouts, and use to determine reward rates and eligible-distance limits.
-- A member balance for supported deposits, verified workout credits, purchases, withdrawals, and eligible challenge transactions.
-- Optional team Marathons that turn verified member activity into progress toward a shared distance goal.
+- A member balance for supported deposits, workout credits, purchases, and withdrawals.
+- A Marathon screen retained as a static design preview; it is not an active challenge.
 - A personal referral pass for inviting new members.
 
 The intended member journey is straightforward: create an account, choose an available runner, record an outdoor workout, review the result, and decide whether to continue tracking, manage the balance, or participate in a team challenge.
@@ -76,7 +76,7 @@ For each selected runner, the current calculation is:
 
 The distance used for each runner is limited by that runner's maximum. When more than one runner is selected, their capped calculations are added. For example, if a member records 4 eligible kilometers with a Cyber Aero Walker, its current calculation is **4 × ₱8.40 = ₱33.60** before verification. With a runner whose maximum is lower than the workout distance, only the distance up to that maximum is used for that runner.
 
-The system checks that the selected runner belongs to the member and that the saved workout contains credible timing and movement evidence. It may use a recorded GPS route or, when a route is unavailable, plausible step-sensor data. Workouts that do not meet verification and eligibility rules may receive less than the displayed estimate or no reward. A successful **End & Earn** is required to finalize a workout reward, and the same workout is credited only once.
+The system checks that the selected runner belongs to the member and that the saved workout timing and submitted movement data pass plausibility checks. It may use a GPS route or, when a route is unavailable, step-sensor data. These checks cannot prove that client-submitted movement is genuine. Workouts that do not meet eligibility rules may receive less than the displayed estimate or no reward. A successful **End & Earn** is required to finalize a workout reward, and the same workout is credited only once.
 
 ## 5. Progress across devices and connections
 
@@ -88,7 +88,7 @@ Changing between Wi-Fi and mobile data does not itself reset a workout. If a dev
 
 ## 6. Member balance and payments
 
-The member balance is used for supported account transactions. It may change when a payment is confirmed, a verified reward is credited, a runner is purchased, a withdrawal is requested, or a Marathon contribution is committed or refunded.
+The member balance is used for supported account transactions. It may change when a payment is confirmed, a workout reward is credited, a runner is purchased, or a withdrawal is requested.
 
 ### Deposits
 
@@ -114,27 +114,11 @@ After submission, a request is pending review. The request is not a completed pa
 
 The **Team** area provides the member's personal referral code and shareable invitation link. A member can copy either and share it with someone who wants to register. When a referred member buys their first Runner, that member's direct inviter receives **₱100** and each of the next two ancestors in the referral chain receives **₱50**. No ancestor beyond those three generations is paid for that purchase. The reward is calculated separately for each referred member; later Runner purchases by that same member do not generate another reward.
 
-For example, if Alex invited Joshua, Joshua invited Julia, Julia invited Gerald, and Gerald invited Kim, Kim's first Runner purchase pays Gerald **₱100**, Julia **₱50**, and Joshua **₱50**. Alex receives nothing for Kim's purchase because Alex is beyond the three rewarded generations. A different member's first Runner purchase starts a separate calculation from that member's direct inviter. Only a valid member referral code links a new account to a referrer; other invite codes do not qualify. The referral pass is separate from Marathon membership. Direct Team counts registered direct referrals, Referral Reward shows rewards earned, and Team Volume remains a placeholder. These rewards are conditional on the referred member's first Runner purchase and are not guaranteed income.
+For example, if Alex invited Joshua, Joshua invited Julia, Julia invited Gerald, and Gerald invited Kim, Kim's first Runner purchase pays Gerald **₱100**, Julia **₱50**, and Joshua **₱50**. Alex receives nothing for Kim's purchase because Alex is beyond the three rewarded generations. A different member's first Runner purchase starts a separate calculation from that member's direct inviter. Only a valid member referral code links a new account to a referrer; other invite codes do not qualify. Direct Team counts registered direct referrals, Referral Reward shows rewards earned, and Team Volume remains a placeholder. These rewards are conditional on the referred member's first Runner purchase and are not guaranteed income.
 
-## 8. Marathons: shared distance challenges
+## 8. Marathon design preview
 
-A Marathon is an optional, time-limited challenge in which members work together toward a total distance goal. Members can create a lobby, invite others, or respond to invitations. A lobby needs **5 to 10 accepted members** before it can start.
-
-The current challenge choices are:
-
-| Team target | Total bounty pool | Duration |
-| --- | ---: | ---: |
-| 250 km | ₱1,000 | 7 days |
-| 500 km | ₱2,500 | 7 days |
-
-Before a team can start, **every joined member must own both** the Cobalt Aero Jogger and the Vortex Blaze Sprint. Members must also meet the app's current cooldown and workout-state rules. The app shows the contribution due for each member before the team confirms its start. Each member's equal share is deducted from their balance when the challenge starts.
-
-Verified workout distance can count toward an active team's progress when it meets challenge rules and falls within the challenge period. The team must reach its target before the seven-day deadline:
-
-- **Target reached in time:** the full bounty pool is divided equally among members still on the active roster when the target is completed.
-- **Target missed:** the original member contributions are refunded; no bounty is paid.
-
-Started challenges can carry a three-day Marathon cooldown for participants, including members who leave early. Read the lobby and confirmation details carefully before accepting an invitation or confirming a start. A contribution is committed balance, not a fee for guaranteed winnings.
+The Marathon screen is retained as a static visual preview only. Team creation, invitations, challenge progress, balance contributions, cooldowns, and payouts are inactive. The sample values shown in the preview are illustrative and do not represent real member or team data. Track workouts and Runner rewards operate separately and do not contribute to Marathon progress.
 
 ## 9. Member practices
 
@@ -143,7 +127,7 @@ Started challenges can carry a three-day Marathon cooldown for participants, inc
 - Use **End & Earn** and wait for the verification result before counting a reward.
 - Keep the app connected when possible so workout progress can sync to the account.
 - Review the exact deposit instructions and withdrawal fee before confirming a transaction.
-- Check Marathon eligibility, member contribution, deadline, payout conditions, and cooldown before joining.
+- Treat the Marathon screen as a non-functional design preview; it does not accept teams or payments.
 - Protect login credentials and authenticator codes. Never share a current verification code with another person.
 
 ## 10. Terms at a glance
@@ -153,12 +137,10 @@ Started challenges can carry a three-day Marathon cooldown for participants, inc
 | **Runner** | A virtual item owned by a member and selected for a workout. Its current rate and distance cap affect reward calculations. |
 | **Rate** | The currently displayed reward amount per eligible kilometer for a runner; subject to verification and change. |
 | **Distance cap** | The maximum distance counted for a runner in the workout reward calculation. |
-| **Cooldown** | A period when a runner or Marathon participation is temporarily unavailable under current rules. |
+| **Cooldown** | A period when a runner is temporarily unavailable under current rules. |
 | **Estimated reward** | A live, provisional amount displayed during activity; not yet credited. |
-| **Verified reward** | The final amount, if any, credited after an eligible workout is submitted and checked. |
-| **Bounty pool** | The total challenge pool distributed to eligible remaining team members if the Marathon target is reached in time. |
-| **Active roster** | The members still on the team when a successful Marathon reaches its target. |
+| **Reward credit** | The amount, if any, credited after the submitted workout passes the app's eligibility and plausibility checks. |
 
 ---
 
-*This whitepaper is a member-oriented description of the current Stepora Movement experience. The in-app terms and transaction confirmation screens are authoritative for current rates, limits, payment availability, fees, eligibility, and challenge rules.*
+*This whitepaper is a member-oriented description of the current Stepora Movement experience. The in-app terms and transaction confirmation screens are authoritative for current rates, limits, payment availability, and fees.*

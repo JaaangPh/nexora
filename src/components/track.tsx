@@ -1869,8 +1869,8 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               <span>
                 {isWorkoutSettled
                   ? isWorkoutVerified
-                    ? 'Reward credited to your wallet. Marathon progress is handled separately.'
-                    : 'This workout could not be verified, so no reward was credited. Marathon progress is handled separately.'
+                    ? 'Reward credited to your wallet.'
+                    : 'This workout could not be verified, so no reward was credited.'
                   : 'Your workout reward is being validated and added to your wallet.'}
               </span>
             </div>
