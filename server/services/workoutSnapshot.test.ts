@@ -2,11 +2,35 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   canReplaceWorkoutSnapshot,
+  decodeWorkoutRoutePointsFromFirestore,
+  encodeWorkoutRoutePointsForFirestore,
   isWorkoutSnapshotActive,
   mergeWorkoutSnapshotProgress,
   pauseWorkoutSnapshotForNewSession,
   shouldPreferRemoteWorkoutSnapshot,
 } from './workoutSnapshot.js';
+
+test('stores route points as Firestore-safe objects and restores coordinate tuples', () => {
+  const routePoints: [number, number][] = [
+    [14.5995, 120.9842],
+    [14.6001, 120.985],
+  ];
+
+  const stored = encodeWorkoutRoutePointsForFirestore(routePoints);
+
+  assert.deepEqual(stored, [
+    { latitude: 14.5995, longitude: 120.9842 },
+    { latitude: 14.6001, longitude: 120.985 },
+  ]);
+  assert.deepEqual(decodeWorkoutRoutePointsFromFirestore(stored), routePoints);
+});
+
+test('rejects invalid workout route points before Firestore writes', () => {
+  assert.throws(
+    () => encodeWorkoutRoutePointsForFirestore([[14.5995, Number.NaN]]),
+    /invalid point/
+  );
+});
 
 test('keeps workout progress when a newer device snapshot has reset counters', () => {
   const current = {

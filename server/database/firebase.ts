@@ -4,6 +4,8 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import {
   canReplaceWorkoutSnapshot,
+  decodeWorkoutRoutePointsFromFirestore,
+  encodeWorkoutRoutePointsForFirestore,
   mergeWorkoutSnapshotProgress,
   pauseWorkoutSnapshotForNewSession,
 } from '../services/workoutSnapshot.js';
@@ -628,7 +630,13 @@ export async function grantUserRunner(
 
 export async function getUserWorkoutSnapshot(id: string): Promise<Record<string, unknown> | null> {
   const user = await findUserById(id);
-  return user?.workoutSnapshot || null;
+  const snapshot = user?.workoutSnapshot;
+  return snapshot
+    ? {
+      ...snapshot,
+      routePoints: decodeWorkoutRoutePointsFromFirestore(snapshot.routePoints),
+    }
+    : null;
 }
 
 export async function updateUserWorkoutSnapshot(
@@ -691,12 +699,15 @@ export async function updateUserWorkoutSnapshot(
     const serverStartedAt = sameWorkout
       ? Number(currentSnapshot?.serverStartedAt || Date.now())
       : Date.now();
-    const savedSnapshot = {
+    const savedSnapshot: Record<string, unknown> = {
       ...mergeWorkoutSnapshotProgress(currentSnapshot, snapshot),
       serverStartedAt,
     };
     transaction.update(userRef, {
-      workoutSnapshot: savedSnapshot,
+      workoutSnapshot: {
+        ...savedSnapshot,
+        routePoints: encodeWorkoutRoutePointsForFirestore(savedSnapshot['routePoints']),
+      },
       ...(shouldChargeRunnerUse ? { ownedRunners } : {}),
     });
     return {

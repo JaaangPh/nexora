@@ -1,7 +1,55 @@
 type WorkoutSnapshotData = Record<string, unknown>;
 
+type FirestoreWorkoutRoutePoint = { latitude: number; longitude: number };
+
 function nonNegativeNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+export function encodeWorkoutRoutePointsForFirestore(routePoints: unknown): FirestoreWorkoutRoutePoint[] {
+  if (!Array.isArray(routePoints)) return [];
+  return routePoints.map((point) => {
+    if (
+      !Array.isArray(point) ||
+      point.length !== 2 ||
+      typeof point[0] !== 'number' ||
+      !Number.isFinite(point[0]) ||
+      typeof point[1] !== 'number' ||
+      !Number.isFinite(point[1])
+    ) {
+      throw new TypeError('Workout route contains an invalid point.');
+    }
+    return { latitude: point[0], longitude: point[1] };
+  });
+}
+
+export function decodeWorkoutRoutePointsFromFirestore(routePoints: unknown): [number, number][] {
+  if (!Array.isArray(routePoints)) return [];
+  return routePoints.map((point) => {
+    if (
+      point &&
+      typeof point === 'object' &&
+      'latitude' in point &&
+      'longitude' in point &&
+      typeof point.latitude === 'number' &&
+      Number.isFinite(point.latitude) &&
+      typeof point.longitude === 'number' &&
+      Number.isFinite(point.longitude)
+    ) {
+      return [point.latitude, point.longitude];
+    }
+    if (
+      Array.isArray(point) &&
+      point.length === 2 &&
+      typeof point[0] === 'number' &&
+      Number.isFinite(point[0]) &&
+      typeof point[1] === 'number' &&
+      Number.isFinite(point[1])
+    ) {
+      return [point[0], point[1]];
+    }
+    throw new TypeError('Stored workout route contains an invalid point.');
+  });
 }
 
 export function isWorkoutSnapshotActive(snapshot: WorkoutSnapshotData): boolean {
