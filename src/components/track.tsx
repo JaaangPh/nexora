@@ -229,6 +229,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const finishWasPausedRef = useRef(false);
   const finishWorkoutRef = useRef<((automatic?: boolean) => void) | null>(null);
   const remoteWorkoutSyncChainRef = useRef<Promise<void>>(Promise.resolve());
+  const remoteWorkoutSyncErrorRef = useRef<Error | null>(null);
 
   // Leaflet map refs
   const rawId = useId();
@@ -240,7 +241,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const googleTileLayerRef = useRef<L.TileLayer | null>(null);
 
   // Pedometer refs
-  const lastAccelMagnitudeRef = useRef<number>(9.8);
+  const lastAccelMagnitudeRef = useRef<number>(Number.NaN);
   const pedometerPeakArmedRef = useRef<boolean>(true);
   const lastStepTimestampRef = useRef<number>(0);
 
@@ -277,6 +278,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
             if (response.ownedRunners && user) {
               onUpdateUser?.({ ...user, ownedRunners: response.ownedRunners });
             }
+            remoteWorkoutSyncErrorRef.current = null;
             return;
           } catch (error) {
             lastError = error;
@@ -285,11 +287,13 @@ export const TrackTab: React.FC<TrackTabProps> = ({
             }
           }
         }
-        throw lastError;
+        throw lastError instanceof Error ? lastError : new Error('Could not sync workout progress.');
       })
       .then(() => undefined)
       .catch((error) => {
-        setWorkoutSyncError(error instanceof Error ? error.message : 'Could not sync workout progress.');
+        const syncError = error instanceof Error ? error : new Error('Could not sync workout progress.');
+        remoteWorkoutSyncErrorRef.current = syncError;
+        setWorkoutSyncError(syncError.message);
         console.warn('[Workout Snapshot Sync] Failed to save workout progress to the account.', error);
       });
     remoteWorkoutSyncChainRef.current = nextSync;
@@ -379,6 +383,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       ? getPausedWorkoutTiming(data.workoutStartTime, savedElapsedSeconds, now)
       : null;
 
+    lastPositionRef.current = null;
+    lastAccelMagnitudeRef.current = Number.NaN;
+    pedometerPeakArmedRef.current = true;
     isTrackingRef.current = true;
     isPausedRef.current = shouldPause;
     workoutStartTimeRef.current = data.workoutStartTime;
@@ -680,6 +687,11 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       const z = acc.z || 0;
       const magnitude = Math.sqrt(x * x + y * y + z * z);
 
+      if (!Number.isFinite(lastAccelMagnitudeRef.current)) {
+        lastAccelMagnitudeRef.current = magnitude;
+        return;
+      }
+
       const delta = magnitude - lastAccelMagnitudeRef.current;
       lastAccelMagnitudeRef.current = magnitude;
 
@@ -978,6 +990,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     ));
     pauseStartTimeRef.current = now;
     isPausedRef.current = true;
+    lastPositionRef.current = null;
+    lastAccelMagnitudeRef.current = Number.NaN;
+    pedometerPeakArmedRef.current = true;
     setIsPaused(true);
     releaseWakeLock();
     void stopContinuousGpsWatch();
@@ -991,6 +1006,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         pausedDurationRef.current += Date.now() - pauseStartTimeRef.current;
       }
       pauseStartTimeRef.current = 0;
+      lastPositionRef.current = null;
+      lastAccelMagnitudeRef.current = Number.NaN;
+      pedometerPeakArmedRef.current = true;
       isPausedRef.current = false;
       setIsPaused(false);
       if (keepScreenOn) requestWakeLock();
@@ -1136,8 +1154,10 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     setWorkoutSyncError('');
     setIsSettlingWorkout(true);
     try {
+      if (!navigator.onLine) throw new Error('You are offline. Reconnect before retrying reward credit.');
       await saveWorkoutSnapshot(true, summary, true);
       await remoteWorkoutSyncChainRef.current;
+      if (remoteWorkoutSyncErrorRef.current) throw remoteWorkoutSyncErrorRef.current;
       const result = await api.clearWorkoutSnapshot(workoutStartTime);
       if (!result.success) throw new Error('The workout reward was not credited.');
       const runnerIds = sessionRunnerIdsRef.current.length > 0
@@ -1149,7 +1169,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       setIsWorkoutSettled(true);
     } catch (error) {
       console.error('[Workout Reward] Failed to credit the completed workout.', error);
-      setWorkoutSyncError('Could not verify and credit your workout. Check your connection and retry.');
+      setWorkoutSyncError(error instanceof Error
+        ? error.message
+        : 'Could not verify and credit your workout. Check your connection and retry.');
     } finally {
       setIsSettlingWorkout(false);
     }
