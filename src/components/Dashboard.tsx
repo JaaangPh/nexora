@@ -932,13 +932,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={dismissAnnouncement}
-                  className="w-full rounded-xl bg-cyan-300 px-4 py-3 text-sm font-black uppercase tracking-wide text-[#08132B] transition-colors hover:bg-cyan-200"
-                >
-                  Got it
-                </button>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <a
+                    href="https://whitepaper.stepm.fun"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-h-12 items-center justify-center rounded-xl bg-cyan-300 px-4 py-3 text-sm font-black uppercase tracking-wide text-[#08132B] transition-colors hover:bg-cyan-200"
+                  >
+                    Whitepaper
+                  </a>
+                  <a
+                    href="https://t.me/stepm_fun"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-[#229ED9] px-4 py-3 text-sm font-black uppercase tracking-wide text-white transition-colors hover:bg-[#168AC4]"
+                  >
+                    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+                      <path d="M21.94 4.66a1.5 1.5 0 0 0-1.53-.22L2.8 11.1a1.5 1.5 0 0 0 .13 2.84l4.4 1.37 1.62 5.13a1.5 1.5 0 0 0 2.62.45l2.45-3.04 4.36 3.2a1.5 1.5 0 0 0 2.35-.88l2.2-13.96a1.5 1.5 0 0 0-.99-1.55ZM9.14 14.93l8.54-7.27-6.87 8.7-.4 2.04-1.27-3.47ZM19.2 19.03l-5.55-4.08 5.26-6.66-1.43 9.08-1.76-1.29 3.48 2.95Z" />
+                    </svg>
+                    Join the Group
+                  </a>
+                </div>
               </div>
             </div>
           </section>
