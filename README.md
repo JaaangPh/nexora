@@ -10,13 +10,13 @@ Stepora gives members one place to record outdoor movement, understand how their
 
 1. **Create an account or sign in.** Register with a valid invite code, phone number, and password. Use the same account on the web app or Android app.
 2. **Choose a runner.** Browse the Market, purchase a runner using the displayed price, and equip an owned runner. Each runner has a reward rate and a maximum eligible distance.
-3. **Track a workout.** Open Track, select one or more available runners, allow location access, and start an outdoor workout. The app displays active time, steps, distance, calories, and an estimated reward.
+3. **Track a workout.** Open Track, select one or more available runners, allow location access, and start an outdoor workout. GPS records the route and distance; displayed steps are estimated from GPS distance. The app also displays active time, calories, and an estimated reward.
 4. **Pause, resume, or finish.** Pause when taking a break. Choose **End & Earn** when finished to submit the workout for server-side plausibility checks; the displayed estimate is not a confirmed reward.
 5. **Use the wallet.** Eligible workout rewards are reflected in the member balance. Members can request withdrawals. Marathon is an inactive design preview and has no backend or payouts.
 
 ## How workout earnings work
 
-The app estimates earnings during a workout. The server calculates any final reward from submitted route or sensor distance and the selected runners, and checks saved workout timing, runner ownership, and plausibility. These checks cannot prove that client-reported movement is genuine.
+The app estimates earnings during a workout. The server calculates any final reward from submitted GPS route or GPS-derived distance estimate and the selected runners, and checks saved workout timing, runner ownership, and plausibility. These checks cannot prove that client-reported movement is genuine.
 
 For each selected runner, the calculation is **eligible distance × reward rate**, capped at that runner's maximum eligible distance. Multiple selected runners are calculated separately and added together.
 

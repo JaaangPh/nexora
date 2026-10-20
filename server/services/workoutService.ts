@@ -5,7 +5,7 @@ import {
   calculateWorkoutRewardKmByRunner,
   fromCents,
   haversineDistanceMeters,
-  isPlausibleSensorWorkout,
+  isPlausibleGpsDistanceEstimate,
   toCents,
 } from './workoutRules.js';
 import { readRunnerRules, type RunnerRules } from './runnerRules.js';
@@ -57,13 +57,13 @@ function validateCompletedWorkout(
     startedAt <= completedAt && Math.abs(serverStartedAt - startedAt) <= 120_000 &&
     completedAt >= serverStartedAt;
   const routePlausible = validTiming && routeMeters > 0 && routeMeters / observedSeconds <= 20;
-  const sensorPlausible = validTiming &&
+  const gpsEstimatePlausible = validTiming &&
     routeMeters === 0 &&
     reportedMeters <= limitKm * 1000 &&
-    isPlausibleSensorWorkout(reportedMeters, Number(snapshot.stepCount || 0), observedSeconds);
+    isPlausibleGpsDistanceEstimate(reportedMeters, Number(snapshot.stepCount || 0), observedSeconds);
   const rewardMeters = routePlausible
     ? Math.min(routeMeters, limitKm * 1000)
-    : sensorPlausible
+    : gpsEstimatePlausible
       ? reportedMeters
       : 0;
   return {

@@ -4,7 +4,7 @@ import {
   calculateWorkoutRewardCents,
   calculateWorkoutRewardKmByRunner,
   haversineDistanceMeters,
-  isPlausibleSensorWorkout,
+  isPlausibleGpsDistanceEstimate,
 } from './workoutRules.js';
 
 test('server derives route distance from validated coordinates', () => {
@@ -37,9 +37,9 @@ test('workout rewards use configured earning rate and daily distance limit', () 
   assert.equal(calculateWorkoutRewardCents(1_000, ['snk-1'], rules, { 'snk-1': 6 }), 0);
 });
 
-test('motion-sensor distance must match plausible steps and elapsed time', () => {
-  assert.equal(isPlausibleSensorWorkout(6_000, 8_000, 1_800), true);
-  assert.equal(isPlausibleSensorWorkout(6_000, 0, 1_800), false);
-  assert.equal(isPlausibleSensorWorkout(6_000, 100, 1_800), false);
-  assert.equal(isPlausibleSensorWorkout(6_000, 8_000, 10), false);
+test('GPS distance estimate must match plausible steps and elapsed time', () => {
+  assert.equal(isPlausibleGpsDistanceEstimate(6_000, 8_000, 1_800), true);
+  assert.equal(isPlausibleGpsDistanceEstimate(6_000, 0, 1_800), false);
+  assert.equal(isPlausibleGpsDistanceEstimate(6_000, 100, 1_800), false);
+  assert.equal(isPlausibleGpsDistanceEstimate(6_000, 8_000, 10), false);
 });

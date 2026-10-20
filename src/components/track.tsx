@@ -21,7 +21,6 @@ import {
   Settings,
   X,
   SunMedium,
-  Smartphone,
   Sparkles,
   Lock,
   ShoppingBag,
@@ -217,7 +216,6 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const isPausedRef = useRef(false);
   const totalDistanceKmRef = useRef<number>(0.0);
   const lastPositionRef = useRef<{ lat: number; lng: number } | null>(null);
-  const motionStepCountRef = useRef<number>(0);
   const gpsStepCountRef = useRef<number>(0);
   const routePointsRef = useRef<[number, number][]>([]);
 
@@ -239,11 +237,6 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const accuracyCircleRef = useRef<L.Circle | null>(null);
   const routePolylineRef = useRef<L.Polyline | null>(null);
   const googleTileLayerRef = useRef<L.TileLayer | null>(null);
-
-  // Pedometer refs
-  const lastAccelMagnitudeRef = useRef<number>(Number.NaN);
-  const pedometerPeakArmedRef = useRef<boolean>(true);
-  const lastStepTimestampRef = useRef<number>(0);
 
   // Helper: check if a runner is in 24h cooldown
   const getRunnerCooldown = (runnerId: string) => {
@@ -331,7 +324,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
         pausedDuration: pausedDurationRef.current,
         elapsedSeconds,
         distanceKm: totalDistanceKmRef.current,
-        stepCount: Math.max(motionStepCountRef.current, gpsStepCountRef.current),
+        stepCount: gpsStepCountRef.current,
         caloriesBurned: latestWorkoutStatsRef.current.caloriesBurned,
         tokensEarned: latestWorkoutStatsRef.current.tokensEarned,
         routePoints: routePointsRef.current.slice(-1000),
@@ -384,15 +377,12 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       : null;
 
     lastPositionRef.current = null;
-    lastAccelMagnitudeRef.current = Number.NaN;
-    pedometerPeakArmedRef.current = true;
     isTrackingRef.current = true;
     isPausedRef.current = shouldPause;
     workoutStartTimeRef.current = data.workoutStartTime;
     pauseStartTimeRef.current = pausedTiming?.pauseStartTime ?? 0;
     pausedDurationRef.current = pausedTiming?.pausedDuration ?? data.pausedDuration ?? 0;
     totalDistanceKmRef.current = data.distanceKm || 0;
-    motionStepCountRef.current = data.stepCount || 0;
     gpsStepCountRef.current = data.stepCount || 0;
     routePointsRef.current = data.routePoints || [];
     sessionRunnerIdsRef.current = restoredRunnerIds;
@@ -673,73 +663,6 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   };
 
   // --------------------------------------------------------------------------
-  // 4. ACCELEROMETER HARDWARE PEDOMETER (Background Steps)
-  // --------------------------------------------------------------------------
-  useEffect(() => {
-    const handleDeviceMotion = (event: DeviceMotionEvent) => {
-      if (!isTrackingRef.current || isPausedRef.current) return;
-
-      const acc = event.accelerationIncludingGravity || event.acceleration;
-      if (!acc) return;
-
-      const x = acc.x || 0;
-      const y = acc.y || 0;
-      const z = acc.z || 0;
-      const magnitude = Math.sqrt(x * x + y * y + z * z);
-
-      if (!Number.isFinite(lastAccelMagnitudeRef.current)) {
-        lastAccelMagnitudeRef.current = magnitude;
-        return;
-      }
-
-      const delta = magnitude - lastAccelMagnitudeRef.current;
-      lastAccelMagnitudeRef.current = magnitude;
-
-      const now = Date.now();
-      const minStepIntervalMs = 280;
-
-      if (delta > 2.2 && pedometerPeakArmedRef.current && (now - lastStepTimestampRef.current > minStepIntervalMs)) {
-        lastStepTimestampRef.current = now;
-        pedometerPeakArmedRef.current = false;
-        motionStepCountRef.current += 1;
-
-        const totalSteps = Math.max(motionStepCountRef.current, gpsStepCountRef.current);
-        setStepCount(totalSteps);
-
-        const motionDistanceKm = Number((totalSteps * 0.00074).toFixed(3));
-        const runners = selectedRunnersRef.current;
-        const currentLimit = runners.reduce((total, runner) => total + runner.kmLimitPerDay, 0);
-
-        if (currentLimit > 0 && totalDistanceKmRef.current < motionDistanceKm) {
-          const cappedDist = Math.min(motionDistanceKm, currentLimit);
-          totalDistanceKmRef.current = cappedDist;
-          setDistanceKm(cappedDist);
-          setTokensEarned(calculateWorkoutEarnings(cappedDist, runners));
-        }
-
-        setCaloriesBurned(Math.max(Math.round(totalDistanceKmRef.current * 62), Math.round(totalSteps * 0.04)));
-        saveWorkoutSnapshot();
-        if (currentLimit > 0 && totalDistanceKmRef.current >= currentLimit) {
-          finishWorkoutRef.current?.(true);
-        }
-      }
-
-      if (delta < -1.2) {
-        pedometerPeakArmedRef.current = true;
-      }
-    };
-
-    if (typeof window !== 'undefined' && window.DeviceMotionEvent) {
-      window.addEventListener('devicemotion', handleDeviceMotion, { passive: true });
-    }
-    return () => {
-      if (typeof window !== 'undefined' && window.DeviceMotionEvent) {
-        window.removeEventListener('devicemotion', handleDeviceMotion);
-      }
-    };
-  }, []);
-
-  // --------------------------------------------------------------------------
   // 5. GPS FIX HANDLER
   // --------------------------------------------------------------------------
   const handleNewGpsFix = (lat: number, lng: number, accuracy: number, speed: number | null) => {
@@ -780,10 +703,9 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
           const stepsFromGps = Math.floor(cappedDist * 1350);
           gpsStepCountRef.current = stepsFromGps;
-          const combinedSteps = Math.max(motionStepCountRef.current, stepsFromGps);
-          setStepCount(combinedSteps);
+          setStepCount(stepsFromGps);
 
-          const cals = Math.max(Math.round(cappedDist * 62), Math.round(combinedSteps * 0.04));
+          const cals = Math.max(Math.round(cappedDist * 62), Math.round(stepsFromGps * 0.04));
           setCaloriesBurned(cals);
 
           setTokensEarned(calculateWorkoutEarnings(cappedDist, runners));
@@ -886,12 +808,6 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       return;
     }
 
-    if (typeof (DeviceMotionEvent as any)?.requestPermission === 'function') {
-      try {
-        await (DeviceMotionEvent as any).requestPermission();
-      } catch (e) {}
-    }
-
     setIsRequestingPermission(true);
     setGpsErrorMessage(null);
 
@@ -932,20 +848,6 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     }
   };
 
-  const handleStartWorkoutWithMotion = async () => {
-    if (selectedRunners.length === 0 || coolingSelectedRunners.length > 0) return;
-    if (typeof (DeviceMotionEvent as any)?.requestPermission === 'function') {
-      try {
-        await (DeviceMotionEvent as any).requestPermission();
-      } catch (e) {}
-    }
-
-    setShowGpsModal(false);
-    setGpsStatus('searching');
-    startWorkoutTracking();
-    startContinuousGpsWatch();
-  };
-
   const startWorkoutTracking = () => {
     sessionRunnerIdsRef.current = selectedRunnersRef.current.map((runner) => runner.id);
     setSessionRunnerIds(sessionRunnerIdsRef.current);
@@ -960,7 +862,6 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
     if (totalDistanceKmRef.current === 0) {
       totalDistanceKmRef.current = 0.0;
-      motionStepCountRef.current = 0;
       gpsStepCountRef.current = 0;
       routePointsRef.current = [];
       if (routePolylineRef.current) routePolylineRef.current.setLatLngs([]);
@@ -991,8 +892,6 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     pauseStartTimeRef.current = now;
     isPausedRef.current = true;
     lastPositionRef.current = null;
-    lastAccelMagnitudeRef.current = Number.NaN;
-    pedometerPeakArmedRef.current = true;
     setIsPaused(true);
     releaseWakeLock();
     void stopContinuousGpsWatch();
@@ -1007,8 +906,6 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       }
       pauseStartTimeRef.current = 0;
       lastPositionRef.current = null;
-      lastAccelMagnitudeRef.current = Number.NaN;
-      pedometerPeakArmedRef.current = true;
       isPausedRef.current = false;
       setIsPaused(false);
       if (keepScreenOn) requestWakeLock();
@@ -1199,7 +1096,6 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
     // Reset stats for next session
     totalDistanceKmRef.current = 0.0;
-    motionStepCountRef.current = 0;
     gpsStepCountRef.current = 0;
     routePointsRef.current = [];
     if (routePolylineRef.current) {
@@ -1645,7 +1541,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
             </div>
             <div>
               <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
-                STEPS
+              EST. STEPS
               </span>
               <span className="text-xs font-mono font-black text-[#D8FD2F]">
                 {stepCount.toLocaleString()}
@@ -1750,10 +1646,10 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 text-[11px] text-amber-200 space-y-1">
                 <div className="font-bold flex items-center gap-1.5 text-amber-300">
                   <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>iOS Safari Security Notice:</span>
+                  <span>Secure Connection Required:</span>
                 </div>
                 <p className="leading-tight">
-                  Apple iOS blocks GPS over plain HTTP. Tap <strong className="text-white">Start Run with Motion Sensors</strong> below to immediately track your steps, calories, and rewards using device motion sensors!
+                  GPS tracking requires a secure HTTPS connection on this device. Open Stepora using its HTTPS address to start an outdoor workout.
                 </p>
               </div>
             )}
@@ -1766,15 +1662,6 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               >
                 <Navigation className="w-4 h-4" />
                 <span>{isRequestingPermission ? 'Connecting to GPS...' : 'I Turned It On — Start Run'}</span>
-              </button>
-
-              <button
-                onClick={handleStartWorkoutWithMotion}
-                disabled={!isWorkoutHydrated}
-                className="w-full py-3 rounded-2xl bg-[#1C2538] hover:bg-[#25324D] text-cyan-300 border border-cyan-500/30 font-extrabold text-xs active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md"
-              >
-                <Smartphone className="w-4 h-4 text-cyan-400" />
-                <span>Start Run with Motion Sensors</span>
               </button>
             </div>
           </div>

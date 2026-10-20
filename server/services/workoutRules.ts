@@ -58,7 +58,7 @@ export function calculateWorkoutRewardCents(
   return Math.round(reward * 100);
 }
 
-export function isPlausibleSensorWorkout(
+export function isPlausibleGpsDistanceEstimate(
   distanceMeters: number,
   stepCount: number,
   elapsedSeconds: number,
