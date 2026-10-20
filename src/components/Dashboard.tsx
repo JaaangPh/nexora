@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Home,
   ShoppingBag,
@@ -22,6 +22,7 @@ import {
   Zap,
   Play,
   Bell,
+  Megaphone,
 } from 'lucide-react';
 import { User } from '../types/auth';
 import { BrandLogo } from './BrandLogo';
@@ -93,6 +94,35 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
   const [openPayoutAccountsSignal, setOpenPayoutAccountsSignal] = useState(0);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showAppModal, setShowAppModal] = useState(false);
+  const [showAnnouncement, setShowAnnouncement] = useState(false);
+  const announcementStorageKey = `stepora-announcement-v1:${user.id}`;
+
+  useEffect(() => {
+    try {
+      setShowAnnouncement(localStorage.getItem(announcementStorageKey) !== 'dismissed');
+    } catch (error) {
+      console.warn('[Announcement] Could not check whether the announcement was dismissed.', error);
+      setShowAnnouncement(true);
+    }
+  }, [announcementStorageKey]);
+
+  const dismissAnnouncement = useCallback(() => {
+    setShowAnnouncement(false);
+    try {
+      localStorage.setItem(announcementStorageKey, 'dismissed');
+    } catch (error) {
+      console.warn('[Announcement] Could not save the dismissal preference.', error);
+    }
+  }, [announcementStorageKey]);
+
+  useEffect(() => {
+    if (!showAnnouncement) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') dismissAnnouncement();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showAnnouncement, dismissAnnouncement]);
 
   // Deposit inputs
   const [depositAmount, setDepositAmount] = useState<string>('100');
@@ -833,6 +863,87 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
 
       {/* MODAL 4: APP DOWNLOAD STORE MODAL (from app.tsx) */}
       <AppModal isOpen={showAppModal} onClose={() => setShowAppModal(false)} />
+
+      {showAnnouncement && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-5">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="announcement-title"
+            aria-describedby="announcement-description"
+            className="relative flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-cyan-300/30 bg-[#08132B] text-white shadow-2xl shadow-black/60"
+          >
+            <button
+              type="button"
+              aria-label="Close announcement"
+              autoFocus
+              onClick={dismissAnnouncement}
+              className="absolute right-3 top-3 z-10 rounded-full border border-white/20 bg-[#08132B]/85 p-2 text-white shadow-lg backdrop-blur hover:bg-[#142B5B]"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="min-h-0 overflow-y-auto overscroll-contain">
+              <img
+                src="/images/stepora-announcement.png"
+                alt="Stepora Movement: Whatever your route, keep moving."
+                className="max-h-[38vh] w-full bg-[#061027] object-contain"
+              />
+
+              <div className="space-y-4 p-5 sm:p-7">
+                <div className="flex items-center gap-2 text-cyan-300">
+                  <Megaphone className="h-5 w-5 shrink-0" />
+                  <p className="text-xs font-black uppercase tracking-[0.16em]">
+                    Announcement
+                  </p>
+                </div>
+
+                <div>
+                  <h2 id="announcement-title" className="text-xl font-black leading-tight text-white sm:text-2xl">
+                    🚀 INTRODUCING STEPORA MOVEMENT 👟
+                  </h2>
+                  <p className="mt-2 text-sm font-bold text-cyan-200">
+                    Move with purpose. Earn with every step.
+                  </p>
+                </div>
+
+                <div id="announcement-description" className="space-y-3 text-sm leading-relaxed text-blue-100/85">
+                  <p>
+                    Your movement is more than just exercise — it’s an opportunity to earn.
+                  </p>
+                  <p>
+                    Introducing Stepora, a Move-to-Earn platform that transforms verified outdoor activities into on-platform rewards. Whether you’re running solo or moving together with a team, every verified workout brings you closer to your goals.
+                  </p>
+
+                  <div className="space-y-3 rounded-2xl border border-cyan-300/15 bg-white/[0.04] p-4">
+                    <p><strong className="text-cyan-200">🏃 Move &amp; Earn</strong> — Virtual runner assets determine your earning rate, turning every verified step into an opportunity.</p>
+                    <p><strong className="text-cyan-200">✅ Verified Movement</strong> — Our verification engine validates your workouts to ensure your activity counts.</p>
+                    <p><strong className="text-cyan-200">🏆 Team Marathons</strong> — Join forces with others, combine your distances, and compete for shared bounties.</p>
+                  </div>
+
+                  <p className="font-semibold text-white">
+                    Step by step. Run by run. Together, we move forward.
+                  </p>
+                  <p>
+                    The future of movement is here — and every step counts.
+                  </p>
+                  <p className="font-bold text-cyan-200">
+                    Stepora Movement Move with purpose. Earn with every step. 🌍👟
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={dismissAnnouncement}
+                  className="w-full rounded-xl bg-cyan-300 px-4 py-3 text-sm font-black uppercase tracking-wide text-[#08132B] transition-colors hover:bg-cyan-200"
+                >
+                  Got it
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
 
     </div>
   );
