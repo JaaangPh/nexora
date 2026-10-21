@@ -40,7 +40,7 @@ export const TeamTab: React.FC<TeamTabProps> = ({ user, onNavigateMarathon }) =>
   }, [user.id]);
 
   const referralCode = user.referralCode || 'NT723906';
-  const inviteLink = `https://nexoratech.live/register/${referralCode}`;
+  const inviteLink = `https://www.stepm.fun/register/${referralCode}`;
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(referralCode);
