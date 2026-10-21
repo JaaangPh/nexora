@@ -3,7 +3,7 @@
   "appName": "Stepora Movement",
   "webDir": "dist",
   "server": {
-    "url": "https://nexora-rust-nine.vercel.app",
+    "url": "https://www.stepm.fun/",
     "androidScheme": "https",
     "cleartext": true
   },
