@@ -78,6 +78,7 @@ export interface RunnerRule {
   earningRate: number;
   kmLimitPerDay: number;
   healthLimit: number;
+  repairCost: number;
 }
 
 export type RunnerRules = Record<'snk-1' | 'snk-2' | 'snk-3' | 'snk-4', RunnerRule>;

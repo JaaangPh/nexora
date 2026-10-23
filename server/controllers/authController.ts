@@ -951,10 +951,14 @@ export async function repairRunner(req: AuthRequest, res: Response): Promise<voi
       res.status(400).json({ success: false, message: 'This Runner type is no longer supported.' });
       return;
     }
-    const result = await repairUserRunner(req.user.id, runnerInstanceId, quantity, rule.healthLimit);
+    const unitRepairCost = typeof rule.repairCost === 'number' && Number.isFinite(rule.repairCost) && rule.repairCost >= 0
+      ? rule.repairCost
+      : 10;
+    const totalRepairCost = Math.round(unitRepairCost * quantity * 100) / 100;
+    const result = await repairUserRunner(req.user.id, runnerInstanceId, quantity, rule.healthLimit, unitRepairCost);
     res.json({
       success: true,
-      message: `Restored ${result.repairedHealth} health for ₱${result.repairedHealth * 10}.`,
+      message: `Restored ${result.repairedHealth} health for ₱${totalRepairCost}.`,
       user: { balance: result.balance, ownedRunners: result.ownedRunners },
     });
   } catch (error) {

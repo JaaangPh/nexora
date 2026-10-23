@@ -297,6 +297,7 @@ export const Admin: React.FC = () => {
   const [runnerEarningInput, setRunnerEarningInput] = useState('8.4');
   const [runnerKmLimitInput, setRunnerKmLimitInput] = useState('6');
   const [runnerHealthLimitInput, setRunnerHealthLimitInput] = useState('10');
+  const [runnerRepairCostInput, setRunnerRepairCostInput] = useState('10');
   const [isLoadingRunnerRules, setIsLoadingRunnerRules] = useState(false);
   const [isSavingRunnerRule, setIsSavingRunnerRule] = useState(false);
   const [grantRunnerUserId, setGrantRunnerUserId] = useState('');
@@ -398,9 +399,11 @@ export const Admin: React.FC = () => {
       .then((result) => {
         if (!isCurrent) return;
         setRunnerRules(result.rules);
-        setRunnerEarningInput(String(result.rules[selectedRuleRunner as keyof RunnerRules].earningRate));
-        setRunnerKmLimitInput(String(result.rules[selectedRuleRunner as keyof RunnerRules].kmLimitPerDay));
-        setRunnerHealthLimitInput(String(result.rules[selectedRuleRunner as keyof RunnerRules].healthLimit));
+        const currentRule = result.rules[selectedRuleRunner as keyof RunnerRules];
+        setRunnerEarningInput(String(currentRule?.earningRate ?? 0));
+        setRunnerKmLimitInput(String(currentRule?.kmLimitPerDay ?? 1));
+        setRunnerHealthLimitInput(String(currentRule?.healthLimit ?? 10));
+        setRunnerRepairCostInput(String(currentRule?.repairCost ?? 10));
       })
       .catch((loadError: unknown) => {
         if (isCurrent) setError(loadError instanceof Error ? loadError.message : 'Could not load Runner settings.');
@@ -750,16 +753,18 @@ export const Admin: React.FC = () => {
     const earningRate = Number(runnerEarningInput);
     const kmLimitPerDay = Number(runnerKmLimitInput);
     const healthLimit = Number(runnerHealthLimitInput);
+    const repairCost = Number(runnerRepairCostInput);
     if (!Number.isFinite(earningRate) || earningRate < 0 || !Number.isFinite(kmLimitPerDay) || kmLimitPerDay <= 0 ||
-      !Number.isInteger(healthLimit) || healthLimit < 1 || healthLimit > 1000) {
-      setError('Enter a valid earning rate, positive daily distance limit, and whole-number health limit.');
+      !Number.isInteger(healthLimit) || healthLimit < 1 || healthLimit > 1000 ||
+      !Number.isFinite(repairCost) || repairCost < 0) {
+      setError('Enter a valid earning rate, positive daily distance limit, whole-number health limit, and non-negative repair cost.');
       return;
     }
     setIsSavingRunnerRule(true);
     try {
       const result = await adminRequest<{ rules: RunnerRules; message?: string }>('/api/admin/runner-rules', {
         method: 'PUT',
-        body: JSON.stringify({ runnerId: selectedRuleRunner, earningRate, kmLimitPerDay, healthLimit }),
+        body: JSON.stringify({ runnerId: selectedRuleRunner, earningRate, kmLimitPerDay, healthLimit, repairCost }),
       }, sessionToken);
       setRunnerRules(result.rules);
       setNotice(result.message || 'Runner settings updated successfully.');
@@ -1191,7 +1196,7 @@ export const Admin: React.FC = () => {
               <div className="rounded-xl border border-[#1e3a78] bg-[#081b3d] p-5 sm:p-6">
                 <div className="mb-5">
                   <h2 className="text-base font-bold text-white">Runner settings</h2>
-                  <p className="mt-1 text-xs leading-5 text-[#99908b]">Changes to earning, daily distance, and health apply to every Runner of the selected type.</p>
+                  <p className="mt-1 text-xs leading-5 text-[#99908b]">Changes to earning, daily distance, health, and repair cost apply to every Runner of the selected type.</p>
                 </div>
                 {isLoadingRunnerRules ? (
                   <p className="py-8 text-center text-xs text-[#8f9fba]">
@@ -1212,6 +1217,7 @@ export const Admin: React.FC = () => {
                           setRunnerEarningInput(String(rule?.earningRate ?? 0));
                           setRunnerKmLimitInput(String(rule?.kmLimitPerDay ?? 1));
                           setRunnerHealthLimitInput(String(rule?.healthLimit ?? 10));
+                          setRunnerRepairCostInput(String(rule?.repairCost ?? 10));
                         }}
                         className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
                       >
@@ -1231,7 +1237,7 @@ export const Admin: React.FC = () => {
                         className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
                       />
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-3">
                       <div>
                         <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="runner-km-limit">Max km/day</label>
                         <input
@@ -1256,6 +1262,19 @@ export const Admin: React.FC = () => {
                           required
                           value={runnerHealthLimitInput}
                           onChange={(event) => setRunnerHealthLimitInput(event.target.value)}
+                          className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="runner-repair-cost">Repair cost / point (₱)</label>
+                        <input
+                          id="runner-repair-cost"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          required
+                          value={runnerRepairCostInput}
+                          onChange={(event) => setRunnerRepairCostInput(event.target.value)}
                           className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
                         />
                       </div>

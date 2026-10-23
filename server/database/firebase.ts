@@ -520,9 +520,13 @@ export async function repairUserRunner(
   runnerInstanceId: string,
   quantity: number,
   healthLimit: number,
+  repairCostPerPoint: number = 10,
 ): Promise<{ balance: number; ownedRunners: OwnedRunner[]; repairedHealth: number }> {
   const userRef = firestore.collection('users').doc(id);
-  const repairCost = 10 * quantity;
+  const unitCost = typeof repairCostPerPoint === 'number' && Number.isFinite(repairCostPerPoint) && repairCostPerPoint >= 0
+    ? repairCostPerPoint
+    : 10;
+  const repairCost = Math.round(unitCost * quantity * 100) / 100;
 
   return firestore.runTransaction(async (transaction) => {
     const userDocument = await transaction.get(userRef);
@@ -570,7 +574,7 @@ export async function repairUserRunner(
       runnerId: runner.runnerId,
       runnerInstanceId,
       healthRestored: quantity,
-      amountCents: -repairCost * 100,
+      amountCents: -Math.round(repairCost * 100),
       amount: -repairCost,
       createdAt: Date.now(),
     });

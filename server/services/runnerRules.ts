@@ -1,10 +1,10 @@
 import { firestore } from '../database/firebase.js';
 
 export const RUNNER_DEFAULT_RULES = {
-  'snk-1': { earningRate: 8.4, kmLimitPerDay: 6, healthLimit: 10 },
-  'snk-2': { earningRate: 10.2, kmLimitPerDay: 10, healthLimit: 10 },
-  'snk-3': { earningRate: 20.1, kmLimitPerDay: 20, healthLimit: 10 },
-  'snk-4': { earningRate: 40, kmLimitPerDay: 35, healthLimit: 10 },
+  'snk-1': { earningRate: 8.4, kmLimitPerDay: 6, healthLimit: 10, repairCost: 10 },
+  'snk-2': { earningRate: 10.2, kmLimitPerDay: 10, healthLimit: 10, repairCost: 10 },
+  'snk-3': { earningRate: 20.1, kmLimitPerDay: 20, healthLimit: 10, repairCost: 10 },
+  'snk-4': { earningRate: 40, kmLimitPerDay: 35, healthLimit: 10, repairCost: 10 },
 } as const;
 
 export type RunnerId = keyof typeof RUNNER_DEFAULT_RULES;
@@ -12,6 +12,7 @@ export interface RunnerRule {
   earningRate: number;
   kmLimitPerDay: number;
   healthLimit: number;
+  repairCost: number;
 }
 export type RunnerRules = Record<RunnerId, RunnerRule>;
 
@@ -41,6 +42,9 @@ function normalizeRunnerRules(value: unknown): RunnerRules {
         healthLimit: typeof item.healthLimit === 'number' && Number.isInteger(item.healthLimit) && item.healthLimit > 0
           ? item.healthLimit
           : defaults.healthLimit,
+        repairCost: typeof item.repairCost === 'number' && Number.isFinite(item.repairCost) && item.repairCost >= 0
+          ? item.repairCost
+          : defaults.repairCost,
       }];
     }),
   ) as RunnerRules;

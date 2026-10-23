@@ -626,7 +626,7 @@ export async function updateAdminRunnerRule(req: AdminRequest, res: Response): P
     res.status(403).json({ success: false, message: 'Only administrators can manage Runner settings.' });
     return;
   }
-  const { runnerId, earningRate, kmLimitPerDay, healthLimit } = req.body ?? {};
+  const { runnerId, earningRate, kmLimitPerDay, healthLimit, repairCost } = req.body ?? {};
   if (
     typeof runnerId !== 'string' ||
     !isRunnerId(runnerId) ||
@@ -639,13 +639,16 @@ export async function updateAdminRunnerRule(req: AdminRequest, res: Response): P
     typeof healthLimit !== 'number' ||
     !Number.isInteger(healthLimit) ||
     healthLimit < 1 ||
-    healthLimit > 1000
+    healthLimit > 1000 ||
+    typeof repairCost !== 'number' ||
+    !Number.isFinite(repairCost) ||
+    repairCost < 0
   ) {
-    res.status(400).json({ success: false, message: 'Enter a valid Runner earning rate, daily distance limit, and health limit.' });
+    res.status(400).json({ success: false, message: 'Enter a valid Runner earning rate, daily distance limit, health limit, and repair cost.' });
     return;
   }
   try {
-    const rules = await saveRunnerRule(runnerId, { earningRate, kmLimitPerDay, healthLimit });
+    const rules = await saveRunnerRule(runnerId, { earningRate, kmLimitPerDay, healthLimit, repairCost });
     res.json({ success: true, rules, message: 'Runner settings updated successfully.' });
   } catch (error) {
     console.error('[Admin Runner Rules Update Error]', error);

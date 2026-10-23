@@ -34,6 +34,7 @@ export interface RunnerItem {
   comfort: number; // / 10
   healthLimit: number; // Health Limit (before Resilience)
   kmLimitPerDay: number; // KM Limit per day
+  repairCost?: number; // Repair cost per health point
   description: string;
   accentColor: string;
   // Aliases for compatibility with existing references

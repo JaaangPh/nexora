@@ -127,6 +127,10 @@ export const MyRunnerTab: React.FC<MyRunnerTabProps> = ({ user, onUpdateUser, on
           const health = runner.health;
           const missingHealth = runner.healthLimit - health;
           const repairQuantity = Math.min(repairQuantities[runner.id] || 1, missingHealth);
+          const repairUnitCost = typeof runner.repairCost === 'number' && Number.isFinite(runner.repairCost) && runner.repairCost >= 0
+            ? runner.repairCost
+            : 10;
+          const totalRepairCost = Math.round(repairQuantity * repairUnitCost * 100) / 100;
 
           return (
             <article key={runner.id} className="flex gap-3 rounded-2xl border border-[#232731] bg-[#171A21] p-3">
@@ -217,12 +221,12 @@ export const MyRunnerTab: React.FC<MyRunnerTabProps> = ({ user, onUpdateUser, on
                         </button>
                         <button
                           type="button"
-                          disabled={isUpdating || repairQuantity < 1 || (user.balance ?? 0) < repairQuantity * 10}
+                          disabled={isUpdating || repairQuantity < 1 || (user.balance ?? 0) < totalRepairCost}
                           onClick={() => void repairRunner(runner.id, health, runner.healthLimit)}
                           className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-2 text-[10px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <ShoppingBag className="h-3 w-3" />
-                          {isUpdating ? 'Repairing…' : `Repair · ₱${repairQuantity * 10}`}
+                          {isUpdating ? 'Repairing…' : `Repair · ₱${totalRepairCost.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`}
                         </button>
                       </div>
                     )}
