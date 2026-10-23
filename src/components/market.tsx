@@ -112,7 +112,7 @@ export const RUNNER_CATALOG: RunnerItem[] = [
     healthLimit: 10,
     resilience: 10,
     kmLimitPerDay: 35,
-    description: 'Flagship elite racing runner delivering maximum token yields of ₱40/km, 10/10 comfort, and 35KM daily limit.',
+    description: 'Flagship elite racing runner delivering maximum token yields of ₱5/km, 10/10 comfort, and 35KM daily limit.',
     accentColor: '#FF6D00'
   }
 ];
@@ -299,11 +299,10 @@ export const MarketTab: React.FC<MarketTabProps> = ({
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold tracking-wide uppercase transition-all whitespace-nowrap ${
-                  isActive
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-extrabold tracking-wide uppercase transition-all whitespace-nowrap ${isActive
                     ? 'bg-cyan-400 text-[#08132B] shadow-md shadow-cyan-400/20'
                     : 'bg-[#0D204A] text-blue-200/70 hover:text-white border border-[#1E3E80]'
-                }`}
+                  }`}
               >
                 {cat === 'ALL' ? 'ALL RUNNERS' : cat}
               </button>
@@ -337,13 +336,12 @@ export const MarketTab: React.FC<MarketTabProps> = ({
             <div
               key={runner.id}
               onClick={() => setSelectedRunner(runner)}
-              className={`bg-[#0C1B3E] border rounded-3xl p-3 flex flex-col justify-between shadow-lg hover:shadow-cyan-400/10 cursor-pointer transition-all transform hover:-translate-y-0.5 active:scale-[0.98] relative overflow-hidden group select-none ${
-                isEquipped
+              className={`bg-[#0C1B3E] border rounded-3xl p-3 flex flex-col justify-between shadow-lg hover:shadow-cyan-400/10 cursor-pointer transition-all transform hover:-translate-y-0.5 active:scale-[0.98] relative overflow-hidden group select-none ${isEquipped
                   ? 'border-emerald-500/80 shadow-emerald-500/10'
                   : isOwned
-                  ? 'border-cyan-500/50'
-                  : 'border-[#1E3A78]'
-              }`}
+                    ? 'border-cyan-500/50'
+                    : 'border-[#1E3A78]'
+                }`}
             >
               {/* Top Badges */}
               <div className="flex items-center justify-between w-full z-10 mb-1">
@@ -380,7 +378,7 @@ export const MarketTab: React.FC<MarketTabProps> = ({
                 <h4 className="text-xs font-black text-white truncate max-w-full">
                   {runner.name}
                 </h4>
-                
+
                 <div className="flex items-center justify-between w-full text-[10px] px-1 font-mono">
                   <span className="text-emerald-400 font-bold">
                     +₱{runner.earningRate.toFixed(2)}/km
