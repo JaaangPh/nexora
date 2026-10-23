@@ -28,6 +28,7 @@ import {
   PayoutProvider,
   PayoutAccount,
   FirestoreUser,
+  firestore,
 } from '../database/firebase.js';
 import { completeWorkoutAndClearSnapshot, WorkoutError } from '../services/workoutService.js';
 import { displayedNexoraId } from '../services/accountIdentity.js';
@@ -36,9 +37,21 @@ import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES } from '../servi
 import { readRunnerRules } from '../services/runnerRules.js';
 import { sendSignupTelegramNotification } from '../services/telegramNotifications.js';
 import { getTurboPayPayoutBank, isTurboPayPayoutBankCode } from '../../shared/turbopayBanks.js';
+import { normalizeAnnouncement } from '../../shared/announcement.js';
 
 const MAX_WORKOUT_ROUTE_POINTS = 1000;
 const MAX_PROFILE_IMAGE_DATA_URL_LENGTH = 84 * 1024;
+
+export async function getPublicAnnouncement(_req: Request, res: Response): Promise<void> {
+  try {
+    const document = await firestore.collection('app_config').doc('announcement').get();
+    res.json({ success: true, announcement: normalizeAnnouncement(document.data()) });
+  } catch (error) {
+    console.error('[Announcement Error]', error);
+    res.status(500).json({ success: false, message: 'Could not load the announcement.' });
+  }
+}
+
 function isPayoutProvider(value: unknown): value is PayoutProvider {
   return isTurboPayPayoutBankCode(value);
 }

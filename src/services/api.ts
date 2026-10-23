@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { AuthResponse, InviteValidationResponse, InviteCodeItem, OwnedRunner, User } from '../types/auth';
 import { WorkoutSnapshot } from '../types/workout';
+import type { AnnouncementContent } from '../../shared/announcement';
 import {
   getTurboPayPayoutBank,
   isTurboPayPayoutBankCode,
@@ -287,6 +288,12 @@ export const api = {
     referralRewards: number;
   }> {
     return request('/api/auth/referrals', { method: 'GET' });
+  },
+
+  async getAnnouncement(): Promise<{ success: boolean; announcement: AnnouncementContent }> {
+    return request<{ success: boolean; announcement: AnnouncementContent }>('/api/auth/announcement', {
+      method: 'GET',
+    });
   },
 
   async getWorkoutSnapshot(): Promise<{ success: boolean; workoutSnapshot: WorkoutSnapshot | null }> {

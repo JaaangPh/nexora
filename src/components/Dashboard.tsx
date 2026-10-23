@@ -27,6 +27,7 @@ import {
 import { User } from '../types/auth';
 import { BrandLogo } from './BrandLogo';
 import { api, DepositBankCode, DepositOrder, WithdrawalRecord } from '../services/api';
+import { DEFAULT_ANNOUNCEMENT } from '../../shared/announcement';
 
 // Separated Tab Components
 import { MarketTab } from './market';
@@ -95,7 +96,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showAppModal, setShowAppModal] = useState(false);
   const [showAnnouncement, setShowAnnouncement] = useState(false);
-  const announcementStorageKey = `stepora-announcement-v1:${user.id}`;
+  const [announcement, setAnnouncement] = useState(DEFAULT_ANNOUNCEMENT);
+  const announcementStorageKey = `stepora-announcement-v1:${user.id}:${announcement.updatedAt}`;
+  const announcementParagraphs = announcement.body.split(/\n{2,}/);
+
+  useEffect(() => {
+    let isCurrent = true;
+    api.getAnnouncement()
+      .then((result) => {
+        if (isCurrent) setAnnouncement(result.announcement);
+      })
+      .catch((error: unknown) => {
+        if (isCurrent) console.error('[Announcement] Could not load the current announcement.', error);
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [user.id]);
 
   useEffect(() => {
     try {
@@ -884,11 +901,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
             </button>
 
             <div className="min-h-0 overflow-y-auto overscroll-contain">
-              <img
-                src="/images/stepora-announcement.png"
-                alt="Stepora Movement: Whatever your route, keep moving."
-                className="max-h-[38vh] w-full bg-[#061027] object-contain"
-              />
+              {announcement.imageUrl && (
+                <img
+                  src={announcement.imageUrl}
+                  alt={announcement.title}
+                  className="max-h-[38vh] w-full bg-[#061027] object-contain"
+                />
+              )}
 
               <div className="space-y-4 p-5 sm:p-7">
                 <div className="flex items-center gap-2 text-cyan-300">
@@ -900,36 +919,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ user, onLogout, onUpdateUs
 
                 <div>
                   <h2 id="announcement-title" className="text-xl font-black leading-tight text-white sm:text-2xl">
-                    🚀 INTRODUCING STEPORA MOVEMENT 👟
+                    {announcement.title}
                   </h2>
                   <p className="mt-2 text-sm font-bold text-cyan-200">
-                    Move with purpose. Earn with every step.
+                    {announcement.subtitle}
                   </p>
                 </div>
 
                 <div id="announcement-description" className="space-y-3 text-sm leading-relaxed text-blue-100/85">
-                  <p>
-                    Your movement is more than just exercise — it’s an opportunity to earn.
-                  </p>
-                  <p>
-                    Introducing Stepora, a Move-to-Earn platform that transforms verified outdoor activities into on-platform rewards. Whether you’re running solo or moving together with a team, every verified workout brings you closer to your goals.
-                  </p>
-
-                  <div className="space-y-3 rounded-2xl border border-cyan-300/15 bg-white/[0.04] p-4">
-                    <p><strong className="text-cyan-200">🏃 Move &amp; Earn</strong> — Virtual runner assets determine your earning rate, turning every verified step into an opportunity.</p>
-                    <p><strong className="text-cyan-200">✅ Verified Movement</strong> — Our verification engine validates your workouts to ensure your activity counts.</p>
-                    <p><strong className="text-cyan-200">🏆 Team Marathons</strong> — Join forces with others, combine your distances, and compete for shared bounties.</p>
-                  </div>
-
-                  <p className="font-semibold text-white">
-                    Step by step. Run by run. Together, we move forward.
-                  </p>
-                  <p>
-                    The future of movement is here — and every step counts.
-                  </p>
-                  <p className="font-bold text-cyan-200">
-                    Stepora Movement Move with purpose. Earn with every step. 🌍👟
-                  </p>
+                  {announcementParagraphs.map((paragraph, index) => (
+                    <p key={index} className={index === announcementParagraphs.length - 1 ? 'font-bold text-cyan-200' : ''}>
+                      {paragraph.split('\n').map((line, lineIndex) => (
+                        <React.Fragment key={lineIndex}>{lineIndex > 0 && <br />}{line}</React.Fragment>
+                      ))}
+                    </p>
+                  ))}
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">

@@ -14,6 +14,7 @@ import {
   TOTP_PERIOD_SECONDS,
 } from '../services/totp.js';
 import { displayedNexoraId } from '../services/accountIdentity.js';
+import { normalizeAnnouncement } from '../../shared/announcement.js';
 import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES, saveRunnerPricing } from '../services/runnerPricing.js';
 import { isRunnerId, readRunnerRules, saveRunnerRule } from '../services/runnerRules.js';
 import {
@@ -511,6 +512,54 @@ export async function getAdminAccounts(req: AdminRequest, res: Response): Promis
   }
 }
 
+export async function getAdminAnnouncement(req: AdminRequest, res: Response): Promise<void> {
+  if (req.adminRole !== 'admin') {
+    res.status(403).json({ success: false, message: 'Only administrators can manage announcements.' });
+    return;
+  }
+  try {
+    const document = await firestore.collection('app_config').doc('announcement').get();
+    res.json({ success: true, announcement: normalizeAnnouncement(document.data()) });
+  } catch (error) {
+    console.error('[Admin Announcement Error]', error);
+    res.status(500).json({ success: false, message: 'Could not load the announcement.' });
+  }
+}
+
+export async function updateAdminAnnouncement(req: AdminRequest, res: Response): Promise<void> {
+  if (req.adminRole !== 'admin') {
+    res.status(403).json({ success: false, message: 'Only administrators can manage announcements.' });
+    return;
+  }
+
+  const { title, subtitle, body, imageUrl } = req.body ?? {};
+  if (
+    typeof title !== 'string' || !title.trim() || title.trim().length > 120 ||
+    typeof subtitle !== 'string' || subtitle.trim().length > 200 ||
+    typeof body !== 'string' || !body.trim() || body.length > 5000 ||
+    typeof imageUrl !== 'string' || imageUrl.length > 500 ||
+    (imageUrl.trim() && !(/^(https?:\/\/|\/)/i.test(imageUrl.trim())))
+  ) {
+    res.status(400).json({ success: false, message: 'Enter a title (up to 120 characters), subtitle (up to 200 characters), body (up to 5,000 characters), and a valid image URL or path.' });
+    return;
+  }
+
+  const announcement = {
+    title: title.trim(),
+    subtitle: subtitle.trim(),
+    body: body.trim(),
+    imageUrl: imageUrl.trim(),
+    updatedAt: Date.now(),
+  };
+  try {
+    await firestore.collection('app_config').doc('announcement').set(announcement);
+    res.json({ success: true, announcement, message: 'Announcement updated successfully.' });
+  } catch (error) {
+    console.error('[Admin Announcement Update Error]', error);
+    res.status(500).json({ success: false, message: 'Could not update the announcement.' });
+  }
+}
+
 export async function getAdminRunnerPrices(req: AdminRequest, res: Response): Promise<void> {
   if (req.adminRole !== 'admin') {
     res.status(403).json({ success: false, message: 'Only administrators can manage runner prices.' });
@@ -811,12 +860,14 @@ export async function getAdminActiveWorkouts(req: AdminRequest, res: Response): 
   }
 
   try {
-    const [trackingUsers, pendingFinishUsers] = await Promise.all([
+    const [trackingUsers, pausedUsers, pendingFinishUsers] = await Promise.all([
       firestore.collection('users').where('workoutSnapshot.isTracking', '==', true).get(),
+      firestore.collection('users').where('workoutSnapshot.isPaused', '==', true).get(),
       firestore.collection('users').where('workoutSnapshot.pendingFinish', '==', true).get(),
     ]);
     const users = new Map([
       ...trackingUsers.docs.map((document) => [document.id, document] as const),
+      ...pausedUsers.docs.map((document) => [document.id, document] as const),
       ...pendingFinishUsers.docs.map((document) => [document.id, document] as const),
     ]);
 

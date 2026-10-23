@@ -7,6 +7,7 @@ import {
   getMe,
   getPublicRunnerPrices,
   getPublicRunnerRules,
+  getPublicAnnouncement,
   getReferralStats,
   updateUsername,
   updateProfileImage,
@@ -55,6 +56,7 @@ router.post('/logout', authMiddleware, logout);
 router.get('/me', authMiddleware, getMe);
 router.get('/runner-prices', getPublicRunnerPrices);
 router.get('/runner-rules', getPublicRunnerRules);
+router.get('/announcement', getPublicAnnouncement);
 router.get('/referrals', authMiddleware, getReferralStats);
 router.get('/workout', authMiddleware, getWorkoutSnapshot);
 router.put('/workout', authMiddleware, saveWorkoutSnapshot);

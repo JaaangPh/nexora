@@ -5,6 +5,7 @@ import {
   changeAdminPassword,
   createAdminAccount,
   getAdminAccounts,
+  getAdminAnnouncement,
   getAdminActiveWorkouts,
   getAdminTransactions,
   getAdminRunnerPrices,
@@ -13,6 +14,7 @@ import {
   reviewWithdrawal,
   startAdminLogin,
   updateAdminRunnerPrice,
+  updateAdminAnnouncement,
   updateAdminRunnerRule,
   grantAdminRunner,
   verifyAdminTotp,
@@ -38,6 +40,8 @@ router.get('/runner-rules', adminSessionMiddleware, getAdminRunnerRules);
 router.put('/runner-rules', adminSessionMiddleware, updateAdminRunnerRule);
 router.post('/runners/grant', adminSessionMiddleware, grantAdminRunner);
 router.get('/active-workouts', adminSessionMiddleware, getAdminActiveWorkouts);
+router.get('/announcement', adminSessionMiddleware, getAdminAnnouncement);
+router.put('/announcement', adminSessionMiddleware, updateAdminAnnouncement);
 router.get('/users/:userId', adminSessionMiddleware, getAdminUserProfile);
 router.put('/withdrawals/:orderId/review', adminSessionMiddleware, reviewWithdrawal);
 router.put('/auth/password', adminAuthLimiter, adminSessionMiddleware, changeAdminPassword);
