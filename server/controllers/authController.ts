@@ -613,9 +613,29 @@ export async function getWorkoutSnapshot(req: AuthRequest, res: Response): Promi
     }
 
     const snapshot = await getUserWorkoutSnapshot(req.user.id);
+    let recentStopped: Record<string, unknown> | null = null;
+    if (!snapshot) {
+      const recent = await firestore.collection('completed_workouts')
+        .where('userId', '==', req.user.id)
+        .orderBy('completedAt', 'desc')
+        .limit(1)
+        .get();
+      if (!recent.empty) {
+        const doc = recent.docs[0].data();
+        if (doc && doc.forceStoppedByAdmin && Number(doc.completedAt || 0) > Date.now() - 30 * 60 * 1000) {
+          recentStopped = doc;
+        }
+      }
+    }
+
+    const { fromCents, toCents } = await import('../services/workoutRules.js');
     res.json({
       success: true,
       workoutSnapshot: snapshot ? { ...snapshot, accountId: req.user.id } : null,
+      workoutStopped: !snapshot && Boolean(recentStopped),
+      forceStoppedByAdmin: Boolean(recentStopped?.forceStoppedByAdmin),
+      creditedReward: recentStopped ? fromCents(Number(recentStopped.rewardCents || 0)) : undefined,
+      balance: fromCents(toCents(req.user.balance)),
     });
   } catch (error: any) {
     console.error('[Get Workout Snapshot Error]', error);
@@ -642,7 +662,11 @@ export async function saveWorkoutSnapshot(req: AuthRequest, res: Response): Prom
     const saved = await updateUserWorkoutSnapshot(req.user.id, snapshot, req.user.sessionId);
     res.json({
       success: true,
-      workoutSnapshot: { ...saved.workoutSnapshot, accountId: req.user.id },
+      workoutStopped: Boolean(saved.workoutStopped),
+      forceStoppedByAdmin: Boolean(saved.forceStoppedByAdmin),
+      creditedReward: saved.creditedReward,
+      balance: saved.balance,
+      workoutSnapshot: saved.workoutSnapshot ? { ...saved.workoutSnapshot, accountId: req.user.id } : null,
       ...(saved.ownedRunners ? { ownedRunners: saved.ownedRunners } : {}),
     });
   } catch (error: any) {

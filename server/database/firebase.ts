@@ -643,11 +643,20 @@ export async function getUserWorkoutSnapshot(id: string): Promise<Record<string,
     : null;
 }
 
+export interface UpdateWorkoutSnapshotResult {
+  workoutSnapshot: Record<string, unknown> | null;
+  workoutStopped?: boolean;
+  forceStoppedByAdmin?: boolean;
+  creditedReward?: number;
+  balance?: number;
+  ownedRunners?: (OwnedRunner | string)[];
+}
+
 export async function updateUserWorkoutSnapshot(
   id: string,
   snapshot: Record<string, unknown>,
   sessionId: string
-): Promise<{ workoutSnapshot: Record<string, unknown>; ownedRunners?: (OwnedRunner | string)[] }> {
+): Promise<UpdateWorkoutSnapshotResult> {
   const userRef = firestore.collection('users').doc(id);
   const { readRunnerRules } = await import('../services/runnerRules.js');
   return firestore.runTransaction(async (transaction) => {
@@ -660,12 +669,62 @@ export async function updateUserWorkoutSnapshot(
     const currentLastUpdated = Number(currentSnapshot?.lastUpdated || 0);
     const incomingLastUpdated = Number(snapshot.lastUpdated);
     const workoutStartTime = Number(snapshot.workoutStartTime || 0);
+
+    // If current user snapshot is already marked force stopped or cleared
+    if (currentSnapshot?.forceStoppedByAdmin === true || currentSnapshot?.status === 'force_stopped') {
+      const { fromCents, toCents } = await import('../services/workoutRules.js');
+      return {
+        workoutSnapshot: null,
+        workoutStopped: true,
+        forceStoppedByAdmin: true,
+        creditedReward: Number(currentSnapshot.tokensEarned || 0),
+        balance: fromCents(toCents(user.balance)),
+      };
+    }
+
     if (!currentSnapshot && workoutStartTime > 0) {
-      const completedWorkout = await transaction.get(
+      let completedWorkoutDoc = await transaction.get(
         firestore.collection('completed_workouts').doc(`${id}_${Math.trunc(workoutStartTime)}`)
       );
-      if (completedWorkout.exists) {
-        return { workoutSnapshot: {} };
+      if (!completedWorkoutDoc.exists) {
+        const recentSnap = await transaction.get(
+          firestore.collection('completed_workouts')
+            .where('userId', '==', id)
+            .orderBy('completedAt', 'desc')
+            .limit(1)
+        );
+        if (!recentSnap.empty) {
+          const doc = recentSnap.docs[0];
+          const data = doc.data();
+          if (data && (data.forceStoppedByAdmin || Math.abs(Number(data.startedAt || 0) - workoutStartTime) <= 120_000)) {
+            completedWorkoutDoc = doc;
+          }
+        }
+      }
+      if (completedWorkoutDoc.exists) {
+        const completedData = completedWorkoutDoc.data();
+        const { fromCents, toCents } = await import('../services/workoutRules.js');
+        return {
+          workoutSnapshot: null,
+          workoutStopped: true,
+          forceStoppedByAdmin: Boolean(completedData?.forceStoppedByAdmin),
+          creditedReward: fromCents(Number(completedData?.rewardCents || 0)),
+          balance: fromCents(toCents(user.balance)),
+        };
+      }
+
+      // If the workout was ended and is not a new start, do not resurrect it
+      const elapsedSeconds = Number(snapshot.elapsedSeconds || 0);
+      const distanceKm = Number(snapshot.distanceKm || 0);
+      if (elapsedSeconds > 10 || distanceKm > 0 || workoutStartTime < Date.now() - 30_000) {
+        const { fromCents, toCents } = await import('../services/workoutRules.js');
+        return {
+          workoutSnapshot: null,
+          workoutStopped: true,
+          forceStoppedByAdmin: true,
+          creditedReward: Number(snapshot.tokensEarned || 0),
+          balance: fromCents(toCents(user.balance)),
+        };
       }
     }
     if (!canReplaceWorkoutSnapshot(currentSnapshot, snapshot)) {

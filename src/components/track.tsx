@@ -24,7 +24,8 @@ import {
   Sparkles,
   Lock,
   ShoppingBag,
-  Hourglass
+  Hourglass,
+  ShieldAlert,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation, Position } from '@capacitor/geolocation';
@@ -168,6 +169,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     runnerName: '',
   });
   const [sessionRunnerIds, setSessionRunnerIds] = useState<string[]>([]);
+  const [forceStoppedByAdmin, setForceStoppedByAdmin] = useState(false);
 
   // Workout state
   const [isTracking, setIsTracking] = useState(false);
@@ -256,6 +258,63 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const calculateWorkoutEarnings = (distance: number, runners = selectedRunnersRef.current) =>
     Number(runners.reduce((total, runner) => total + Math.min(distance, runner.kmLimitPerDay) * runner.earningRate, 0).toFixed(2));
 
+  const handleRemoteWorkoutForceStopped = (response: {
+    creditedReward?: number;
+    balance?: number;
+    forceStoppedByAdmin?: boolean;
+  }) => {
+    isTrackingRef.current = false;
+    isPausedRef.current = false;
+    setIsTracking(false);
+    setIsPaused(false);
+    releaseWakeLock();
+    void stopContinuousGpsWatch();
+
+    const earned = typeof response.creditedReward === 'number'
+      ? response.creditedReward
+      : Math.round(latestWorkoutStatsRef.current.tokensEarned * 100) / 100;
+    const now = Date.now();
+    const activePauseDuration = isPausedRef.current && pauseStartTimeRef.current > 0
+      ? now - pauseStartTimeRef.current
+      : 0;
+    const elapsedSeconds = workoutStartTimeRef.current > 0
+      ? Math.max(0, Math.floor((now - workoutStartTimeRef.current - pausedDurationRef.current - activePauseDuration) / 1000))
+      : 0;
+    const runnerName = selectedRunnersRef.current.map((r) => r.name).join(' + ') || 'Runner';
+    const summary = {
+      earned,
+      distance: totalDistanceKmRef.current.toFixed(2),
+      time: formatTime(elapsedSeconds),
+      calories: latestWorkoutStatsRef.current.caloriesBurned,
+      runnerName,
+    };
+
+    setLastWorkoutSummary(summary);
+    setForceStoppedByAdmin(true);
+    setIsWorkoutSettled(true);
+    setIsWorkoutVerified(true);
+    setIsSettlingWorkout(false);
+    setShowEndConfirmation(false);
+    setShowFinishModal(true);
+
+    try {
+      if (activeWorkoutStorageKey) localStorage.removeItem(activeWorkoutStorageKey);
+    } catch (e) {}
+    window.dispatchEvent(new Event('nexora:workout-safe-to-update'));
+
+    const runnerIds = sessionRunnerIdsRef.current.length > 0
+      ? sessionRunnerIdsRef.current
+      : selectedRunnersRef.current.map((r) => r.id);
+    const settledBalance = typeof response.balance === 'number'
+      ? response.balance
+      : ((user?.balance || 0) + earned);
+
+    onWorkoutFinish?.(earned, runnerIds, settledBalance);
+    if (user && typeof response.balance === 'number') {
+      onUpdateUser?.({ ...user, balance: response.balance });
+    }
+  };
+
   // --------------------------------------------------------------------------
   // 1. SAVE/RESTORE ACTIVE WORKOUT SESSION (Background / Reload persistence)
   // --------------------------------------------------------------------------
@@ -270,6 +329,10 @@ export const TrackTab: React.FC<TrackTabProps> = ({
             const response = await api.saveWorkoutSnapshot(snapshot);
             if (response.ownedRunners && user) {
               onUpdateUser?.({ ...user, ownedRunners: response.ownedRunners });
+            }
+            if (response.workoutStopped) {
+              handleRemoteWorkoutForceStopped(response);
+              return;
             }
             remoteWorkoutSyncErrorRef.current = null;
             return;
@@ -434,8 +497,26 @@ export const TrackTab: React.FC<TrackTabProps> = ({
       };
     }
 
-    api.getWorkoutSnapshot().then(({ workoutSnapshot }) => {
-      if (isCancelled || !workoutSnapshot) return;
+    api.getWorkoutSnapshot().then((result) => {
+      if (isCancelled) return;
+      const { workoutSnapshot } = result;
+      if (!workoutSnapshot) {
+        if (localSnapshot && (localSnapshot.isTracking || localSnapshot.pendingFinish)) {
+          if (activeWorkoutStorageKey) {
+            try { localStorage.removeItem(activeWorkoutStorageKey); } catch (e) {}
+          }
+          isTrackingRef.current = false;
+          isPausedRef.current = false;
+          setIsTracking(false);
+          setIsPaused(false);
+          void stopContinuousGpsWatch();
+          releaseWakeLock();
+          if (result.workoutStopped && result.forceStoppedByAdmin) {
+            handleRemoteWorkoutForceStopped(result);
+          }
+        }
+        return;
+      }
       if (shouldPreferRemoteWorkoutSnapshot(localSnapshot, workoutSnapshot)) {
         const restoredSnapshot = mergeWorkoutSnapshots(localSnapshot, workoutSnapshot);
         restoreWorkoutSnapshot(restoredSnapshot, true);
@@ -1040,7 +1121,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
     if (!isTracking || isOffline) return;
     const intervalId = window.setInterval(() => {
       void saveWorkoutSnapshot(false, lastWorkoutSummary, true);
-    }, 10_000);
+    }, 3_000);
     return () => window.clearInterval(intervalId);
   }, [isTracking, isOffline]);
 
@@ -1080,6 +1161,7 @@ export const TrackTab: React.FC<TrackTabProps> = ({
   const handleContinueAfterWorkout = () => {
     if (!isWorkoutSettled) return;
     setShowFinishModal(false);
+    setForceStoppedByAdmin(false);
 
     const runnerIds = sessionRunnerIdsRef.current.length > 0
       ? sessionRunnerIdsRef.current
@@ -1730,15 +1812,17 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
             <div>
               <h3 className="text-xl font-black text-white tracking-tight">
-                Workout Complete!
+                {forceStoppedByAdmin ? 'Workout Concluded by Admin' : 'Workout Complete!'}
               </h3>
               <p className="text-xs text-slate-300 mt-1">
-                Your workout using <span className="text-[#D8FD2F] font-bold">{lastWorkoutSummary.runnerName}</span> has ended.{' '}
-                {isWorkoutSettled
-                  ? isWorkoutVerified
-                    ? 'Its validated reward was added to your balance.'
-                    : 'It could not be verified, so no reward was added to your balance.'
-                  : 'Its reward is being verified and credited to your balance.'}{' '}
+                {forceStoppedByAdmin
+                  ? `This workout was stopped by an administrator. ₱${lastWorkoutSummary.earned.toFixed(2)} accrued before the stop has been added to your balance.`
+                  : `Your workout using ${lastWorkoutSummary.runnerName} has ended. ` +
+                    (isWorkoutSettled
+                      ? isWorkoutVerified
+                        ? 'Its validated reward was added to your balance.'
+                        : 'It could not be verified, so no reward was added to your balance.'
+                      : 'Its reward is being verified and credited to your balance.') + ' '}
                 {endedAtDistanceLimit && 'You reached the selected Runners’ combined distance limit, so the workout ended automatically. '}
                 The selected Runners enter a 12-hour cooldown.
               </p>
@@ -1746,13 +1830,15 @@ export const TrackTab: React.FC<TrackTabProps> = ({
 
             <div className="bg-[#0E1118] border border-[#232936] rounded-2xl p-4 space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                  {isWorkoutSettled && isWorkoutVerified
-                    ? 'Reward Credited to Balance'
-                    : isWorkoutSettled
-                      ? 'Workout Not Verified — No Reward Credited'
-                    : isSettlingWorkout
-                      ? 'Verifying and Crediting Reward'
-                      : 'Reward Not Yet Credited'}
+                  {forceStoppedByAdmin
+                    ? 'Earnings Credited Before Stop'
+                    : isWorkoutSettled && isWorkoutVerified
+                      ? 'Reward Credited to Balance'
+                      : isWorkoutSettled
+                        ? 'Workout Not Verified — No Reward Credited'
+                      : isSettlingWorkout
+                        ? 'Verifying and Crediting Reward'
+                        : 'Reward Not Yet Credited'}
                 </span>
               <div className="text-3xl font-black font-mono text-[#D8FD2F]">
                 +₱{lastWorkoutSummary.earned.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1773,14 +1859,24 @@ export const TrackTab: React.FC<TrackTabProps> = ({
               </div>
             </div>
 
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 text-[10px] text-amber-200 flex items-center justify-center gap-1.5 font-semibold">
-              <Hourglass className="w-3.5 h-3.5 text-amber-400" />
+            <div className={`rounded-xl p-2.5 text-[10px] flex items-center justify-center gap-1.5 font-semibold ${
+              forceStoppedByAdmin
+                ? 'bg-cyan-500/10 border border-cyan-500/30 text-cyan-200'
+                : 'bg-amber-500/10 border border-amber-500/30 text-amber-200'
+            }`}>
+              {forceStoppedByAdmin ? (
+                <ShieldAlert className="w-3.5 h-3.5 text-cyan-300" />
+              ) : (
+                <Hourglass className="w-3.5 h-3.5 text-amber-400" />
+              )}
               <span>
-                {isWorkoutSettled
-                  ? isWorkoutVerified
-                    ? 'Reward credited to your wallet.'
-                    : 'This workout could not be verified, so no reward was credited.'
-                  : 'Your workout reward is being validated and added to your wallet.'}
+                {forceStoppedByAdmin
+                  ? `₱${lastWorkoutSummary.earned.toFixed(2)} credited to your wallet balance.`
+                  : isWorkoutSettled
+                    ? isWorkoutVerified
+                      ? 'Reward credited to your wallet.'
+                      : 'This workout could not be verified, so no reward was credited.'
+                    : 'Your workout reward is being validated and added to your wallet.'}
               </span>
             </div>
 

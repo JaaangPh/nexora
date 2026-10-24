@@ -298,18 +298,44 @@ export const api = {
     });
   },
 
-  async getWorkoutSnapshot(): Promise<{ success: boolean; workoutSnapshot: WorkoutSnapshot | null }> {
-    return request<{ success: boolean; workoutSnapshot: WorkoutSnapshot | null }>('/api/auth/workout', {
+  async getWorkoutSnapshot(): Promise<{
+    success: boolean;
+    workoutSnapshot: WorkoutSnapshot | null;
+    workoutStopped?: boolean;
+    forceStoppedByAdmin?: boolean;
+    creditedReward?: number;
+    balance?: number;
+  }> {
+    return request<{
+      success: boolean;
+      workoutSnapshot: WorkoutSnapshot | null;
+      workoutStopped?: boolean;
+      forceStoppedByAdmin?: boolean;
+      creditedReward?: number;
+      balance?: number;
+    }>('/api/auth/workout', {
       method: 'GET',
     });
   },
 
   async saveWorkoutSnapshot(snapshot: WorkoutSnapshot): Promise<{
     success: boolean;
-    workoutSnapshot: WorkoutSnapshot;
+    workoutSnapshot: WorkoutSnapshot | null;
+    workoutStopped?: boolean;
+    forceStoppedByAdmin?: boolean;
+    creditedReward?: number;
+    balance?: number;
     ownedRunners?: (OwnedRunner | string)[];
   }> {
-    return request<{ success: boolean; workoutSnapshot: WorkoutSnapshot; ownedRunners?: (OwnedRunner | string)[] }>('/api/auth/workout', {
+    return request<{
+      success: boolean;
+      workoutSnapshot: WorkoutSnapshot | null;
+      workoutStopped?: boolean;
+      forceStoppedByAdmin?: boolean;
+      creditedReward?: number;
+      balance?: number;
+      ownedRunners?: (OwnedRunner | string)[];
+    }>('/api/auth/workout', {
       method: 'PUT',
       body: JSON.stringify(snapshot),
     });
