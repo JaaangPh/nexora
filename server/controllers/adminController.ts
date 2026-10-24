@@ -811,6 +811,24 @@ export async function getAdminUserProfile(req: AdminRequest, res: Response): Pro
         }];
       });
 
+    const runnerIdByInstanceId = new Map<string, string>();
+    for (const r of ownedRunners) {
+      if (r?.id && r?.runnerId) {
+        runnerIdByInstanceId.set(r.id, r.runnerId);
+      }
+    }
+
+    const runnerCatalogNames: Record<string, string> = {
+      'snk-1': 'Cyber Aero Walker',
+      'snk-2': 'Bio Surge Trainer',
+      'snk-3': 'Cobalt Aero Jogger',
+      'snk-4': 'Vortex Blaze Sprint',
+      '1': 'Cyber Aero Walker',
+      '2': 'Bio Surge Trainer',
+      '3': 'Cobalt Aero Jogger',
+      '4': 'Vortex Blaze Sprint',
+    };
+
     const rawWorkout = user.workoutSnapshot && typeof user.workoutSnapshot === 'object'
       ? user.workoutSnapshot as Record<string, unknown>
       : null;
@@ -818,6 +836,16 @@ export async function getAdminUserProfile(req: AdminRequest, res: Response): Pro
       rawWorkout &&
       (rawWorkout.isTracking === true || rawWorkout.isPaused === true || rawWorkout.pendingFinish === true)
     );
+    const rawWorkoutRunnerIds = Array.isArray(rawWorkout?.runnerIds)
+      ? (rawWorkout.runnerIds as unknown[]).map((id) => String(id)).filter(Boolean)
+      : typeof rawWorkout?.runnerId === 'string' && rawWorkout.runnerId
+        ? [rawWorkout.runnerId]
+        : [];
+    const activeWorkoutRunners = rawWorkoutRunnerIds.map((id) => {
+      const catalogId = runnerIdByInstanceId.get(id) || id;
+      return runnerCatalogNames[catalogId] || runnerCatalogNames[id] || `Runner (${catalogId})`;
+    });
+
     const activeWorkout = workoutActive && rawWorkout ? {
       status: rawWorkout.pendingFinish === true
         ? 'Pending claim'
@@ -829,10 +857,24 @@ export async function getAdminUserProfile(req: AdminRequest, res: Response): Pro
       elapsedSeconds: Number.isFinite(Number(rawWorkout.elapsedSeconds)) ? Number(rawWorkout.elapsedSeconds) : 0,
       tokensEarned: Number.isFinite(Number(rawWorkout.tokensEarned)) ? Number(rawWorkout.tokensEarned) : 0,
       lastUpdated: Number.isFinite(Number(rawWorkout.lastUpdated)) ? Number(rawWorkout.lastUpdated) : 0,
+      runnerIds: rawWorkoutRunnerIds,
+      runners: activeWorkoutRunners,
     } : null;
 
     const pastTracks = workoutSnapshot.docs.map((document) => {
       const workout = document.data();
+      const rawRunnerIds: unknown = workout.selectedRunnerIds ?? workout.runnerIds ?? workout.runnerId;
+      const runnerIdList: string[] = Array.isArray(rawRunnerIds)
+        ? rawRunnerIds.map((id) => String(id)).filter(Boolean)
+        : typeof rawRunnerIds === 'string' && rawRunnerIds
+          ? [rawRunnerIds]
+          : [];
+
+      const resolvedRunnerNames = runnerIdList.map((id) => {
+        const catalogId = runnerIdByInstanceId.get(id) || id;
+        return runnerCatalogNames[catalogId] || runnerCatalogNames[id] || `Runner (${catalogId})`;
+      });
+
       return {
         id: String(workout.id || document.id),
         startedAt: toIsoDate(workout.startedAt),
@@ -840,6 +882,8 @@ export async function getAdminUserProfile(req: AdminRequest, res: Response): Pro
         distanceKm: Number.isFinite(Number(workout.verifiedMeters)) ? Number(workout.verifiedMeters) / 1000 : 0,
         earned: Number.isFinite(Number(workout.rewardCents)) ? Number(workout.rewardCents) / 100 : 0,
         claimed: workout.rewardVerified === true && Number(workout.rewardCents) > 0,
+        runnerIds: runnerIdList,
+        runners: resolvedRunnerNames,
       };
     }).sort((first, second) => Date.parse(second.completedAt) - Date.parse(first.completedAt));
 

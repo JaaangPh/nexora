@@ -101,6 +101,8 @@ interface AdminUserProfile {
     elapsedSeconds: number;
     tokensEarned: number;
     lastUpdated: number;
+    runnerIds?: string[];
+    runners?: string[];
   } | null;
   pastTracks: Array<{
     id: string;
@@ -109,6 +111,8 @@ interface AdminUserProfile {
     distanceKm: number;
     earned: number;
     claimed: boolean;
+    runnerIds?: string[];
+    runners?: string[];
   }>;
 }
 
@@ -138,6 +142,10 @@ const runnerNames: Record<string, string> = {
   'snk-2': 'Bio Surge Trainer',
   'snk-3': 'Cobalt Aero Jogger',
   'snk-4': 'Vortex Blaze Sprint',
+  '1': 'Cyber Aero Walker',
+  '2': 'Bio Surge Trainer',
+  '3': 'Cobalt Aero Jogger',
+  '4': 'Vortex Blaze Sprint',
 };
 
 async function adminRequest<T>(
@@ -2308,6 +2316,18 @@ function UserProfileSection({
                   <ProfileMetric label="Time" value={formatWorkoutDuration(elapsedSeconds)} />
                   <ProfileMetric label="Earned" value={currency.format(activeWorkout.tokensEarned)} />
                 </div>
+                {activeWorkout.runners && activeWorkout.runners.length > 0 && (
+                  <div className="mt-3 flex items-center gap-2 text-xs text-[#8f9fba]">
+                    <span>Runner:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {activeWorkout.runners.map((name, idx) => (
+                        <span key={idx} className="rounded-md border border-cyan-500/30 bg-cyan-950/50 px-2 py-0.5 text-[11px] font-medium text-cyan-200">
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <p className="mt-3 text-[10px] text-[#8f9fba]">Live updates every 5 seconds.</p>
               </div>
             ) : (
@@ -2320,10 +2340,11 @@ function UserProfileSection({
                 <p className="mt-1 text-[11px] text-[#817c79]">{profile.pastTracks.length} completed tracks</p>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[600px] text-left">
+                <table className="w-full min-w-[700px] text-left">
                   <thead className="bg-[#06132e] text-[10px] uppercase tracking-wider text-[#8f9fba]">
                     <tr>
                       <th className="px-4 py-3 font-semibold">Time / Date</th>
+                      <th className="px-4 py-3 font-semibold">Runner</th>
                       <th className="px-4 py-3 text-right font-semibold">KM</th>
                       <th className="px-4 py-3 text-right font-semibold">Earned</th>
                       <th className="px-4 py-3 font-semibold">Claimed</th>
@@ -2331,19 +2352,42 @@ function UserProfileSection({
                   </thead>
                   <tbody className="divide-y divide-[#1e3a78] text-xs">
                     {profile.pastTracks.length === 0 ? (
-                      <tr><td colSpan={4} className="px-4 py-8 text-center text-[#8f9fba]">No past tracks found.</td></tr>
-                    ) : profile.pastTracks.map((track) => (
-                      <tr key={track.id} className="hover:bg-[#10234a]">
-                        <td className="px-4 py-3 text-[#a39b96]">{track.completedAt ? new Date(track.completedAt).toLocaleString() : track.startedAt ? new Date(track.startedAt).toLocaleString() : '—'}</td>
-                        <td className="px-4 py-3 text-right font-mono text-white">{track.distanceKm.toFixed(2)} km</td>
-                        <td className="px-4 py-3 text-right font-semibold text-white">{currency.format(track.earned)}</td>
-                        <td className="px-4 py-3">
-                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${track.claimed ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-700/60 text-slate-300'}`}>
-                            {track.claimed ? 'Claimed' : 'Not claimed'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                      <tr><td colSpan={5} className="px-4 py-8 text-center text-[#8f9fba]">No past tracks found.</td></tr>
+                    ) : profile.pastTracks.map((track) => {
+                      const displayRunners = (track.runners && track.runners.length > 0)
+                        ? track.runners
+                        : (track.runnerIds && track.runnerIds.length > 0)
+                          ? track.runnerIds.map((id) => runnerNames[id] || `Runner (${id})`)
+                          : [];
+                      return (
+                        <tr key={track.id} className="hover:bg-[#10234a]">
+                          <td className="px-4 py-3 text-[#a39b96]">{track.completedAt ? new Date(track.completedAt).toLocaleString() : track.startedAt ? new Date(track.startedAt).toLocaleString() : '—'}</td>
+                          <td className="px-4 py-3 font-medium text-white">
+                            {displayRunners.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5">
+                                {displayRunners.map((runnerName, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="inline-flex items-center rounded-md border border-cyan-500/30 bg-cyan-950/50 px-2 py-0.5 text-[11px] font-medium text-cyan-200"
+                                  >
+                                    {runnerName}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-[#8f9fba]">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-white">{track.distanceKm.toFixed(2)} km</td>
+                          <td className="px-4 py-3 text-right font-semibold text-white">{currency.format(track.earned)}</td>
+                          <td className="px-4 py-3">
+                            <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${track.claimed ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-700/60 text-slate-300'}`}>
+                              {track.claimed ? 'Claimed' : 'Not claimed'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
