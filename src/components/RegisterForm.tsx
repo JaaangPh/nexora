@@ -3,6 +3,7 @@ import { Lock, Eye, EyeOff, KeyRound, AlertCircle, CheckCircle2, Loader2, UserPl
 import { api } from '../services/api';
 import { User } from '../types/auth';
 import { PhoneNumberInput } from './PhoneNumberInput';
+import { TurnstileWidget } from './TurnstileWidget';
 
 interface RegisterFormProps {
   onSuccess: (user: User) => void;
@@ -26,6 +27,8 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string>('');
+  const [turnstileResetCount, setTurnstileResetCount] = useState(0);
 
   // Submit Registration
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,11 +61,16 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
       return;
     }
 
+    if (!turnstileToken) {
+      setErrorMessage('Please complete the verification check before creating an account.');
+      return;
+    }
+
     // 4. Phone format check
     setIsLoading(true);
 
     try {
-      const res = await api.register(phoneNumber, password, confirmPassword, inviteCode);
+      const res = await api.register(phoneNumber, password, confirmPassword, inviteCode, turnstileToken);
       if (res.success && res.user) {
         setSuccessMessage('Registration successful! Redirecting to your secure portal...');
         setTimeout(() => {
@@ -70,9 +78,13 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
         }, 1000);
       } else {
         setErrorMessage(res.message || 'Registration rejected by the server.');
+        setTurnstileToken('');
+        setTurnstileResetCount((prev) => prev + 1);
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to create account. Please check your information.');
+      setTurnstileToken('');
+      setTurnstileResetCount((prev) => prev + 1);
     } finally {
       setIsLoading(false);
     }
@@ -252,6 +264,22 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({
           <p className="mt-1 pl-1 text-[11px] font-medium text-[#64748B]">
             Optional. If provided, the referral code must belong to an existing member.
           </p>
+        </div>
+
+        {/* Cloudflare Turnstile */}
+        <div className="pt-2 flex justify-center">
+          <TurnstileWidget
+            onVerify={(token) => {
+              setTurnstileToken(token);
+              setErrorMessage(null);
+            }}
+            onExpire={() => setTurnstileToken('')}
+            onError={() => {
+              setTurnstileToken('');
+              setErrorMessage('Verification challenge failed. Please try again.');
+            }}
+            resetTrigger={turnstileResetCount}
+          />
         </div>
 
         {/* Create Account Primary Button */}

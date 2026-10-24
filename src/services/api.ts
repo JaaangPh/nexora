@@ -240,10 +240,10 @@ export const api = {
     return result.prices;
   },
 
-  async login(phoneNumber: string, password: string): Promise<AuthResponse> {
+  async login(phoneNumber: string, password: string, turnstileToken?: string): Promise<AuthResponse> {
     const res = await request<AuthResponse>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ phoneNumber, password }),
+      body: JSON.stringify({ phoneNumber, password, turnstileToken }),
     });
     if (res.token && res.user) {
       setStoredSession(res.token, res.user);
@@ -255,11 +255,12 @@ export const api = {
     phoneNumber: string,
     password: string,
     confirmPassword: string,
-    inviteCode: string
+    inviteCode: string,
+    turnstileToken?: string
   ): Promise<AuthResponse> {
     const res = await request<AuthResponse>('/api/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ phoneNumber, password, confirmPassword, inviteCode }),
+      body: JSON.stringify({ phoneNumber, password, confirmPassword, inviteCode, turnstileToken }),
     });
     if (res.token && res.user) {
       setStoredSession(res.token, res.user);

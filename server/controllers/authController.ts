@@ -38,6 +38,7 @@ import { readRunnerRules } from '../services/runnerRules.js';
 import { sendSignupTelegramNotification } from '../services/telegramNotifications.js';
 import { getTurboPayPayoutBank, isTurboPayPayoutBankCode } from '../../shared/turbopayBanks.js';
 import { normalizeAnnouncement } from '../../shared/announcement.js';
+import { verifyTurnstileToken } from '../services/turnstile.js';
 
 const MAX_WORKOUT_ROUTE_POINTS = 1000;
 const MAX_PROFILE_IMAGE_DATA_URL_LENGTH = 84 * 1024;
@@ -188,7 +189,18 @@ async function issueSession(user: { id: string; phoneNumber: string; role: strin
  */
 export async function register(req: Request, res: Response): Promise<void> {
   try {
-    const { phoneNumber, password, confirmPassword, inviteCode } = req.body;
+    const { phoneNumber, password, confirmPassword, inviteCode, turnstileToken } = req.body;
+
+    // 0. Verify Cloudflare Turnstile human check
+    const clientIp = (req.headers['cf-connecting-ip'] as string) || req.ip;
+    const turnstileCheck = await verifyTurnstileToken(turnstileToken, clientIp);
+    if (!turnstileCheck.success) {
+      res.status(400).json({
+        success: false,
+        message: turnstileCheck.error || 'Human verification failed. Please try again.',
+      });
+      return;
+    }
 
     // 1. Required fields check
     if (!phoneNumber || !password) {
@@ -326,7 +338,18 @@ export async function register(req: Request, res: Response): Promise<void> {
  */
 export async function login(req: Request, res: Response): Promise<void> {
   try {
-    const { phoneNumber, password } = req.body;
+    const { phoneNumber, password, turnstileToken } = req.body;
+
+    // 0. Verify Cloudflare Turnstile human check
+    const clientIp = (req.headers['cf-connecting-ip'] as string) || req.ip;
+    const turnstileCheck = await verifyTurnstileToken(turnstileToken, clientIp);
+    if (!turnstileCheck.success) {
+      res.status(400).json({
+        success: false,
+        message: turnstileCheck.error || 'Human verification failed. Please try again.',
+      });
+      return;
+    }
 
     if (!phoneNumber || !password) {
       res.status(400).json({

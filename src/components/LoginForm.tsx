@@ -4,6 +4,7 @@ import { api } from '../services/api';
 import { User } from '../types/auth';
 import { SecurityNotice } from './SecurityNotice';
 import { PhoneNumberInput } from './PhoneNumberInput';
+import { TurnstileWidget } from './TurnstileWidget';
 
 interface LoginFormProps {
   onSuccess: (user: User) => void;
@@ -19,6 +20,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [turnstileToken, setTurnstileToken] = useState<string>('');
+  const [turnstileResetCount, setTurnstileResetCount] = useState(0);
 
   // Field validation helper
   const handleSubmit = async (e: React.FormEvent) => {
@@ -36,17 +39,26 @@ export const LoginForm: React.FC<LoginFormProps> = ({
       return;
     }
 
+    if (!turnstileToken) {
+      setErrorMessage('Please complete the verification check before logging in.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const response = await api.login(phoneNumber, password);
+      const response = await api.login(phoneNumber, password, turnstileToken);
       if (response.success && response.user) {
         onSuccess(response.user);
       } else {
         setErrorMessage(response.message || 'Login failed. Please check your credentials.');
+        setTurnstileToken('');
+        setTurnstileResetCount((prev) => prev + 1);
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'Invalid phone number or password. Please try again.');
+      setTurnstileToken('');
+      setTurnstileResetCount((prev) => prev + 1);
     } finally {
       setIsLoading(false);
     }
@@ -142,6 +154,22 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
+        </div>
+
+        {/* Cloudflare Turnstile */}
+        <div className="pt-2 flex justify-center">
+          <TurnstileWidget
+            onVerify={(token) => {
+              setTurnstileToken(token);
+              setErrorMessage(null);
+            }}
+            onExpire={() => setTurnstileToken('')}
+            onError={() => {
+              setTurnstileToken('');
+              setErrorMessage('Verification challenge failed. Please try again.');
+            }}
+            resetTrigger={turnstileResetCount}
+          />
         </div>
 
         {/* Login Primary Button */}
