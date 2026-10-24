@@ -17,6 +17,7 @@ import {
   LogOut,
   Menu,
   Megaphone,
+  OctagonAlert,
   Percent,
   RefreshCw,
   Search,
@@ -618,6 +619,9 @@ export const Admin: React.FC = () => {
     };
   }, [activeView, profileLookupId, profileRefreshKey, sessionToken]);
 
+  const [activeWorkoutsRefreshKey, setActiveWorkoutsRefreshKey] = useState(0);
+  const [stoppingWorkoutUserId, setStoppingWorkoutUserId] = useState<string | null>(null);
+
   useEffect(() => {
     if (!sessionToken || role !== 'admin' || activeView !== 'profile') return;
     let isCurrent = true;
@@ -648,7 +652,42 @@ export const Admin: React.FC = () => {
       isCurrent = false;
       window.clearInterval(intervalId);
     };
-  }, [activeView, role, sessionToken]);
+  }, [activeView, role, sessionToken, activeWorkoutsRefreshKey]);
+
+  const handleForceStopWorkout = async (target: {
+    userId: string;
+    username: string;
+    steporaId: string;
+    distanceKm: number;
+    tokensEarned: number;
+  }) => {
+    if (!sessionToken || role !== 'admin') return;
+    setStoppingWorkoutUserId(target.userId);
+    setError('');
+    setNotice('');
+    try {
+      const result = await adminRequest<{
+        message: string;
+        creditedReward: number;
+        balance: number;
+      }>(`/api/admin/users/${encodeURIComponent(target.userId)}/force-stop-workout`, {
+        method: 'POST',
+      }, sessionToken);
+
+      setNotice(result.message || `Workout for ${target.username} was stopped. ₱${result.creditedReward.toFixed(2)} was credited to their balance.`);
+
+      setActiveWorkouts((current) => current.filter((w) => w.userId !== target.userId));
+      setActiveWorkoutsRefreshKey((k) => k + 1);
+
+      if (profileLookupId === target.userId || (userProfile && userProfile.userId === target.userId)) {
+        setProfileRefreshKey((key) => key + 1);
+      }
+    } catch (stopError: unknown) {
+      setError(stopError instanceof Error ? stopError.message : 'Could not force stop the workout.');
+    } finally {
+      setStoppingWorkoutUserId(null);
+    }
+  };
 
   const filteredTransactions = useMemo(() => {
     const now = Date.now();
@@ -1955,6 +1994,8 @@ export const Admin: React.FC = () => {
                 setUserProfile(null);
                 setProfileRefreshKey((key) => key + 1);
               }}
+              onForceStopWorkout={handleForceStopWorkout}
+              stoppingWorkoutUserId={stoppingWorkoutUserId}
             />
           )}
         </div>
@@ -1974,6 +2015,8 @@ function UserProfileSection({
   isLoadingActiveWorkouts,
   activeWorkoutsError,
   onSelectActiveWorkout,
+  onForceStopWorkout,
+  stoppingWorkoutUserId,
 }: {
   searchInput: string;
   onSearchInputChange: (value: string) => void;
@@ -1985,8 +2028,23 @@ function UserProfileSection({
   isLoadingActiveWorkouts: boolean;
   activeWorkoutsError: string;
   onSelectActiveWorkout: (workout: AdminActiveWorkout) => void;
+  onForceStopWorkout?: (workout: {
+    userId: string;
+    username: string;
+    steporaId: string;
+    distanceKm: number;
+    tokensEarned: number;
+  }) => Promise<void>;
+  stoppingWorkoutUserId?: string | null;
 }) {
   const [clock, setClock] = useState(Date.now());
+  const [confirmTarget, setConfirmTarget] = useState<{
+    userId: string;
+    username: string;
+    steporaId: string;
+    distanceKm: number;
+    tokensEarned: number;
+  } | null>(null);
   useEffect(() => {
     if (!profile?.activeWorkout && activeWorkouts.length === 0) return;
     const intervalId = window.setInterval(() => setClock(Date.now()), 1000);
@@ -2068,25 +2126,51 @@ function UserProfileSection({
                     : 0
                 );
                 return (
-                  <li key={workout.userId}>
-                    <button
-                      type="button"
+                  <li key={workout.userId} className="group relative overflow-hidden rounded-lg border border-[#24466f] bg-[#06132e] p-3 transition hover:border-cyan-300 hover:bg-[#10234a]">
+                    <div
                       onClick={() => onSelectActiveWorkout(workout)}
-                      className="w-full rounded-lg border border-[#24466f] bg-[#06132e] p-3 text-left transition hover:border-cyan-300 hover:bg-[#10234a] focus:outline-none focus:ring-2 focus:ring-cyan-300"
+                      className="cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelectActiveWorkout(workout); }}
                     >
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <span>
                           <span className="block text-xs font-semibold text-white">{workout.username}</span>
                           <span className="mt-1 block font-mono text-[10px] text-cyan-200">ID {workout.steporaId}</span>
                         </span>
-                        <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[9px] font-bold uppercase text-cyan-200">{workout.status}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[9px] font-bold uppercase text-cyan-200">{workout.status}</span>
+                        </div>
                       </div>
                       <div className="mt-3 grid grid-cols-3 gap-2 text-[10px]">
                         <span className="text-[#8f9fba]">KM <strong className="block mt-1 text-xs text-white">{workout.distanceKm.toFixed(2)}</strong></span>
                         <span className="text-[#8f9fba]">Time <strong className="block mt-1 text-xs text-white">{formatWorkoutDuration(liveElapsed)}</strong></span>
-                        <span className="text-[#8f9fba]">Earned <strong className="block mt-1 text-xs text-white">{currency.format(workout.tokensEarned)}</strong></span>
+                        <span className="text-[#8f9fba]">Earned <strong className="block mt-1 text-xs font-bold text-emerald-400">{currency.format(workout.tokensEarned)}</strong></span>
                       </div>
-                    </button>
+                    </div>
+                    {onForceStopWorkout && (
+                      <div className="mt-2.5 flex items-center justify-between border-t border-[#1e3a78]/60 pt-2">
+                        <span className="text-[10px] text-[#8f9fba]">Earned before stop: <strong className="text-emerald-300">{currency.format(workout.tokensEarned)}</strong></span>
+                        <button
+                          type="button"
+                          disabled={stoppingWorkoutUserId === workout.userId}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmTarget(workout);
+                          }}
+                          className="flex items-center gap-1.5 rounded-md border border-rose-500/40 bg-rose-500/15 px-2.5 py-1 text-[11px] font-bold text-rose-300 transition hover:bg-rose-500/30 hover:text-white disabled:opacity-50"
+                          title="Force stop workout and reward current earnings"
+                        >
+                          {stoppingWorkoutUserId === workout.userId ? (
+                            <LoaderCircle className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <OctagonAlert className="h-3 w-3" />
+                          )}
+                          <span>Force stop &amp; reward</span>
+                        </button>
+                      </div>
+                    )}
                   </li>
                 );
               })}
@@ -2190,12 +2274,34 @@ function UserProfileSection({
             </div>
             {activeWorkout ? (
               <div className="rounded-xl border border-cyan-500/30 bg-[#081b3d] p-4 sm:p-5">
-                <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     <Activity className="h-4 w-4 text-cyan-300" />
                     <h3 className="text-sm font-bold text-white">Ongoing workout</h3>
+                    <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-[10px] font-bold uppercase text-cyan-200">{activeWorkout.status}</span>
                   </div>
-                  <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-[10px] font-bold uppercase text-cyan-200">{activeWorkout.status}</span>
+                  {onForceStopWorkout && (
+                    <button
+                      type="button"
+                      disabled={stoppingWorkoutUserId === profile.userId}
+                      onClick={() => setConfirmTarget({
+                        userId: profile.userId,
+                        username: profile.username,
+                        steporaId: profile.steporaId,
+                        distanceKm: activeWorkout.distanceKm,
+                        tokensEarned: activeWorkout.tokensEarned,
+                      })}
+                      className="flex items-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-500/15 px-3 py-1.5 text-xs font-bold text-rose-300 transition hover:bg-rose-500/30 hover:text-white disabled:opacity-50"
+                      title="Force stop workout and credit current earnings"
+                    >
+                      {stoppingWorkoutUserId === profile.userId ? (
+                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <OctagonAlert className="h-3.5 w-3.5" />
+                      )}
+                      <span>Force Stop &amp; Reward</span>
+                    </button>
+                  )}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <ProfileMetric label="KM" value={`${activeWorkout.distanceKm.toFixed(2)} km`} />
@@ -2244,6 +2350,63 @@ function UserProfileSection({
             </div>
           </section>
         </>
+      )}
+
+      {confirmTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-md rounded-2xl border border-rose-500/40 bg-[#08132b] p-6 text-white shadow-2xl animate-scale-up">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-rose-500/20 text-rose-400">
+                <OctagonAlert className="h-5 w-5" />
+              </span>
+              <div>
+                <h3 className="text-base font-bold text-white">Force Stop Workout</h3>
+                <p className="text-xs text-[#8f9fba]">User: <strong className="text-cyan-200">{confirmTarget.username}</strong> ({confirmTarget.steporaId})</p>
+              </div>
+            </div>
+
+            <div className="mb-5 space-y-2 rounded-xl border border-[#24466f] bg-[#061027] p-4 text-xs">
+              <div className="flex justify-between text-[#8f9fba]">
+                <span>Distance Recorded:</span>
+                <strong className="text-white">{confirmTarget.distanceKm.toFixed(2)} km</strong>
+              </div>
+              <div className="flex justify-between text-[#8f9fba]">
+                <span>Accrued Earnings:</span>
+                <strong className="text-sm font-bold text-emerald-400">{currency.format(confirmTarget.tokensEarned)}</strong>
+              </div>
+              <div className="mt-2 border-t border-[#1e3a78] pt-2 text-[11px] leading-5 text-[#8f9fba]">
+                Stopping this workout will immediately finish tracking. The user will be rewarded <strong className="text-emerald-300">{currency.format(confirmTarget.tokensEarned)}</strong> credited directly to their balance based on their progress before stop.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                disabled={stoppingWorkoutUserId === confirmTarget.userId}
+                onClick={() => setConfirmTarget(null)}
+                className="rounded-lg border border-[#24466f] bg-[#0c224a] px-4 py-2 text-xs font-semibold text-[#c5bfbb] hover:bg-[#142b5b] hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={stoppingWorkoutUserId === confirmTarget.userId}
+                onClick={async () => {
+                  if (onForceStopWorkout) {
+                    await onForceStopWorkout(confirmTarget);
+                    setConfirmTarget(null);
+                  }
+                }}
+                className="flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-rose-500 disabled:opacity-50"
+              >
+                {stoppingWorkoutUserId === confirmTarget.userId && (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                )}
+                <span>Confirm Force Stop &amp; Reward</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

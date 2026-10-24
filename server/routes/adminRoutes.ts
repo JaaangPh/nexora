@@ -18,6 +18,7 @@ import {
   updateAdminRunnerRule,
   grantAdminRunner,
   verifyAdminTotp,
+  forceStopAdminUserWorkout,
   adminSessionMiddleware,
 } from '../controllers/adminController.js';
 
@@ -44,6 +45,7 @@ router.get('/announcement', adminSessionMiddleware, getAdminAnnouncement);
 router.put('/announcement', adminSessionMiddleware, updateAdminAnnouncement);
 router.post('/announcement', adminSessionMiddleware, updateAdminAnnouncement);
 router.get('/users/:userId', adminSessionMiddleware, getAdminUserProfile);
+router.post('/users/:userId/force-stop-workout', adminSessionMiddleware, forceStopAdminUserWorkout);
 router.put('/withdrawals/:orderId/review', adminSessionMiddleware, reviewWithdrawal);
 router.put('/auth/password', adminAuthLimiter, adminSessionMiddleware, changeAdminPassword);
 router.get('/accounts', adminSessionMiddleware, getAdminAccounts);

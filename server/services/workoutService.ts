@@ -209,11 +209,143 @@ export async function completeWorkoutAndClearSnapshot(
     });
   });
 
-  return {
-    success: true,
-    verified: workoutVerified,
-    creditedMeters,
-    creditedReward: fromCents(creditedRewardCents),
-    balance: resultingBalance,
-  };
-}
+    return {
+      success: true,
+      verified: workoutVerified,
+      creditedMeters,
+      creditedReward: fromCents(creditedRewardCents),
+      balance: resultingBalance,
+    };
+  }
+
+  export async function forceStopWorkoutAndReward(userIdInput: string | undefined) {
+    if (!userIdInput) throw new WorkoutError(401, 'Authentication required.');
+    const userId = userIdInput;
+    const runnerRules = await readRunnerRules();
+    const userRef = getDb().collection('users').doc(userId);
+    let creditedMeters = 0;
+    let creditedRewardCents = 0;
+    let resultingBalance = 0;
+    let username = 'Member';
+    let distanceKm = 0;
+
+    await getDb().runTransaction(async (transaction) => {
+      const userSnapshot = await transaction.get(userRef);
+      const user = userSnapshot.exists ? userSnapshot.data() as FirestoreUser : null;
+      if (!user) throw new WorkoutError(404, 'Account not found.');
+      username = typeof user.username === 'string' ? user.username : 'Member';
+
+      const snapshot = user.workoutSnapshot as Record<string, unknown> | undefined;
+      if (!snapshot || (snapshot.isTracking !== true && snapshot.isPaused !== true && snapshot.pendingFinish !== true)) {
+        throw new WorkoutError(400, 'This user does not have an active workout to stop.');
+      }
+
+      const startedAt = Number(snapshot.workoutStartTime || snapshot.serverStartedAt || Date.now());
+      const workoutId = `${userId}_${Math.trunc(startedAt)}`;
+      const workoutRef = getDb().collection('completed_workouts').doc(workoutId);
+      const rewardRef = getDb().collection('wallet_transactions').doc(`${workoutId}_reward`);
+      const now = Date.now();
+      const rewardDay = new Date(now).toISOString().slice(0, 10);
+      const dailyRewardLimitRef = getDb().collection('workout_reward_daily_limits').doc(`${userId}_${rewardDay}`);
+
+      const [workoutDoc, rewardDoc, dailyRewardLimitSnapshot] = await Promise.all([
+        transaction.get(workoutRef),
+        transaction.get(rewardRef),
+        transaction.get(dailyRewardLimitRef),
+      ]);
+
+      distanceKm = Number.isFinite(Number(snapshot.distanceKm)) ? Number(snapshot.distanceKm) : 0;
+      const reportedMeters = Math.round(distanceKm * 1000);
+      const routeMeters = haversineDistanceMeters(snapshot.routePoints);
+      const verifiedMeters = routeMeters > 0 ? routeMeters : reportedMeters;
+      creditedMeters = verifiedMeters;
+
+      const selectedIds = Array.isArray(snapshot.runnerIds)
+        ? [...new Set(snapshot.runnerIds.filter((id): id is string => typeof id === 'string'))]
+        : [];
+
+      const dailyLimitData = dailyRewardLimitSnapshot.data();
+      const dailyKmByRunner = dailyLimitData?.kmByRunner && typeof dailyLimitData.kmByRunner === 'object'
+        ? dailyLimitData.kmByRunner as Record<string, number>
+        : {};
+
+      const calculatedRewardCents = calculateWorkoutRewardCents(
+        verifiedMeters,
+        selectedIds,
+        runnerRules,
+        dailyKmByRunner,
+      );
+
+      const snapshotTokensEarned = Number.isFinite(Number(snapshot.tokensEarned)) ? Number(snapshot.tokensEarned) : 0;
+      const snapshotRewardCents = toCents(snapshotTokensEarned);
+      const rewardCents = snapshotRewardCents > 0 ? snapshotRewardCents : calculatedRewardCents;
+
+      const earnedKmByRunner = calculateWorkoutRewardKmByRunner(
+        verifiedMeters,
+        selectedIds,
+        runnerRules,
+        dailyKmByRunner,
+      );
+      const nextDailyKmByRunner = { ...dailyKmByRunner };
+      for (const [runnerId, earnedKm] of Object.entries(earnedKmByRunner)) {
+        const accruedKm = Number(nextDailyKmByRunner[runnerId] || 0);
+        nextDailyKmByRunner[runnerId] = accruedKm + earnedKm;
+      }
+
+      const currentBalanceCents = toCents(user.balance);
+      const shouldCreditReward = !workoutDoc.exists && !rewardDoc.exists && rewardCents > 0;
+      creditedRewardCents = shouldCreditReward
+        ? rewardCents
+        : Number(rewardDoc.data()?.amountCents || 0);
+      resultingBalance = fromCents(currentBalanceCents + (shouldCreditReward ? rewardCents : 0));
+
+      if (!workoutDoc.exists) {
+        transaction.create(workoutRef, {
+          id: workoutId,
+          userId,
+          startedAt,
+          serverStartedAt: Number(snapshot.serverStartedAt || startedAt),
+          completedAt: now,
+          verified: true,
+          verifiedMeters,
+          rewardVerified: true,
+          rewardCents: creditedRewardCents,
+          selectedRunnerIds: selectedIds,
+          forceStoppedByAdmin: true,
+        });
+      }
+
+      if (shouldCreditReward) {
+        transaction.create(rewardRef, {
+          id: `${workoutId}_reward`,
+          userId,
+          type: 'workout_reward',
+          workoutId,
+          amountCents: rewardCents,
+          amount: fromCents(rewardCents),
+          createdAt: now,
+          note: 'Workout reward (Admin force stopped)',
+        });
+        transaction.set(dailyRewardLimitRef, {
+          userId,
+          date: rewardDay,
+          kmByRunner: nextDailyKmByRunner,
+          updatedAt: now,
+        });
+      }
+
+      transaction.update(userRef, {
+        workoutSnapshot: FieldValue.delete(),
+        ...(shouldCreditReward ? { balance: resultingBalance } : {}),
+      });
+    });
+
+    return {
+      success: true,
+      username,
+      distanceKm,
+      creditedMeters,
+      creditedReward: fromCents(creditedRewardCents),
+      balance: resultingBalance,
+    };
+  }

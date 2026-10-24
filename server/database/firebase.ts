@@ -659,6 +659,15 @@ export async function updateUserWorkoutSnapshot(
     const currentSnapshot = user?.workoutSnapshot;
     const currentLastUpdated = Number(currentSnapshot?.lastUpdated || 0);
     const incomingLastUpdated = Number(snapshot.lastUpdated);
+    const workoutStartTime = Number(snapshot.workoutStartTime || 0);
+    if (!currentSnapshot && workoutStartTime > 0) {
+      const completedWorkout = await transaction.get(
+        firestore.collection('completed_workouts').doc(`${id}_${Math.trunc(workoutStartTime)}`)
+      );
+      if (completedWorkout.exists) {
+        return { workoutSnapshot: {} };
+      }
+    }
     if (!canReplaceWorkoutSnapshot(currentSnapshot, snapshot)) {
       if (!currentSnapshot) throw new Error('WORKOUT_SNAPSHOT_REPLACED');
       return { workoutSnapshot: currentSnapshot };

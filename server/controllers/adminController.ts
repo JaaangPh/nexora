@@ -17,6 +17,7 @@ import { displayedNexoraId } from '../services/accountIdentity.js';
 import { normalizeAnnouncement } from '../../shared/announcement.js';
 import { getRunnerPrices, readRunnerPricing, RUNNER_BASE_PRICES, saveRunnerPricing } from '../services/runnerPricing.js';
 import { isRunnerId, readRunnerRules, saveRunnerRule } from '../services/runnerRules.js';
+import { forceStopWorkoutAndReward, WorkoutError } from '../services/workoutService.js';
 import {
   createTurboPayPayout,
   createTurboPaySignature,
@@ -913,6 +914,35 @@ export async function getAdminActiveWorkouts(req: AdminRequest, res: Response): 
   } catch (error) {
     console.error('[Admin Active Workouts Error]', error);
     res.status(500).json({ success: false, message: 'Could not load active workouts.' });
+  }
+}
+
+export async function forceStopAdminUserWorkout(req: AdminRequest, res: Response): Promise<void> {
+  if (req.adminRole !== 'admin') {
+    res.status(403).json({ success: false, message: 'Only administrators can force stop workouts.' });
+    return;
+  }
+
+  const { userId } = req.params;
+  if (!userId || typeof userId !== 'string' || !userId.trim()) {
+    res.status(400).json({ success: false, message: 'User ID is required.' });
+    return;
+  }
+
+  try {
+    const result = await forceStopWorkoutAndReward(userId.trim());
+    res.json({
+      success: true,
+      message: `Workout for ${result.username} was stopped. ₱${result.creditedReward.toFixed(2)} was credited to their balance.`,
+      ...result,
+    });
+  } catch (error: any) {
+    if (error instanceof WorkoutError) {
+      res.status(error.statusCode).json({ success: false, message: error.message });
+      return;
+    }
+    console.error('[Admin Force Stop Workout Error]', error);
+    res.status(500).json({ success: false, message: error?.message || 'Could not force stop the workout.' });
   }
 }
 

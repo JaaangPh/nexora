@@ -48,3 +48,6 @@ android/local.properties
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Nested repositories
+stepmAdmin/
