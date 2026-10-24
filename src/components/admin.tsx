@@ -1,4 +1,4 @@
-import React, { FormEvent, useEffect, useMemo, useState } from 'react';
+import React, { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownLeft,
   ArrowLeftRight,
@@ -10,29 +10,35 @@ import {
   ChevronDown,
   CircleDollarSign,
   Clock3,
+  Image as ImageIcon,
   LayoutDashboard,
   KeyRound,
   LoaderCircle,
   LogOut,
   Menu,
+  Megaphone,
   Percent,
   RefreshCw,
   Search,
   ShoppingBag,
   Footprints,
   ShieldCheck,
+  Trash2,
+  Upload,
   UserPlus,
   UserRound,
   Users,
+  X,
 } from 'lucide-react';
 import { getApiBaseUrl } from '../services/api';
 import type { RunnerPrice, RunnerRules } from '../services/api';
+import { DEFAULT_ANNOUNCEMENT, type AnnouncementContent } from '../../shared/announcement';
 
 type AdminScreen = 'login' | 'setup' | 'verify' | 'dashboard';
 type TransactionType = 'deposit' | 'withdrawal';
 type DateRange = '24h' | '7d' | '30d' | 'all';
 type AdminRole = 'admin' | 'staff';
-type AdminView = 'overview' | TransactionType | 'runner-purchases' | 'profile' | 'security' | 'staff-team' | 'runner-pricing' | 'runner';
+type AdminView = 'overview' | TransactionType | 'runner-purchases' | 'profile' | 'security' | 'staff-team' | 'runner-pricing' | 'runner' | 'announcement';
 
 interface AdminTransaction {
   id: string;
@@ -174,6 +180,23 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
+function getImageTypeLabel(url: string): string {
+  if (!url) return '';
+  if (url.startsWith('data:image/gif')) return 'GIF (Animated)';
+  if (url.startsWith('data:image/png')) return 'PNG Image';
+  if (url.startsWith('data:image/jpeg') || url.startsWith('data:image/jpg')) return 'JPEG Image';
+  if (url.startsWith('data:image/webp')) return 'WebP Image';
+  if (url.startsWith('data:image/svg+xml')) return 'SVG Vector';
+  if (/\.gif($|\?)/i.test(url)) return 'GIF (Animated)';
+  if (/\.png($|\?)/i.test(url)) return 'PNG Image';
+  if (/\.(jpe?g)($|\?)/i.test(url)) return 'JPEG Image';
+  if (/\.webp($|\?)/i.test(url)) return 'WebP Image';
+  if (/\.svg($|\?)/i.test(url)) return 'SVG Vector';
+  if (url.startsWith('http')) return 'Web URL';
+  if (url.startsWith('/')) return 'Local Path';
+  return 'Custom Image';
+}
+
 function TrendChart({ transactions }: { transactions: AdminTransaction[] }) {
   const series = useMemo(() => {
     const today = new Date();
@@ -303,6 +326,105 @@ export const Admin: React.FC = () => {
   const [grantRunnerUserId, setGrantRunnerUserId] = useState('');
   const [grantRunnerType, setGrantRunnerType] = useState('snk-1');
   const [isGrantingRunner, setIsGrantingRunner] = useState(false);
+  const [announcement, setAnnouncement] = useState<AnnouncementContent>(DEFAULT_ANNOUNCEMENT);
+  const [isLoadingAnnouncement, setIsLoadingAnnouncement] = useState(false);
+  const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
+  const announcementImageInputRef = useRef<HTMLInputElement>(null);
+  const [announcementImageError, setAnnouncementImageError] = useState('');
+  const [isProcessingAnnouncementImage, setIsProcessingAnnouncementImage] = useState(false);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+
+  const processImageFile = async (file: File) => {
+    setAnnouncementImageError('');
+    if (!file.type.startsWith('image/') && !file.name.match(/\.(gif|png|jpe?g|webp|svg)$/i)) {
+      setAnnouncementImageError('Please select a valid image or GIF file (PNG, JPEG, GIF, WebP, SVG).');
+      return;
+    }
+
+    setIsProcessingAnnouncementImage(true);
+    try {
+      const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
+      if (isGif) {
+        if (file.size > 850 * 1024) {
+          throw new Error(`The selected GIF is ${(file.size / 1024).toFixed(0)} KB. Please choose a GIF under 850 KB to ensure fast loading.`);
+        }
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === 'string') resolve(reader.result);
+            else reject(new Error('Failed to read the GIF file.'));
+          };
+          reader.onerror = () => reject(new Error('Error reading the GIF file.'));
+          reader.readAsDataURL(file);
+        });
+        setAnnouncement((current) => ({ ...current, imageUrl: dataUrl }));
+        return;
+      }
+
+      if (file.size <= 450 * 1024) {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === 'string') resolve(reader.result);
+            else reject(new Error('Failed to read the image file.'));
+          };
+          reader.onerror = () => reject(new Error('Error reading the image file.'));
+          reader.readAsDataURL(file);
+        });
+        setAnnouncement((current) => ({ ...current, imageUrl: dataUrl }));
+        return;
+      }
+
+      const bitmap = await createImageBitmap(file);
+      try {
+        const maxDimension = 1200;
+        let { width, height } = bitmap;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Could not process the selected image.');
+        ctx.drawImage(bitmap, 0, 0, width, height);
+
+        let compressedBlob: Blob | null = null;
+        for (const quality of [0.85, 0.72, 0.58]) {
+          compressedBlob = await new Promise<Blob | null>((resolve) => {
+            canvas.toBlob(resolve, 'image/jpeg', quality);
+          });
+          if (compressedBlob && compressedBlob.size <= 450 * 1024) break;
+        }
+
+        if (!compressedBlob) throw new Error('Could not optimize the selected image.');
+
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === 'string') resolve(reader.result);
+            else reject(new Error('Failed to read compressed image.'));
+          };
+          reader.onerror = () => reject(new Error('Error reading compressed image.'));
+          reader.readAsDataURL(compressedBlob);
+        });
+        setAnnouncement((current) => ({ ...current, imageUrl: dataUrl }));
+      } finally {
+        bitmap.close();
+      }
+    } catch (err: unknown) {
+      setAnnouncementImageError(err instanceof Error ? err.message : 'Could not process the image.');
+    } finally {
+      setIsProcessingAnnouncementImage(false);
+    }
+  };
 
   const loadTransactions = async (token: string) => {
     const result = await adminRequest<{
@@ -413,6 +535,54 @@ export const Admin: React.FC = () => {
       });
     return () => { isCurrent = false; };
   }, [activeView, role, sessionToken]);
+
+  useEffect(() => {
+    let isCurrent = true;
+    if (!sessionToken || role !== 'admin' || activeView !== 'announcement') return;
+
+    setIsLoadingAnnouncement(true);
+    adminRequest<{ announcement: AnnouncementContent }>('/api/admin/announcement', { method: 'GET' }, sessionToken)
+      .then((result) => {
+        if (isCurrent) setAnnouncement(result.announcement);
+      })
+      .catch((loadError) => {
+        if (isCurrent) setError(loadError instanceof Error ? loadError.message : 'Could not load the announcement.');
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingAnnouncement(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [activeView, role, sessionToken]);
+
+  const saveAnnouncement = async (event: FormEvent) => {
+    event.preventDefault();
+    setError('');
+    setNotice('');
+    setIsSavingAnnouncement(true);
+    try {
+      const result = await adminRequest<{
+        announcement: AnnouncementContent;
+        message: string;
+      }>('/api/admin/announcement', {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: announcement.title,
+          subtitle: announcement.subtitle,
+          body: announcement.body,
+          imageUrl: announcement.imageUrl,
+        }),
+      }, sessionToken);
+      setAnnouncement(result.announcement);
+      setNotice(result.message);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not update the announcement.');
+    } finally {
+      setIsSavingAnnouncement(false);
+    }
+  };
 
   useEffect(() => {
     if (!sessionToken || activeView !== 'profile' || !profileLookupId) return;
@@ -997,6 +1167,14 @@ export const Admin: React.FC = () => {
                 <UserRound className="h-5 w-5" />
               </button>
               <button
+                title="Announcement"
+                aria-label="Announcement"
+                onClick={() => { setActiveView('announcement'); setMobileNavOpen(false); }}
+                className={`grid h-11 w-11 place-items-center rounded-xl border-l-[3px] transition ${activeView === 'announcement' ? 'border-cyan-300 bg-[#142b5b] text-cyan-200' : 'border-transparent text-[#c5bfbb] hover:bg-[#10234a]'}`}
+              >
+                <Megaphone className="h-5 w-5" />
+              </button>
+              <button
                 title="Staff team"
                 aria-label="Staff team"
                 onClick={() => { setActiveView('staff-team'); setMobileNavOpen(false); }}
@@ -1028,8 +1206,8 @@ export const Admin: React.FC = () => {
               <Menu className="h-4 w-4" />
             </button>
             <div className="flex items-center gap-2 text-sm font-semibold">
-              {activeView === 'overview' ? <LayoutDashboard className="h-4 w-4 text-[#f15408]" /> : activeView === 'security' ? <ShieldCheck className="h-4 w-4 text-[#f15408]" /> : activeView === 'staff-team' ? <Users className="h-4 w-4 text-cyan-300" /> : activeView === 'runner-purchases' ? <ShoppingBag className="h-4 w-4 text-[#f15408]" /> : activeView === 'runner' ? <Footprints className="h-4 w-4 text-cyan-300" /> : activeView === 'runner-pricing' ? <Percent className="h-4 w-4 text-cyan-300" /> : activeView === 'profile' ? <UserRound className="h-4 w-4 text-[#f15408]" /> : <ArrowLeftRight className="h-4 w-4 text-[#f15408]" />}
-              {activeView === 'overview' ? 'Dashboard' : activeView === 'security' ? 'Security & accounts' : activeView === 'staff-team' ? 'Staff team' : activeView === 'deposit' ? 'Deposits' : activeView === 'withdrawal' ? 'Withdrawals' : activeView === 'runner-purchases' ? 'Runner purchases' : activeView === 'runner' ? 'Runner' : activeView === 'runner-pricing' ? 'Runner prices' : 'User profile'}
+              {activeView === 'overview' ? <LayoutDashboard className="h-4 w-4 text-[#f15408]" /> : activeView === 'security' ? <ShieldCheck className="h-4 w-4 text-[#f15408]" /> : activeView === 'staff-team' ? <Users className="h-4 w-4 text-cyan-300" /> : activeView === 'runner-purchases' ? <ShoppingBag className="h-4 w-4 text-[#f15408]" /> : activeView === 'runner' ? <Footprints className="h-4 w-4 text-cyan-300" /> : activeView === 'runner-pricing' ? <Percent className="h-4 w-4 text-cyan-300" /> : activeView === 'profile' ? <UserRound className="h-4 w-4 text-[#f15408]" /> : activeView === 'announcement' ? <Megaphone className="h-4 w-4 text-cyan-300" /> : <ArrowLeftRight className="h-4 w-4 text-[#f15408]" />}
+              {activeView === 'overview' ? 'Dashboard' : activeView === 'security' ? 'Security & accounts' : activeView === 'staff-team' ? 'Staff team' : activeView === 'deposit' ? 'Deposits' : activeView === 'withdrawal' ? 'Withdrawals' : activeView === 'runner-purchases' ? 'Runner purchases' : activeView === 'runner' ? 'Runner' : activeView === 'runner-pricing' ? 'Runner prices' : activeView === 'announcement' ? 'Announcement' : 'User profile'}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -1064,7 +1242,7 @@ export const Admin: React.FC = () => {
             </div>
           )}
 
-          {activeView !== 'security' && activeView !== 'staff-team' && activeView !== 'profile' && activeView !== 'runner-pricing' && activeView !== 'runner' && <div className="flex flex-wrap items-center justify-between gap-3">
+          {activeView !== 'security' && activeView !== 'staff-team' && activeView !== 'profile' && activeView !== 'runner-pricing' && activeView !== 'runner' && activeView !== 'announcement' && <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
               {rangeLabels.map(({ id, label }) => (
                 <button
@@ -1448,6 +1626,192 @@ export const Admin: React.FC = () => {
                   >
                     {isSavingRunnerPrice && <LoaderCircle className="h-4 w-4 animate-spin" />}
                     Save runner price
+                  </button>
+                </form>
+              )}
+            </section>
+          )}
+
+          {activeView === 'announcement' && role === 'admin' && (
+            <section className="max-w-3xl rounded-xl border border-[#1e3a78] bg-[#081b3d] p-5 sm:p-6">
+              <div className="mb-5 flex items-center gap-3">
+                <span className="grid h-10 w-10 place-items-center rounded-xl bg-cyan-500/10 text-cyan-300"><Megaphone className="h-5 w-5" /></span>
+                <div>
+                  <h2 className="text-base font-bold text-white">Edit user announcement</h2>
+                  <p className="mt-1 text-xs leading-5 text-[#8f9fba]">Changes are saved for all users and appear in the app announcement. A new version will be shown even to users who dismissed the previous one.</p>
+                </div>
+              </div>
+              {isLoadingAnnouncement ? (
+                <p className="py-8 text-center text-xs text-[#8f9fba]">
+                  <LoaderCircle className="mx-auto mb-2 h-4 w-4 animate-spin text-cyan-300" />
+                  Loading announcement…
+                </p>
+              ) : (
+                <form onSubmit={saveAnnouncement} className="space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="announcement-title-input">Title</label>
+                    <input
+                      id="announcement-title-input"
+                      required
+                      maxLength={120}
+                      value={announcement.title}
+                      onChange={(event) => setAnnouncement((current) => ({ ...current, title: event.target.value }))}
+                      className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="announcement-subtitle-input">Subtitle</label>
+                    <input
+                      id="announcement-subtitle-input"
+                      maxLength={200}
+                      value={announcement.subtitle}
+                      onChange={(event) => setAnnouncement((current) => ({ ...current, subtitle: event.target.value }))}
+                      className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-[#d6cfcb]" htmlFor="announcement-body-input">Announcement body</label>
+                    <textarea
+                      id="announcement-body-input"
+                      required
+                      maxLength={5000}
+                      rows={10}
+                      value={announcement.body}
+                      onChange={(event) => setAnnouncement((current) => ({ ...current, body: event.target.value }))}
+                      aria-describedby="announcement-body-help"
+                      className="w-full resize-y rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-sm leading-6 text-white outline-none focus:border-cyan-300"
+                    />
+                    <p id="announcement-body-help" className="mt-1.5 text-[10px] text-[#8f9fba]">Separate paragraphs with a blank line. Single line breaks are preserved.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-semibold text-[#d6cfcb]" htmlFor="announcement-image-input">
+                        Announcement image or GIF (optional)
+                      </label>
+                      <span className="text-[11px] text-[#8f9fba]">Supports GIF, PNG, JPEG, WebP, SVG</span>
+                    </div>
+
+                    <input
+                      ref={announcementImageInputRef}
+                      type="file"
+                      accept="image/gif,image/png,image/jpeg,image/webp,image/svg+xml,image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) processImageFile(file);
+                        e.target.value = '';
+                      }}
+                    />
+
+                    {/* Drag and Drop / Choose File Zone */}
+                    <div
+                      onDragOver={(e) => { e.preventDefault(); setIsDraggingImage(true); }}
+                      onDragLeave={() => setIsDraggingImage(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingImage(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) processImageFile(file);
+                      }}
+                      className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center transition ${
+                        isDraggingImage
+                          ? 'border-cyan-400 bg-cyan-950/30'
+                          : 'border-[#24466f] bg-[#06132e] hover:border-cyan-500/60'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          disabled={isProcessingAnnouncementImage}
+                          onClick={() => announcementImageInputRef.current?.click()}
+                          className="flex items-center gap-1.5 rounded-md bg-[#142b5b] px-3 py-1.5 text-xs font-semibold text-cyan-200 transition hover:bg-[#1a3875] disabled:opacity-50"
+                        >
+                          {isProcessingAnnouncementImage ? (
+                            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="h-3.5 w-3.5" />
+                          )}
+                          <span>Choose image or GIF file</span>
+                        </button>
+                        <span className="text-xs text-[#8f9fba]">or drag &amp; drop here</span>
+                      </div>
+                      <p className="mt-1 text-[10px] text-[#8f9fba]">
+                        Accepts animated GIFs, PNG, JPEG, WebP, or SVG
+                      </p>
+                    </div>
+
+                    {/* URL or relative path manual input */}
+                    <div className="relative">
+                      <input
+                        id="announcement-image-input"
+                        type="text"
+                        value={announcement.imageUrl.startsWith('data:') ? '' : announcement.imageUrl}
+                        onChange={(event) => {
+                          setAnnouncementImageError('');
+                          setAnnouncement((current) => ({ ...current, imageUrl: event.target.value }));
+                        }}
+                        placeholder={announcement.imageUrl.startsWith('data:') ? 'Custom image / GIF inserted from file' : 'Or enter URL: https://example.com/banner.gif or /images/stepora-announcement.png'}
+                        className="w-full rounded-lg border border-[#24466f] bg-[#06132e] px-3 py-2.5 text-xs text-white outline-none focus:border-cyan-300 placeholder:text-[#5e718d]"
+                      />
+                      {announcement.imageUrl && !announcement.imageUrl.startsWith('data:') && (
+                        <button
+                          type="button"
+                          onClick={() => setAnnouncement((current) => ({ ...current, imageUrl: '' }))}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[#8f9fba] hover:text-white"
+                          title="Clear URL"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {announcementImageError && (
+                      <p className="text-xs text-rose-300">{announcementImageError}</p>
+                    )}
+
+                    {/* Live Preview Card */}
+                    {announcement.imageUrl && (
+                      <div className="relative overflow-hidden rounded-lg border border-[#24466f] bg-[#050e24] p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-cyan-300">
+                              <ImageIcon className="h-3.5 w-3.5" />
+                              Image Preview
+                            </span>
+                            <span className="rounded bg-[#142b5b] px-1.5 py-0.5 text-[10px] font-semibold text-cyan-200">
+                              {getImageTypeLabel(announcement.imageUrl)}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAnnouncement((current) => ({ ...current, imageUrl: '' }));
+                              setAnnouncementImageError('');
+                            }}
+                            className="flex items-center gap-1 rounded bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-500/20"
+                            title="Remove image"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            <span>Remove</span>
+                          </button>
+                        </div>
+                        <div className="relative flex max-h-56 items-center justify-center overflow-hidden rounded bg-[#020714] p-2">
+                          <img
+                            src={announcement.imageUrl}
+                            alt="Announcement visual"
+                            className="max-h-52 w-auto max-w-full object-contain"
+                            onError={() => setAnnouncementImageError('Unable to load or display image from this source.')}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    disabled={isSavingAnnouncement}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#e94f08] px-4 py-3 text-sm font-bold text-white hover:bg-[#ff6418] disabled:opacity-50"
+                  >
+                    {isSavingAnnouncement && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                    Save announcement
                   </button>
                 </form>
               )}

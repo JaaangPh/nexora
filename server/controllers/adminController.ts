@@ -533,14 +533,22 @@ export async function updateAdminAnnouncement(req: AdminRequest, res: Response):
   }
 
   const { title, subtitle, body, imageUrl } = req.body ?? {};
+  const rawImageUrl = typeof imageUrl === 'string' ? imageUrl.trim() : '';
+  const cleanDataUrl = rawImageUrl.replace(/\s+/g, '');
+  const isDataUrl = /^data:image\/(?:png|jpeg|jpg|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/i.test(cleanDataUrl);
+  const isWebUrlOrPath = rawImageUrl.length <= 1000 && /^(https?:\/\/|\/)/i.test(rawImageUrl);
+  const isImageValid = !rawImageUrl || (rawImageUrl.length <= 1_500_000 && (isWebUrlOrPath || isDataUrl));
+
   if (
     typeof title !== 'string' || !title.trim() || title.trim().length > 120 ||
     typeof subtitle !== 'string' || subtitle.trim().length > 200 ||
     typeof body !== 'string' || !body.trim() || body.length > 5000 ||
-    typeof imageUrl !== 'string' || imageUrl.length > 500 ||
-    (imageUrl.trim() && !(/^(https?:\/\/|\/)/i.test(imageUrl.trim())))
+    !isImageValid
   ) {
-    res.status(400).json({ success: false, message: 'Enter a title (up to 120 characters), subtitle (up to 200 characters), body (up to 5,000 characters), and a valid image URL or path.' });
+    res.status(400).json({
+      success: false,
+      message: 'Enter a title (up to 120 characters), subtitle (up to 200 characters), body (up to 5,000 characters), and an optional image (GIF, PNG, JPEG, WebP, SVG, URL, or local path).',
+    });
     return;
   }
 
@@ -548,7 +556,7 @@ export async function updateAdminAnnouncement(req: AdminRequest, res: Response):
     title: title.trim(),
     subtitle: subtitle.trim(),
     body: body.trim(),
-    imageUrl: imageUrl.trim(),
+    imageUrl: isDataUrl ? cleanDataUrl : rawImageUrl,
     updatedAt: Date.now(),
   };
   try {

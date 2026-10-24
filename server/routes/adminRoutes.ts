@@ -42,6 +42,7 @@ router.post('/runners/grant', adminSessionMiddleware, grantAdminRunner);
 router.get('/active-workouts', adminSessionMiddleware, getAdminActiveWorkouts);
 router.get('/announcement', adminSessionMiddleware, getAdminAnnouncement);
 router.put('/announcement', adminSessionMiddleware, updateAdminAnnouncement);
+router.post('/announcement', adminSessionMiddleware, updateAdminAnnouncement);
 router.get('/users/:userId', adminSessionMiddleware, getAdminUserProfile);
 router.put('/withdrawals/:orderId/review', adminSessionMiddleware, reviewWithdrawal);
 router.put('/auth/password', adminAuthLimiter, adminSessionMiddleware, changeAdminPassword);
