@@ -683,24 +683,9 @@ export async function updateUserWorkoutSnapshot(
     }
 
     if (!currentSnapshot && workoutStartTime > 0) {
-      let completedWorkoutDoc = await transaction.get(
+      const completedWorkoutDoc = await transaction.get(
         firestore.collection('completed_workouts').doc(`${id}_${Math.trunc(workoutStartTime)}`)
       );
-      if (!completedWorkoutDoc.exists) {
-        const recentSnap = await transaction.get(
-          firestore.collection('completed_workouts')
-            .where('userId', '==', id)
-            .orderBy('completedAt', 'desc')
-            .limit(1)
-        );
-        if (!recentSnap.empty) {
-          const doc = recentSnap.docs[0];
-          const data = doc.data();
-          if (data && (data.forceStoppedByAdmin || Math.abs(Number(data.startedAt || 0) - workoutStartTime) <= 120_000)) {
-            completedWorkoutDoc = doc;
-          }
-        }
-      }
       if (completedWorkoutDoc.exists) {
         const completedData = completedWorkoutDoc.data();
         const { fromCents, toCents } = await import('../services/workoutRules.js');
@@ -709,20 +694,6 @@ export async function updateUserWorkoutSnapshot(
           workoutStopped: true,
           forceStoppedByAdmin: Boolean(completedData?.forceStoppedByAdmin),
           creditedReward: fromCents(Number(completedData?.rewardCents || 0)),
-          balance: fromCents(toCents(user.balance)),
-        };
-      }
-
-      // If the workout was ended and is not a new start, do not resurrect it
-      const elapsedSeconds = Number(snapshot.elapsedSeconds || 0);
-      const distanceKm = Number(snapshot.distanceKm || 0);
-      if (elapsedSeconds > 10 || distanceKm > 0 || workoutStartTime < Date.now() - 30_000) {
-        const { fromCents, toCents } = await import('../services/workoutRules.js');
-        return {
-          workoutSnapshot: null,
-          workoutStopped: true,
-          forceStoppedByAdmin: true,
-          creditedReward: Number(snapshot.tokensEarned || 0),
           balance: fromCents(toCents(user.balance)),
         };
       }

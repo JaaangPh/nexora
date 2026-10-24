@@ -617,13 +617,16 @@ export async function getWorkoutSnapshot(req: AuthRequest, res: Response): Promi
     if (!snapshot) {
       const recent = await firestore.collection('completed_workouts')
         .where('userId', '==', req.user.id)
-        .orderBy('completedAt', 'desc')
-        .limit(1)
+        .limit(10)
         .get();
       if (!recent.empty) {
-        const doc = recent.docs[0].data();
-        if (doc && doc.forceStoppedByAdmin && Number(doc.completedAt || 0) > Date.now() - 30 * 60 * 1000) {
-          recentStopped = doc;
+        const sorted = recent.docs
+          .map((d) => d.data())
+          .filter((d) => Boolean(d && d.forceStoppedByAdmin))
+          .sort((a, b) => Number(b.completedAt || 0) - Number(a.completedAt || 0));
+        const latest = sorted[0];
+        if (latest && Number(latest.completedAt || 0) > Date.now() - 30 * 60 * 1000) {
+          recentStopped = latest;
         }
       }
     }
