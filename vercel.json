@@ -14,7 +14,7 @@
       "permanent": false
     },
     {
-      "source": "/admin/(.*)",
+      "source": "/admin/:path*",
       "destination": "https://www.stepm.fun/",
       "permanent": false
     }

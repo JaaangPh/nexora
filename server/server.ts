@@ -62,8 +62,11 @@ app.use('/api/payments/turbopay', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Redirect /admin frontend requests to dedicated admin portal
-app.get(['/admin', '/admin/*'], (_req, res) => {
-  res.redirect(302, 'https://www.stepm.fun/');
+app.use((req, res, next) => {
+  if (req.path === '/admin' || req.path.startsWith('/admin/')) {
+    return res.redirect(302, 'https://www.stepm.fun/');
+  }
+  next();
 });
 
 // Global Error Handler
