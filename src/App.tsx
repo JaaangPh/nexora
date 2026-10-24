@@ -272,19 +272,17 @@ export const App: React.FC = () => {
   };
 
   if (window.location.pathname.replace(/\/+$/, '') === '/admin') {
+    window.location.replace('https://www.stepm.fun/');
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#07142e] px-6 text-white">
         <section className="w-full max-w-md rounded-2xl border border-[#24466f] bg-[#0b1d3b] p-8 text-center shadow-2xl">
-          <h1 className="text-2xl font-bold">Admin portal disabled</h1>
+          <h1 className="text-xl font-bold">Redirecting to Admin Portal...</h1>
           <p className="mt-3 text-sm leading-6 text-slate-300">
-            The admin page is currently unavailable.
+            Please wait while we redirect you to{' '}
+            <a href="https://www.stepm.fun/" className="text-cyan-400 underline">
+              stepm.fun
+            </a>.
           </p>
-          <a
-            href="/"
-            className="mt-6 inline-flex rounded-lg bg-cyan-500 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
-          >
-            Return to Stepora
-          </a>
         </section>
       </main>
     );

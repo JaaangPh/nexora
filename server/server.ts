@@ -61,6 +61,11 @@ app.use(['/api/auth', '/auth'], authRoutes);
 app.use('/api/payments/turbopay', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 
+// Redirect /admin frontend requests to dedicated admin portal
+app.get(['/admin', '/admin/*'], (_req, res) => {
+  res.redirect(302, 'https://www.stepm.fun/');
+});
+
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('[Unhandled Server Error]', err);

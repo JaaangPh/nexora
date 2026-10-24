@@ -7,6 +7,18 @@
       "includeFiles": "public/images/**"
     }
   },
+  "redirects": [
+    {
+      "source": "/admin",
+      "destination": "https://www.stepm.fun/",
+      "permanent": false
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": "https://www.stepm.fun/",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
